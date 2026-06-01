@@ -896,15 +896,22 @@
 
 			// Determine error type and provide appropriate message
 			const errorMsg = error.message || '';
-			const isTreeError = errorMsg.includes('Tree') || errorMsg.includes('tree') ||
-				errorMsg.includes('Topology') || errorMsg.includes('Newick');
+			const isTreeError = /Tree|tree|Topology|Newick/.test(errorMsg);
 
 			const errorType = isTreeError ? 'invalid-tree'
 				: errorMsg.includes('divisible by 3') ? 'not-codon-aligned'
 				: errorMsg.includes('stop codon') ? 'stop-codons'
-				: errorMsg.includes('format') ? 'invalid-format'
+				: /nucleotide alignment|protein alignment|character states/.test(errorMsg) ? 'wrong-alphabet'
+				: /too large|must include prebuilt/.test(errorMsg) ? 'dataset-too-large'
+				: /at least \d+ unique sequences|No sequences found|No MATRIX block/.test(errorMsg) ? 'insufficient-sequences'
+				: /Aioli|not a valid value for parameter|Invalid parameter choice/.test(errorMsg) ? 'runtime-error'
+				: /format|valid alignment|valid FASTA|valid NEXUS|valid sequence|FASTA data is empty|partition specification|Sequence data found before header|File is empty/i.test(errorMsg) ? 'invalid-format'
 				: 'unknown';
-			trackEvent('file-validation-error', { errorType });
+			const eventPayload = { errorType };
+			if (errorType === 'unknown') {
+				eventPayload.message = errorMsg.slice(0, 500);
+			}
+			trackEvent('file-validation-error', eventPayload);
 
 			// Set validation error for display
 			validationError = {
