@@ -908,7 +908,7 @@
 				: /format|valid alignment|valid FASTA|valid NEXUS|valid sequence|FASTA data is empty|partition specification|Sequence data found before header|File is empty/i.test(errorMsg) ? 'invalid-format'
 				: 'unknown';
 			const eventPayload = { errorType };
-			if (errorType === 'unknown') {
+			if (errorType === 'unknown' || errorType === 'invalid-format') {
 				eventPayload.message = errorMsg.slice(0, 500);
 			}
 			trackEvent('file-validation-error', eventPayload);
