@@ -171,12 +171,13 @@
 					console.log('🌳 Using interactive tree instead:', treeData.substring(0, 100) + '...');
 				}
 				if (!treeData) {
+					if (selectedTreeSource === 'inferred') {
+						throw new Error(
+							'No neighbor-joining tree was inferred for this alignment. Please upload your own tree file.'
+						);
+					}
 					const treeSourceName =
-						selectedTreeSource === 'uploaded'
-							? 'uploaded tree'
-							: selectedTreeSource === 'inferred'
-								? 'neighbor-joining tree'
-								: 'uploaded tree file';
+						selectedTreeSource === 'uploaded' ? 'uploaded tree' : 'uploaded tree file';
 					throw new Error(
 						`No ${treeSourceName} available. Please select a different tree source or upload a tree.`
 					);
@@ -219,12 +220,13 @@
 				}
 
 				if (!treeData) {
+					if (selectedTreeSource === 'inferred') {
+						throw new Error(
+							'No neighbor-joining tree was inferred for this alignment. Please upload your own tree file.'
+						);
+					}
 					const treeSourceName =
-						selectedTreeSource === 'uploaded'
-							? 'uploaded tree'
-							: selectedTreeSource === 'inferred'
-								? 'neighbor-joining tree'
-								: 'uploaded tree file';
+						selectedTreeSource === 'uploaded' ? 'uploaded tree' : 'uploaded tree file';
 					throw new Error(
 						`No ${treeSourceName} available. Please select a different tree source or upload a tree.`
 					);
@@ -298,6 +300,14 @@
 	// Calculate tree state for TreeSourceSelector
 	$: hasUploadedTree = $treeStore && $treeStore.usertree;
 	$: hasInferredTree = $treeStore && $treeStore.nj;
+
+	// If datareader didn't produce an NJ tree (FILE_INFO.nj missing), the
+	// 'inferred' radio is disabled in the UI but selectedTreeSource defaults
+	// to 'inferred', so users hit "No NJ tree available" when they click Run.
+	// Switch to whichever option is actually available.
+	$: if (selectedTreeSource === 'inferred' && !hasInferredTree) {
+		selectedTreeSource = hasUploadedTree ? 'uploaded' : 'upload-new';
+	}
 
 	// Get tree data based on user's selection
 	function getSelectedTreeData() {

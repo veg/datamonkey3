@@ -909,7 +909,11 @@
 				: 'unknown';
 			const eventPayload = { errorType };
 			if (errorType === 'unknown' || errorType === 'invalid-format') {
-				eventPayload.message = errorMsg.slice(0, 500);
+				// Defensive fallback: 338/342 unknown events had no message field in
+				// telemetry because error.message was falsy (bare throw, throw {},
+				// throw new Error() with no arg). Keep digging until we find a string.
+				const fallback = errorMsg || error?.name || error?.toString() || 'No message available';
+				eventPayload.message = String(fallback).slice(0, 500);
 			}
 			trackEvent('file-validation-error', eventPayload);
 

@@ -1085,6 +1085,7 @@
 			const analysisConfig = {
 				method: selectedMethod,
 				geneticCode,
+				geneticCodeId,
 				executionMode,
 				...(methodOptions[selectedMethod] || {})
 			};
