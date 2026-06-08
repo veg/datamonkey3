@@ -255,9 +255,15 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 					// PRIME impute states parameter
 					args.push(`--impute-states ${value}`);
 				} else if (key === 'geneticCode') {
-					// Use genetic code string value directly for HyPhy
-					console.log('🧬 WASM - Using genetic code:', value);
-					args.push(`--code ${value}`);
+					// Use numeric geneticCodeId rather than the descriptive name. Aioli's
+					// exec() does a plain command.split(' '), so multi-word names like
+					// 'Vertebrate mitochondrial' get split into '--code Vertebrate' + stray
+					// 'mitochondrial', which causes HyPhy to reject 'Vertebrate' and then
+					// consume the next option's value as a fallback ('All' from --branches,
+					// '0.1' from --pvalue, etc.). Numeric IDs are always single-token.
+					const codeId = config.geneticCodeId ?? 0;
+					console.log('🧬 WASM - Using genetic code id:', codeId, '(', value, ')');
+					args.push(`--code ${codeId}`);
 				} else if (key === 'srv') {
 					// Synonymous rate variation
 					args.push(`--srv ${value}`);
@@ -518,9 +524,15 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 					// PRIME impute states parameter
 					args.push(`--impute-states ${value}`);
 				} else if (key === 'geneticCode') {
-					// Use genetic code string value directly for HyPhy
-					console.log('🧬 WASM - Using genetic code:', value);
-					args.push(`--code ${value}`);
+					// Use numeric geneticCodeId rather than the descriptive name. Aioli's
+					// exec() does a plain command.split(' '), so multi-word names like
+					// 'Vertebrate mitochondrial' get split into '--code Vertebrate' + stray
+					// 'mitochondrial', which causes HyPhy to reject 'Vertebrate' and then
+					// consume the next option's value as a fallback ('All' from --branches,
+					// '0.1' from --pvalue, etc.). Numeric IDs are always single-token.
+					const codeId = config.geneticCodeId ?? 0;
+					console.log('🧬 WASM - Using genetic code id:', codeId, '(', value, ')');
+					args.push(`--code ${codeId}`);
 				} else if (key === 'srv') {
 					// Synonymous rate variation
 					args.push(`--srv ${value}`);
