@@ -445,6 +445,16 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 		const response = await fetch(jsonBlob);
 		const blob = await response.blob();
 		const jsonText = await blob.text();
+
+		// Guard against HTML responses (e.g. dev-server 404 when HyPhy produced no result file).
+		// Without this, safeParseJSON surfaces the raw V8 message ("Unexpected token '<', \"<!doctype...\"")
+		// which is meaningless to users and noisy in telemetry.
+		if (jsonText.trim().startsWith('<!') || jsonText.trim().startsWith('<html')) {
+			throw new Error(
+				`HyPhy ${method} analysis did not produce a result file. Check the analysis output for errors.`
+			);
+		}
+
 		const jsonData = safeParseJSON(jsonText);
 
 		this.updateProgress(analysisId, 'saving', 95, 'Saving results...');
