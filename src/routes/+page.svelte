@@ -579,6 +579,16 @@
 	let validationError = null;
 
 	async function handleFileUpload(event) {
+		// Track which entry point fired this call and which awaited step we're on,
+		// so the file-validation-error catch can include both in telemetry.
+		const source = event.isSelection
+			? 'reselect'
+			: event.isDemo
+				? 'demo'
+				: event.isRepaired
+					? 'repair'
+					: 'upload';
+		let currentStage = 'init';
 		try {
 			// Check if this is a file selection event (from FileManager)
 			if (event.isSelection) {
@@ -652,6 +662,7 @@
 			if (!event.isSelection) {
 				// Pass any metadata from demo files
 				const metadata = event.isDemo ? event.metadata : {};
+				currentStage = 'storage';
 				fileId = await persistentFileStore.uploadFile(file, metadata);
 			} else {
 				fileId = event.fileId;
@@ -703,6 +714,7 @@
 			}
 
 			// Create a new analysis record and start progress tracking
+			currentStage = 'storage';
 			analysisId = await analysisStore.createAnalysis(fileId, 'datareader');
 			analysisStore.startAnalysisProgress(analysisId, 'Initializing file analysis...');
 
@@ -715,6 +727,7 @@
 				20,
 				'Mounting files for analysis...'
 			);
+			currentStage = 'mount';
 			let inputFiles = await cliObj.mount([
 				{ name: 'user.nex', data: await file.text() },
 				{ name: 'datareader.bf', data: dataReader },
@@ -734,6 +747,7 @@
 				40,
 				'Analyzing file structure...'
 			);
+			currentStage = 'exec';
 			result = await cliObj.exec('hyphy LIBPATH=/res/ ' + inputFiles[1]);
 			hyphyOut = await result.stdout;
 
@@ -792,6 +806,7 @@
 
 			let jsonBlob;
 			try {
+				currentStage = 'download';
 				jsonBlob = await cliObj.download('/shared/data/results.json');
 			} catch (downloadError) {
 				console.error('Failed to download results.json:', downloadError);
@@ -808,6 +823,7 @@
 			}
 
 			try {
+				currentStage = 'parse';
 				fileMetricsJSON = JSON.parse(jsonOut);
 			} catch (parseError) {
 				console.error('Failed to parse results JSON:', parseError, 'Content:', jsonOut.substring(0, 500));
@@ -816,6 +832,7 @@
 
 			// If datareader returned an error in JSON, surface it
 			if (fileMetricsJSON?.error) {
+				currentStage = 'datareader-error';
 				fileMetricsStore.set(fileMetricsJSON);
 				// Clean up legacy references to "detailed report below" from datareader.bf
 				const cleanedError = fileMetricsJSON.error.replace(/\s*\(detailed report below\)/gi, '');
@@ -928,7 +945,7 @@
 				: /Aioli|not a valid value for parameter|Invalid parameter choice/.test(errorMsg) ? 'runtime-error'
 				: /format|valid alignment|valid FASTA|valid NEXUS|valid sequence|FASTA data is empty|partition specification|Sequence data found before header|File is empty/i.test(errorMsg) ? 'invalid-format'
 				: 'unknown';
-			const eventPayload = { errorType };
+			const eventPayload = { errorType, stage: currentStage, source };
 			if (errorType === 'unknown' || errorType === 'invalid-format') {
 				// Defensive fallback: 338/342 unknown events had no message field in
 				// telemetry because error.message was falsy (bare throw, throw {},
@@ -989,7 +1006,7 @@
 
 			// Process the repaired file
 			file = repairedFile;
-			handleFileUpload({ target: { files: [repairedFile] } });
+			handleFileUpload({ target: { files: [repairedFile] }, isRepaired: true });
 		}
 	}
 
