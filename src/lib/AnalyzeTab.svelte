@@ -142,20 +142,25 @@
 					throw new Error('No file selected for analysis');
 				}
 
-				// Get full file data including content from storage
-				const fullFileData = await persistentFileStore.getFile($currentFile.id);
-				if (!fullFileData) {
-					throw new Error('Unable to load file data');
+				// Prefer the canonical FASTA emitted by datareader.bf on upload. It
+				// collapses PHYLIP, MEGA, CLUSTAL, NEXUS, FASTA all to a single
+				// known shape, so downstream submission and validation don't have
+				// to handle the matrix of formats. Fall back to reading the user's
+				// original blob if the canonical wasn't cached (older analyses).
+				let fastaData = $fileMetricsStore?.canonicalFasta;
+				if (!fastaData) {
+					const fullFileData = await persistentFileStore.getFile($currentFile.id);
+					if (!fullFileData) {
+						throw new Error('Unable to load file data');
+					}
+					fastaData = await fullFileData.text();
+					if (!fastaData || !fastaData.trim()) {
+						throw new Error('No sequence data available in selected file');
+					}
+					// Only the user's raw upload can have embedded trees; the
+					// canonical FASTA from datareader is already clean.
+					fastaData = stripEmbeddedTrees(fastaData);
 				}
-
-				// Convert file to text to get FASTA data
-				let fastaData = await fullFileData.text();
-				if (!fastaData || !fastaData.trim()) {
-					throw new Error('No sequence data available in selected file');
-				}
-
-				// Strip embedded trees from alignment files (NEXUS or FASTA)
-				fastaData = stripEmbeddedTrees(fastaData);
 
 				// Get tree data based on user's selection
 				let treeData = getSelectedTreeData();
@@ -195,20 +200,25 @@
 					throw new Error('No file selected for analysis');
 				}
 
-				// Get full file data including content from storage
-				const fullFileData = await persistentFileStore.getFile($currentFile.id);
-				if (!fullFileData) {
-					throw new Error('Unable to load file data');
+				// Prefer the canonical FASTA emitted by datareader.bf on upload. It
+				// collapses PHYLIP, MEGA, CLUSTAL, NEXUS, FASTA all to a single
+				// known shape, so downstream submission and validation don't have
+				// to handle the matrix of formats. Fall back to reading the user's
+				// original blob if the canonical wasn't cached (older analyses).
+				let fastaData = $fileMetricsStore?.canonicalFasta;
+				if (!fastaData) {
+					const fullFileData = await persistentFileStore.getFile($currentFile.id);
+					if (!fullFileData) {
+						throw new Error('Unable to load file data');
+					}
+					fastaData = await fullFileData.text();
+					if (!fastaData || !fastaData.trim()) {
+						throw new Error('No sequence data available in selected file');
+					}
+					// Only the user's raw upload can have embedded trees; the
+					// canonical FASTA from datareader is already clean.
+					fastaData = stripEmbeddedTrees(fastaData);
 				}
-
-				// Convert file to text to get FASTA data
-				let fastaData = await fullFileData.text();
-				if (!fastaData || !fastaData.trim()) {
-					throw new Error('No sequence data available in selected file');
-				}
-
-				// Strip embedded trees from alignment files (NEXUS or FASTA)
-				fastaData = stripEmbeddedTrees(fastaData);
 
 				// Get tree data based on user's selection
 				let treeData = getSelectedTreeData();
