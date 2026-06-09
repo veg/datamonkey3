@@ -593,6 +593,16 @@ file_info_record ["sites"] = filteredData.sites;
 
 DataSetFilter filteredData = CreateFilter (ds,1);
 
+/* Always emit a canonical FASTA so the JS layer has a single known format
+   to submit downstream, regardless of what the user uploaded (PHYLIP, MEGA,
+   CLUSTAL, NEXUS, FASTA all collapse to the same shape here).
+   DATA_FILE_PRINT_FORMAT = 9 is "FASTA sequential" per HyPhy's ConvertDataFile.bf
+   (note: 6 is NEXUS sequential, not FASTA — the legacy rewrite at line 583
+   above uses 6 because it re-reads with ReadDataFile's autodetection, but
+   we need real FASTA for the JS layer that doesn't autodetect). */
+DATA_FILE_PRINT_FORMAT = 9;
+fprintf("/shared/data/user.fasta", CLEAR_FILE, filteredData);
+
 if (buildNJtree) {
   InferTreeTopology(1.0);
   treeString 		= TreeMatrix2TreeString (1);

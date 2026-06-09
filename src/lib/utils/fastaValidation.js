@@ -299,6 +299,38 @@ export function isNexusFormat(content) {
 }
 
 /**
+ * Detect whether content is FASTA format.
+ * @param {string} content - Raw file content
+ * @returns {boolean}
+ */
+export function isFastaFormat(content) {
+	const trimmed = content?.trim() ?? '';
+	if (!trimmed) return false;
+	// FASTA headers start with '>'. We also accept '#' (sequential) per HyPhy/dm2's
+	// autodetect rules, but only when it's NOT '#nexus' or '#mega'.
+	if (trimmed.startsWith('>')) return true;
+	const lower = trimmed.toLowerCase();
+	if (trimmed.startsWith('#') && !lower.startsWith('#nexus') && !lower.startsWith('#mega')) {
+		return true;
+	}
+	return false;
+}
+
+/**
+ * Detect whether the content is in a format JS-side validators can parse
+ * (currently FASTA + NEXUS). Used to gate codon validation: PHYLIP, MEGA,
+ * CLUSTAL files all upload successfully (HyPhy's datareader.bf accepts them)
+ * but our JS parsers don't recognize them. We skip JS-side codon validation
+ * in those cases and let HyPhy validate on the analysis run instead, matching
+ * dm2's behavior.
+ * @param {string} content - Raw file content
+ * @returns {boolean}
+ */
+export function isJSParseableFormat(content) {
+	return isFastaFormat(content) || isNexusFormat(content);
+}
+
+/**
  * Parse NEXUS format string into sequences.
  * @param {string} nexusContent - Raw NEXUS content
  * @returns {Object} { sequences: [{header, sequence}], warnings: [] }

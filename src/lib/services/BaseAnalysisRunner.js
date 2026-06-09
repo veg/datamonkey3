@@ -6,7 +6,7 @@
 import { analysisStore } from '../../stores/analyses.js';
 import { toastStore } from '../../stores/toast.js';
 import { get } from 'svelte/store';
-import { validateCodonAlignment } from '../utils/fastaValidation.js';
+import { validateCodonAlignment, isJSParseableFormat } from '../utils/fastaValidation.js';
 
 /**
  * Methods that require codon-aligned input (sequence length divisible by 3, no premature stop codons).
@@ -194,8 +194,13 @@ export class BaseAnalysisRunner {
 			throw new Error('Analysis method is required');
 		}
 
-		// For codon-aware methods, validate alignment is proper codon data
-		if (CODON_AWARE_METHODS.has(method.toLowerCase())) {
+		// For codon-aware methods, validate alignment is proper codon data — but
+		// only for formats our JS parser recognizes (FASTA + NEXUS). PHYLIP,
+		// MEGA, CLUSTAL files upload fine via HyPhy's datareader.bf but our JS
+		// parseAlignment would reject them with confusing "Sequence data found
+		// before header" errors. In those cases, defer validation to HyPhy on
+		// the analysis run — matching dm2's behavior.
+		if (CODON_AWARE_METHODS.has(method.toLowerCase()) && isJSParseableFormat(fastaData)) {
 			const geneticCodeId = config.geneticCodeId !== undefined ? config.geneticCodeId : 0;
 			const result = validateCodonAlignment(fastaData, geneticCodeId);
 			if (!result.valid) {

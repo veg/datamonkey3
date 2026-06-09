@@ -822,6 +822,27 @@
 				throw new Error(cleanedError);
 			}
 
+			// Datareader.bf always emits a canonical FASTA alongside its JSON so the
+			// JS layer can submit a known format downstream regardless of what the
+			// user uploaded (PHYLIP, MEGA, CLUSTAL, NEXUS, FASTA). Download and
+			// attach it to fileMetricsJSON so it survives IndexedDB caching.
+			try {
+				const fastaBlobPath = await cliObj.download('/shared/data/user.fasta');
+				if (fastaBlobPath && typeof fastaBlobPath === 'string') {
+					const fastaResponse = await fetch(fastaBlobPath);
+					const fastaBlob = await fastaResponse.blob();
+					const canonicalFasta = await fastaBlob.text();
+					const trimmed = canonicalFasta?.trim().toLowerCase() ?? '';
+					if (canonicalFasta && !trimmed.startsWith('<!') && !trimmed.startsWith('<html')) {
+						fileMetricsJSON.canonicalFasta = canonicalFasta;
+					}
+				}
+			} catch (canonicalErr) {
+				// Non-fatal: older cached files or a failed write just means downstream
+				// code falls back to reading the user's original blob.
+				console.warn('Failed to read canonical FASTA from datareader output:', canonicalErr);
+			}
+
 			// Set the file and its metrics in the store
 			fileMetricsStore.set(fileMetricsJSON);
 			alignmentFileStore.set(file);
