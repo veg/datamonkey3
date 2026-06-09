@@ -1,7 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
-	import { currentFile } from '../stores/fileInfo';
-	import { persistentFileStore } from '../stores/fileInfo';
+	import { currentFile, fileMetricsStore, persistentFileStore } from '../stores/fileInfo';
 	import { analysisStore, activeAnalysisProgress } from '../stores/analyses';
 	import { treeStore } from '../stores/tree';
 	import { toastStore } from '../stores/toast';
@@ -304,8 +303,11 @@
 	// If datareader didn't produce an NJ tree (FILE_INFO.nj missing), the
 	// 'inferred' radio is disabled in the UI but selectedTreeSource defaults
 	// to 'inferred', so users hit "No NJ tree available" when they click Run.
-	// Switch to whichever option is actually available.
-	$: if (selectedTreeSource === 'inferred' && !hasInferredTree) {
+	// Switch to whichever option is actually available — but only AFTER
+	// datareader has finished. Gating on $fileMetricsStore avoids the mount-time
+	// race where treeStore is briefly empty and we'd switch away from 'inferred'
+	// before the file even loads.
+	$: if ($fileMetricsStore && selectedTreeSource === 'inferred' && !hasInferredTree) {
 		selectedTreeSource = hasUploadedTree ? 'uploaded' : 'upload-new';
 	}
 
