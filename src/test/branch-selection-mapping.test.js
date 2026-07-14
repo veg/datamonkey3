@@ -13,8 +13,9 @@ import { backendAnalysisRunner } from '../lib/services/BackendAnalysisRunner.js'
 // prepareAnalysisParameters is a pure mapping function, so it can be tested
 // without a live backend socket connection.
 describe('branch-selection parameter mapping (issue #141)', () => {
-	// Methods that expose a single test-branch set via `branches`.
-	const singleSetMethods = ['BUSTED', 'aBSREL', 'PRIME'];
+	// Methods whose live UI (MethodSelector) exposes a single test-branch set
+	// with an "Interactive" option, mapped to HyPHY's `--branches`.
+	const singleSetMethods = ['FEL', 'SLAC', 'BUSTED', 'aBSREL', 'PRIME'];
 
 	it.each(singleSetMethods)('maps Interactive to FG for %s', (method) => {
 		const params = backendAnalysisRunner.prepareAnalysisParameters(method, {
