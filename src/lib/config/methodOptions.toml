@@ -573,6 +573,72 @@ takes_value = true
 type = "string"
 default = ""
 choices = []
+[nrm]
+description = "NRM (Non-Reversibility of the Evolutionary Process) tests whether the evolutionary process at certain sites is reversible or not. It detects asymmetric evolution where the rate of change from amino acid A to B differs significantly from B to A, indicating directional evolutionary pressure."
+
+[[nrm.options]]
+name = "code"
+description = "Which genetic code should be used"
+takes_value = true
+type = "string"
+default = "Universal"
+choices = [
+    { value = "Universal", description = "Universal code" },
+    { value = "Vertebrate mtDNA", description = "Vertebrate mitochondrial DNA code" },
+    { value = "Yeast mtDNA", description = "Yeast mitochondrial DNA code" },
+    { value = "Mold/Protozoan mtDNA", description = "Mold, Protozoan and Coelenterate mt; Mycoplasma/Spiroplasma" },
+    { value = "Invertebrate mtDNA", description = "Invertebrate mitochondrial DNA code" },
+    { value = "Ciliate Nuclear", description = "Ciliate, Dasycladacean and Hexamita Nuclear code" },
+    { value = "Echinoderm mtDNA", description = "Echinoderm mitochondrial DNA code" },
+    { value = "Euplotid Nuclear", description = "Euplotid Nuclear code" },
+    { value = "Alt. Yeast Nuclear", description = "Alternative Yeast Nuclear code" },
+    { value = "Ascidian mtDNA", description = "Ascidian mitochondrial DNA code" },
+    { value = "Flatworm mtDNA", description = "Flatworm mitochondrial DNA code" },
+    { value = "Blepharisma Nuclear", description = "Blepharisma Nuclear code" },
+]
+
+[[nrm.options]]
+name = "alignment"
+description = "An in-frame codon alignment in one of the formats supported by HyPhy"
+takes_value = true
+type = "file"
+choices = []
+
+[[nrm.options]]
+name = "tree"
+description = "A phylogenetic tree file (optional)"
+takes_value = true
+type = "tree"
+default = ""
+choices = []
+
+[[nrm.options]]
+name = "rate-classes"
+description = "The number of classes for rates"
+takes_value = true
+type = "number"
+default = 1
+minimum = 1
+maximum = 10
+
+[[nrm.options]]
+name = "triple-islands"
+description = "Use triple islands for the analysis"
+takes_value = true
+type = "string"
+default = "No"
+choices = [
+    { value = "Yes", description = "Use triple islands" },
+    { value = "No", description = "[Default] Do not use triple islands" },
+]
+
+[[nrm.options]]
+name = "output"
+description = "Write the resulting JSON to this file"
+takes_value = true
+type = "string"
+default = ""
+choices = []
 
 [prime]
 description = "PRIME (PRoperty Informed Models of Evolution) tests whether amino acid property changes (e.g., hydrophobicity, volume, charge) drive substitution rate variation at individual sites, going beyond traditional dN/dS models."

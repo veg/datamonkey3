@@ -1,0 +1,1 @@
+Manual testing note: App is running on http://localhost:5173 with test data available at src/test-data/CD2-slim.fna

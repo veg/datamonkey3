@@ -11,6 +11,19 @@ import { sanitizeSequenceNames } from '../utils/fastaValidation.js';
 import { safeParseJSON } from '../utils/jsonUtils.js';
 
 /**
+ * hyphy-analyses custom analyses that are NOT packed into the WASM /res/ image.
+ * These `.bf` files are vendored under static/hyphy-analyses/ and mounted into the
+ * WASM filesystem at runtime (their libv3/SelectionAnalyses/TemplateModels
+ * dependencies are already present in the packed image). Keyed by lowercased method.
+ */
+const CUSTOM_ANALYSIS_BATCH_FILES = {
+	nrm: {
+		url: '/hyphy-analyses/NucleotideNonREV/NRM.bf',
+		fileName: 'NRM.bf'
+	}
+};
+
+/**
  * Strip embedded trees from alignment data
  * Both NEXUS and FASTA files can contain embedded trees that take precedence over separate tree files
  */
@@ -195,8 +208,31 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 			filesToMount.push({ name: 'user.tree', data: sanitizedTree });
 		}
 
+		// Some analyses (e.g. NRM) are hyphy-analyses custom batch files that are NOT
+		// packed into the WASM /res/ image. Vendor them under static/hyphy-analyses/
+		// and mount the required one at runtime. All of their LoadFunctionLibrary
+		// dependencies (libv3/*, SelectionAnalyses/modules/*, TemplateModels/*) ARE
+		// already in /res/, so only the top-level .bf needs mounting.
+		const customAnalysisPath = CUSTOM_ANALYSIS_BATCH_FILES[method.toLowerCase()];
+		let mountedCustomBatchFile = null;
+		if (customAnalysisPath) {
+			const bfResponse = await fetch(customAnalysisPath.url);
+			if (!bfResponse.ok) {
+				throw new Error(
+					`Failed to fetch custom analysis batch file for ${method}: ${customAnalysisPath.url} (${bfResponse.status})`
+				);
+			}
+			const bfText = await bfResponse.text();
+			filesToMount.push({ name: customAnalysisPath.fileName, data: bfText });
+		}
+
 		// Mount the files
 		const inputFiles = await cliObj.mount(filesToMount);
+
+		// The custom batch file (if any) is the last entry we pushed onto filesToMount.
+		if (customAnalysisPath) {
+			mountedCustomBatchFile = inputFiles[inputFiles.length - 1];
+		}
 
 		this.updateProgress(analysisId, 'running', 20, 'Building analysis command...');
 
@@ -207,6 +243,13 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 		// Add tree argument if tree data was provided
 		if (sanitizedTree && sanitizedTree.trim()) {
 			args.push(`--tree ${inputFiles[1]}`);
+		}
+
+		// NRM (nucleotide non-reversibility) writes its JSON to <alignment>.NRM.json by
+		// default; pass --output explicitly so the result path matches what we download
+		// below, regardless of how the batch file derives its default.
+		if (method.toLowerCase() === 'nrm') {
+			args.push(`--output ${inputFiles[0]}.NRM.json`);
 		}
 
 		// Map configuration parameters to HyPhy command line arguments
@@ -308,6 +351,10 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 				} else if (key === 'rates') {
 					// Multi-Hit rate classes parameter
 					args.push(`--rates ${value}`);
+			} else if (key === 'rate_classes') {
+				// NRM rate classes parameter (convert underscore to hyphen)
+				args.push(`--rate-classes ${value}`);
+
 				} else if (key === 'triple_islands') {
 					// Multi-Hit triple islands parameter (convert underscore to hyphen)
 					args.push(`--triple-islands ${value}`);
@@ -392,9 +439,13 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 		};
 		const methodKey = method.toLowerCase();
 		const batchFile = methodBatchFileMap[methodKey];
-		const hyphyCommand = batchFile
-			? `/res/TemplateBatchFiles/${batchFile}`
-			: methodKey;
+		// Custom analyses run from the runtime-mounted batch file path; stock analyses
+		// run from the packed /res/ tree; anything else falls back to the bare method name.
+		const hyphyCommand = mountedCustomBatchFile
+			? mountedCustomBatchFile
+			: batchFile
+				? `/res/TemplateBatchFiles/${batchFile}`
+				: methodKey;
 
 		// Build and execute the command
 		const fullHyphyCommand = `hyphy LIBPATH=/res/ ${hyphyCommand} ${args.join(' ')}`;

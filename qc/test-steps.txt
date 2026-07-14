@@ -1,0 +1,22 @@
+## Test Plan from Issue #48
+- [ ] Upload a FASTA file and run a datareader analysis
+- [ ] Navigate to the batch export section
+- [ ] Select the datareader analysis
+- [ ] Verify that the FASTA export function works correctly
+- [ ] Check that the exported file contains the expected sequences
+
+## Key Components to Test
+- BatchExport component (src/lib/BatchExport.svelte)
+- FASTA export functionality
+- exportCorrectedFasta function
+- File storage utilities integration
+- FASTA parsing functions
+- Line wrapping (60 characters)
+- Filename suffix (_exported.fasta)
+
+## Expected Behavior
+- Function should retrieve original file content from IndexedDB
+- Parse FASTA content using existing validation utilities
+- Format sequences with proper line wrapping
+- Export file with appropriate filename suffix
+EOF < /dev/null
