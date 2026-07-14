@@ -49,7 +49,6 @@ The floating dropdown monitor has been replaced with a streamlined status counte
 - `FileList.svelte`: List of available files
 - `FileManager.svelte`: File management interface
 - `FormGenerator.svelte`: Dynamic form generation
-- `MethodOptionsTab.svelte`: Tab for method options
 - `MethodSelector.svelte`: Selection UI for analysis methods
 - `MultiAnalysisMonitor.svelte`: Monitor for multiple analyses (deprecated)
 - `PremiumTabNavigation.svelte`: Premium tab navigation component

@@ -422,7 +422,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 					resample: config.resample || 0,
 					'confidence-interval': config.confidenceIntervals ? true : false,
 					pvalue: config.pValueThreshold || 0.1,
-					branches: 'All',
+					branches: config.branchesToTest === 'Interactive' ? 'FG' : (config.branchesToTest || 'All'),
 					samples: 100
 				};
 
@@ -430,7 +430,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 				return {
 					...baseParams,
 					pvalue: config.pvalue || config.pValueThreshold || 0.1,
-					branches: config.branches || 'All',
+					branches: config.branchesToTest === 'Interactive' ? 'FG' : (config.branchesToTest || 'All'),
 					samples: config.samples || 100,
 					code: config.code || 'Universal'
 				};
@@ -471,7 +471,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 				return {
 					...baseParams,
 					// Map aBSREL-specific parameters to backend format
-					branches: config.branchesToTest || 'All',
+					branches: config.branchesToTest === 'Interactive' ? 'FG' : (config.branchesToTest || 'All'),
 					multiple_hits: config.multipleHits || 'None',
 					srv: config.srv || 'Yes',
 					blb: config.blb || 1.0
@@ -497,7 +497,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 				return {
 					...baseParams,
 					// Map BUSTED-specific parameters to backend format
-					branches: config.branchesToTest || 'All',
+					branches: config.branchesToTest === 'Interactive' ? 'FG' : (config.branchesToTest || 'All'),
 					srv: config.srv || 'Yes',
 					'error-sink':
 						errorSinkValue === true
