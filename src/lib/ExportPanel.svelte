@@ -1,8 +1,11 @@
+<!-- src/lib/ExportPanel.svelte -->
 <script>
-	import { onMount, onDestroy } from 'svelte';
-	import { exportData, createShareableLink, copyToClipboard } from './utils/exportUtils';
+	import { exportData } from './utils/exportUtils';
 	import { analysisStore } from '../stores/analyses';
 	import { persistentFileStore } from '../stores/fileInfo';
+	import LogDownloader from './LogDownloader.svelte';
+	import { ChevronUp, ChevronDown, Download } from '$lib/icons';
+	import { trackEvent } from './utils/analytics.js';
 
 	// Props
 	export let analysisId;
@@ -10,18 +13,12 @@
 	// Internal state
 	let analysis = null;
 	let file = null;
-	let exportFormat = 'json';
 	let showExportOptions = false;
 	let exportStatus = '';
-	let shareLinkCopied = false;
-	let shareLinkTimeout;
-
-	// Available export formats
-	const exportFormats = [
-		{ id: 'json', label: 'JSON', description: 'Full data structure, best for importing later' },
-		{ id: 'csv', label: 'CSV', description: 'Tabular format, best for spreadsheets' },
-		{ id: 'txt', label: 'Text', description: 'Plain text format' }
-	];
+	let showPreview = false;
+	let previewContent = '';
+	let includeMetadata = true;
+	let exportFilename = '';
 
 	// Load analysis data
 	$: if (analysisId) {
@@ -43,26 +40,42 @@
 
 			// Get associated file
 			file = $persistentFileStore.files.find((f) => f.id === analysis.fileId);
+
+			// Generate default filename
+			updateExportFilename();
 		} catch (error) {
 			console.error('Error loading analysis data:', error);
 		}
 	}
 
+	// Update export filename when analysis changes
+	$: if (analysis) {
+		updateExportFilename();
+	}
+
+	function updateExportFilename() {
+		if (!analysis) return;
+
+		const method = analysis.method.toUpperCase();
+		const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+		exportFilename = `${method}_analysis_${timestamp}.json`;
+	}
+
 	// Toggle export options
 	function toggleExportOptions() {
 		showExportOptions = !showExportOptions;
+
+		// Generate preview if options are shown
+		if (showExportOptions && analysis) {
+			generatePreview();
+		}
 	}
 
-	// Export analysis results
-	async function exportAnalysisResults() {
+	// Generate preview of export content
+	async function generatePreview() {
 		if (!analysis) return;
 
 		try {
-			// Generate filename
-			const method = analysis.method.toUpperCase();
-			const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
-			const filename = `${method}_analysis_${timestamp}`;
-
 			// Parse the analysis result if needed
 			let resultData;
 			try {
@@ -72,24 +85,70 @@
 				resultData = { error: 'Could not parse results', raw: analysis.result };
 			}
 
-			// Add metadata for CSV export
-			if (exportFormat === 'csv' && !resultData.exportMetadata) {
-				resultData = {
-					...resultData,
-					exportMetadata: {
-						analysisId: analysis.id,
-						method: analysis.method,
-						createdAt: analysis.createdAt,
-						filename: file?.filename || 'Unknown file'
-					}
-				};
+			// Add metadata if needed
+			if (includeMetadata) {
+				resultData = addMetadata(resultData);
 			}
 
-			// Export the data
-			exportData(resultData, filename, exportFormat);
+			previewContent = JSON.stringify(resultData, null, 2);
+
+			// Truncate preview for display
+			if (previewContent.length > 2000) {
+				previewContent = previewContent.substring(0, 2000) + '...\n[Content truncated for preview]';
+			}
+		} catch (error) {
+			console.error('Error generating preview:', error);
+			previewContent = 'Error generating preview: ' + error.message;
+		}
+	}
+
+	// Add metadata to export
+	function addMetadata(data) {
+		if (!data || typeof data !== 'object') return data;
+
+		return {
+			...data,
+			exportMetadata: {
+				analysisId: analysis.id,
+				method: analysis.method,
+				createdAt: analysis.createdAt,
+				completedAt: analysis.completedAt,
+				filename: file?.filename || 'Unknown file',
+				exportDate: new Date().toISOString()
+			}
+		};
+	}
+
+	// Export analysis results
+	async function exportAnalysisResults() {
+		if (!analysis) return;
+
+		try {
+			// Parse the analysis result if needed
+			let resultData;
+			try {
+				resultData =
+					typeof analysis.result === 'string' ? JSON.parse(analysis.result) : analysis.result;
+			} catch (e) {
+				resultData = { error: 'Could not parse results', raw: analysis.result };
+			}
+
+			// Add metadata if requested
+			if (includeMetadata) {
+				resultData = addMetadata(resultData);
+			}
+
+			// Export the data as JSON
+			exportData(resultData, exportFilename, 'json');
+
+			// Track results export
+			trackEvent('results-exported', {
+				method: analysis?.method || 'unknown',
+				format: 'json'
+			});
 
 			// Show success message
-			exportStatus = `Exported as ${exportFormat.toUpperCase()}`;
+			exportStatus = 'Exported successfully';
 			setTimeout(() => {
 				exportStatus = '';
 			}, 3000);
@@ -102,133 +161,98 @@
 		}
 	}
 
-	// Copy shareable link to clipboard
-	async function copyShareLink() {
-		if (!analysisId) return;
-
-		const link = createShareableLink(analysisId);
-		const success = await copyToClipboard(link);
-
-		if (success) {
-			shareLinkCopied = true;
-			clearTimeout(shareLinkTimeout);
-			shareLinkTimeout = setTimeout(() => {
-				shareLinkCopied = false;
-			}, 3000);
+	// Toggle preview
+	function togglePreview() {
+		showPreview = !showPreview;
+		if (showPreview) {
+			generatePreview();
 		}
 	}
 
-	// Clean up on destroy
-	onDestroy(() => {
-		clearTimeout(shareLinkTimeout);
-	});
+	// Watch for metadata inclusion changes
+	$: if (includeMetadata !== undefined && showPreview) {
+		generatePreview();
+	}
 </script>
 
-<div class="export-panel mb-4 rounded-lg border border-border-subtle bg-white shadow-sm">
-	<div class="flex items-center justify-between border-b border-border-subtle p-3">
-		<h3 class="text-lg font-semibold">Export Options</h3>
+<div class="export-panel mb-4 rounded-lg border border-border-subtle bg-white shadow-md">
+	<div class="flex items-center justify-between border-b border-border-subtle p-4">
+		<h3 class="text-lg font-semibold">Export</h3>
 		<button
 			on:click={toggleExportOptions}
 			class="rounded-full p-1 text-text-silver hover:bg-surface-sunken"
 			aria-label={showExportOptions ? 'Hide export options' : 'Show export options'}
 		>
 			{#if showExportOptions}
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					class="h-5 w-5"
-					viewBox="0 0 20 20"
-					fill="currentColor"
-				>
-					<path
-						fill-rule="evenodd"
-						d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z"
-						clip-rule="evenodd"
-					/>
-				</svg>
+				<ChevronUp class="h-5 w-5" />
 			{:else}
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					class="h-5 w-5"
-					viewBox="0 0 20 20"
-					fill="currentColor"
-				>
-					<path
-						fill-rule="evenodd"
-						d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-						clip-rule="evenodd"
-					/>
-				</svg>
+				<ChevronDown class="h-5 w-5" />
 			{/if}
 		</button>
 	</div>
 
 	{#if showExportOptions}
-		<div class="p-3">
-			<div class="mb-4">
-				<label class="mb-1 block font-medium">Export Format</label>
-				<div class="flex flex-wrap gap-2">
-					{#each exportFormats as format}
-						<label class="flex cursor-pointer items-center">
-							<input
-								type="radio"
-								name="exportFormat"
-								value={format.id}
-								bind:group={exportFormat}
-								class="mr-1"
-							/>
-							<span class="mr-1 font-medium">{format.label}</span>
-							<span class="text-xs text-text-silver">({format.description})</span>
-						</label>
-					{/each}
+		<div class="p-4">
+			<!-- Export options -->
+			<div class="mb-4 rounded-lg border border-border-subtle p-3">
+				<!-- Filename input -->
+				<div class="mb-3">
+					<label class="mb-1 block text-sm font-medium">Filename</label>
+					<input
+						type="text"
+						bind:value={exportFilename}
+						class="w-full rounded border border-border-subtle p-2 text-sm"
+					/>
+				</div>
+
+				<!-- Include metadata checkbox -->
+				<div class="mb-3">
+					<label class="flex items-center">
+						<input
+							type="checkbox"
+							bind:checked={includeMetadata}
+							class="mr-2 h-4 w-4 rounded border-border-subtle text-brand-royal"
+						/>
+						<span class="text-sm">Include metadata (timestamps, analysis info)</span>
+					</label>
+				</div>
+
+				<!-- Preview toggle -->
+				<div>
+					<button on:click={togglePreview} class="text-sm text-brand-royal hover:text-brand-deep">
+						{showPreview ? 'Hide Preview' : 'Show Preview'}
+					</button>
 				</div>
 			</div>
 
+			<!-- Preview section -->
+			{#if showPreview}
+				<div class="mb-4">
+					<h4 class="mb-2 font-medium">Preview</h4>
+					<div class="max-h-60 overflow-auto rounded border border-border-subtle bg-surface-raised p-3">
+						<pre class="text-xs">{previewContent}</pre>
+					</div>
+					<p class="mt-1 text-xs text-text-silver">Preview shows up to 2000 characters</p>
+				</div>
+			{/if}
+
+			<!-- Action buttons -->
 			<div class="export-actions flex flex-wrap gap-2">
 				<button
 					on:click={exportAnalysisResults}
-					class="flex items-center rounded bg-brand-royal px-3 py-1 text-white hover:bg-brand-deep"
+					class="flex items-center rounded bg-brand-royal px-4 py-2 font-semibold text-white hover:bg-brand-deep focus:outline-none focus:ring-2 focus:ring-brand-royal focus:ring-offset-2"
 					disabled={!analysis}
 				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="mr-1 h-4 w-4"
-						viewBox="0 0 20 20"
-						fill="currentColor"
-					>
-						<path
-							fill-rule="evenodd"
-							d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z"
-							clip-rule="evenodd"
-						/>
-					</svg>
-					Export
+					<Download class="mr-2 h-5 w-5" />
+					Download JSON
 				</button>
 
-				<button
-					on:click={copyShareLink}
-					class="flex items-center rounded bg-status-success px-3 py-1 text-white hover:bg-status-success-text"
-					disabled={!analysisId}
-				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="mr-1 h-4 w-4"
-						viewBox="0 0 20 20"
-						fill="currentColor"
-					>
-						<path
-							d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z"
-						/>
-					</svg>
-					{shareLinkCopied ? 'Link Copied!' : 'Copy Link'}
-				</button>
+				<!-- Log Downloader dropdown -->
+				<LogDownloader {analysisId} />
 
 				{#if exportStatus}
-					<span class="ml-2 self-center text-sm text-status-success">{exportStatus}</span>
+					<span class="ml-2 self-center text-sm font-medium text-status-success">{exportStatus}</span>
 				{/if}
-			</div>
-
-			<div class="mt-3 text-xs text-text-silver">
-				<p>Exports include all analysis data, parameters, and results.</p>
 			</div>
 		</div>
 	{/if}

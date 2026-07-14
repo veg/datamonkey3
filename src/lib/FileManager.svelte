@@ -3,6 +3,8 @@
 	import { persistentFileStore, currentFile } from '../stores/fileInfo';
 	import { analysisStore } from '../stores/analyses';
 	import FileCard from './FileCard.svelte';
+	import { Search, Trash2, Loader2, File } from '$lib/icons';
+	import { trackEvent } from './utils/analytics.js';
 
 	// Props
 	export let onSelectFile = () => {};
@@ -149,6 +151,9 @@
 			// Then delete the file
 			await persistentFileStore.deleteFile(fileId);
 
+			// Track single file deletion
+			trackEvent('file-deleted', { fileCount: 1 });
+
 			// Remove from previews map
 			filePreviews.delete(fileId);
 			filePreviews = filePreviews; // Trigger reactivity
@@ -167,6 +172,7 @@
 			) {
 				// Get all file IDs
 				const fileIds = $persistentFileStore.files.map((file) => file.id);
+				const fileCount = fileIds.length;
 
 				// Show a loading state specifically for clearing
 				isClearingFiles = true;
@@ -214,6 +220,9 @@
 				// Clear the current file
 				persistentFileStore.setCurrentFile(null);
 
+				// Track bulk file deletion
+				trackEvent('file-deleted', { fileCount });
+
 				isClearingFiles = false;
 			}
 		} catch (error) {
@@ -238,39 +247,9 @@
 					title={isClearingFiles ? 'Clearing files...' : 'Delete all files and their analyses'}
 				>
 					{#if isClearingFiles}
-						<svg
-							class="mr-1 h-4 w-4 animate-spin"
-							xmlns="http://www.w3.org/2000/svg"
-							fill="none"
-							viewBox="0 0 24 24"
-						>
-							<circle
-								class="opacity-25"
-								cx="12"
-								cy="12"
-								r="10"
-								stroke="currentColor"
-								stroke-width="4"
-							></circle>
-							<path
-								class="opacity-75"
-								fill="currentColor"
-								d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-							></path>
-						</svg>
+						<Loader2 class="mr-1 h-4 w-4 animate-spin" />
 					{:else}
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							class="mr-1 h-4 w-4"
-							viewBox="0 0 20 20"
-							fill="currentColor"
-						>
-							<path
-								fill-rule="evenodd"
-								d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
-								clip-rule="evenodd"
-							/>
-						</svg>
+						<Trash2 class="mr-1 h-4 w-4" />
 					{/if}
 					{isClearingFiles ? 'Clearing...' : 'Clear All Files'}
 				</button>
@@ -286,20 +265,7 @@
 					bind:value={filterText}
 					class="min-h-[44px] w-full rounded-lg border border-border-platinum py-2 pl-10 pr-3 text-sm focus:border-brand-royal focus:outline-none focus:ring-2 focus:ring-brand-royal sm:rounded-premium-sm"
 				/>
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-text-silver"
-					fill="none"
-					viewBox="0 0 24 24"
-					stroke="currentColor"
-				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						stroke-width="2"
-						d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-					/>
-				</svg>
+				<Search class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-text-silver" />
 			</div>
 
 			<!-- Sort options -->
@@ -351,20 +317,7 @@
 			<!-- Loading overlay while clearing files -->
 			<div class="absolute inset-0 z-10 flex items-center justify-center bg-white bg-opacity-90">
 				<div class="text-center">
-					<svg
-						class="mx-auto mb-2 h-8 w-8 animate-spin text-accent-warm"
-						xmlns="http://www.w3.org/2000/svg"
-						fill="none"
-						viewBox="0 0 24 24"
-					>
-						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
-						></circle>
-						<path
-							class="opacity-75"
-							fill="currentColor"
-							d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-						></path>
-					</svg>
+					<Loader2 class="mx-auto mb-2 h-8 w-8 animate-spin text-accent-warm" />
 					<p class="text-premium-body text-text-slate">Clearing all files...</p>
 					<p class="mt-1 text-premium-meta text-text-silver">This may take a moment</p>
 				</div>
@@ -373,20 +326,7 @@
 
 		{#if isLoading}
 			<div class="flex items-center justify-center p-premium-md text-text-slate">
-				<svg
-					class="mr-premium-sm h-5 w-5 animate-pulse-premium text-brand-royal"
-					xmlns="http://www.w3.org/2000/svg"
-					fill="none"
-					viewBox="0 0 24 24"
-				>
-					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
-					></circle>
-					<path
-						class="opacity-75"
-						fill="currentColor"
-						d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-					></path>
-				</svg>
+				<Loader2 class="mr-premium-sm h-5 w-5 animate-spin text-brand-royal" />
 				<span class="text-premium-body">Loading files...</span>
 			</div>
 		{:else if filteredFiles.length === 0}
@@ -394,20 +334,7 @@
 				{#if filterText}
 					<!-- No search results state -->
 					<div class="mb-premium-md rounded-full bg-brand-whisper p-premium-md">
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							class="h-8 w-8 text-brand-muted"
-							fill="none"
-							viewBox="0 0 24 24"
-							stroke="currentColor"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="1.5"
-								d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-							/>
-						</svg>
+						<Search class="h-8 w-8 text-brand-muted" />
 					</div>
 					<p class="text-premium-body font-medium text-text-rich">No matching files</p>
 					<p class="mt-premium-xs text-premium-meta text-text-silver">
@@ -416,20 +343,7 @@
 				{:else}
 					<!-- Empty state with illustration -->
 					<div class="mb-premium-md rounded-full bg-brand-ghost p-premium-lg">
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							class="h-10 w-10 text-brand-muted"
-							fill="none"
-							viewBox="0 0 24 24"
-							stroke="currentColor"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="1.5"
-								d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
-							/>
-						</svg>
+						<File class="h-10 w-10 text-brand-muted" />
 					</div>
 					<p class="text-premium-body font-semibold text-text-rich">No saved files yet</p>
 					<p class="mt-premium-xs max-w-xs text-premium-meta text-text-silver">

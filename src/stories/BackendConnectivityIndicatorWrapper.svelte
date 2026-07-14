@@ -44,11 +44,11 @@
 	}[status];
 
 	$: tooltipText = {
-		connecting: 'Connecting to DataMonkey server...',
-		connected: `DataMonkey server connected (${$backendConnectivity.serverUrl})`,
+		connecting: 'Connecting to Datamonkey server...',
+		connected: `Datamonkey server connected (${$backendConnectivity.serverUrl})`,
 		disconnected: $backendConnectivity.error
-			? `DataMonkey server disconnected: ${$backendConnectivity.error}`
-			: 'DataMonkey server disconnected'
+			? `Datamonkey server disconnected: ${$backendConnectivity.error}`
+			: 'Datamonkey server disconnected'
 	}[status];
 </script>
 

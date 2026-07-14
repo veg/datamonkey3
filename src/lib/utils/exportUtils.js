@@ -27,6 +27,19 @@ export function exportData(data, filename, format = 'json') {
 			filename = filename.endsWith('.csv') ? filename : `${filename}.csv`;
 			break;
 
+		case 'fasta':
+			content = typeof data === 'string' ? data : String(data);
+			mimeType = 'text/plain';
+			filename = filename.endsWith('.fasta') ? filename : `${filename}.fasta`;
+			break;
+
+		case 'nex':
+		case 'nexus':
+			content = typeof data === 'string' ? data : String(data);
+			mimeType = 'text/plain';
+			filename = filename.endsWith('.nex') ? filename : `${filename}.nex`;
+			break;
+
 		case 'txt':
 		default:
 			content = typeof data === 'string' ? data : JSON.stringify(data, null, 2);

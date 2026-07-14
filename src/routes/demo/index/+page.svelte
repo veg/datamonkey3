@@ -1,4 +1,6 @@
 <script>
+	import { AlertTriangle, Info } from 'lucide-svelte';
+
 	// Method categories and descriptions
 	const methodCategories = [
 		{
@@ -163,15 +165,15 @@
 </script>
 
 <svelte:head>
-	<title>DataMonkey Analysis Demos</title>
+	<title>Datamonkey Analysis Demos</title>
 </svelte:head>
 
 <div class="container mx-auto max-w-7xl p-6">
 	<div class="mb-8 text-center">
-		<h1 class="mb-4 text-4xl font-bold text-gray-900">DataMonkey Analysis Demos</h1>
+		<h1 class="mb-4 text-4xl font-bold text-gray-900">Datamonkey Analysis Demos</h1>
 		<p class="mx-auto max-w-3xl text-lg text-gray-600">
 			Interactive demonstrations of phylogenetic selection analysis methods. Connect to your local
-			DataMonkey server to test different analysis methods with real-time progress tracking and
+			Datamonkey server to test different analysis methods with real-time progress tracking and
 			result visualization.
 		</p>
 	</div>
@@ -179,18 +181,12 @@
 	<div class="mb-8 rounded-lg border border-amber-200 bg-amber-50 p-4">
 		<div class="flex items-start gap-3">
 			<div class="mt-1 flex-shrink-0">
-				<svg class="h-5 w-5 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
-					<path
-						fill-rule="evenodd"
-						d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-						clip-rule="evenodd"
-					></path>
-				</svg>
+				<AlertTriangle class="h-5 w-5 text-amber-600" />
 			</div>
 			<div>
 				<h3 class="font-semibold text-amber-800">Server Required</h3>
 				<p class="text-sm text-amber-700">
-					These demos require a running DataMonkey server on <code class="rounded bg-amber-100 px-1"
+					These demos require a running Datamonkey server on <code class="rounded bg-amber-100 px-1"
 						>localhost:7015</code
 					>. Make sure your server is running before testing the analysis methods.
 				</p>
@@ -254,14 +250,7 @@
 									</button>
 								{/if}
 								<button class="px-3 py-2 text-gray-400 transition-colors hover:text-gray-600">
-									<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											stroke-width="2"
-											d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-										></path>
-									</svg>
+									<Info class="h-4 w-4" />
 								</button>
 							</div>
 						</div>
@@ -276,9 +265,9 @@
 		<div class="grid grid-cols-1 gap-6 md:grid-cols-2">
 			<div>
 				<h3 class="mb-2 font-medium text-gray-900">1. Start Your Server</h3>
-				<p class="mb-2 text-sm text-gray-600">Make sure your DataMonkey server is running:</p>
+				<p class="mb-2 text-sm text-gray-600">Make sure your Datamonkey server is running:</p>
 				<code class="block rounded bg-gray-800 p-2 font-mono text-xs text-green-400">
-					# Start DataMonkey server on port 7015 node server.js
+					# Start Datamonkey server on port 7015 node server.js
 				</code>
 			</div>
 			<div>

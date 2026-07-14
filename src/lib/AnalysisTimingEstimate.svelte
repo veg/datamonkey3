@@ -2,6 +2,7 @@
 <script>
 	import { currentFile, fileMetricsStore } from '../stores/fileInfo';
 	import { calculateRuntimeEstimate, SPEED_CATEGORIES } from './utils/timingEstimates.js';
+	import { Zap, Clock, Turtle, Snail } from 'lucide-svelte';
 
 	// Props
 	export let method = null;
@@ -30,6 +31,18 @@
 					filename: $currentFile?.filename || 'Unknown'
 				}
 			: null;
+
+	// Map category to icon component
+	const categoryIcons = {
+		'very-fast': Zap,
+		'fast': Zap,
+		'medium': Clock,
+		'slow': Turtle,
+		'very-slow': Snail
+	};
+
+	$: SpeedIcon = estimatedTime ? categoryIcons[estimatedTime.category] || Clock : Clock;
+	$: isVeryFast = estimatedTime?.category === 'very-fast';
 </script>
 
 {#if estimatedTime && estimatedTime.minutes !== null}
@@ -39,7 +52,12 @@
 		].borderColor} rounded-md border p-3"
 	>
 		<div class="timing-header">
-			<span class="timing-icon">{SPEED_CATEGORIES[estimatedTime.category].icon}</span>
+			<span class="timing-icon flex items-center gap-0.5 {SPEED_CATEGORIES[estimatedTime.category].color}">
+				<svelte:component this={SpeedIcon} class="h-4 w-4" />
+				{#if isVeryFast}
+					<svelte:component this={SpeedIcon} class="h-4 w-4" />
+				{/if}
+			</span>
 			<span class="timing-label {SPEED_CATEGORIES[estimatedTime.category].color}">
 				{SPEED_CATEGORIES[estimatedTime.category].label}
 			</span>
@@ -69,30 +87,13 @@
 			</div>
 		{/if}
 
-		{#if estimatedTime.category === 'very-slow' || estimatedTime.category === 'slow'}
-			<div class="timing-warning">
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					class="warning-icon"
-					viewBox="0 0 20 20"
-					fill="currentColor"
-				>
-					<path
-						fill-rule="evenodd"
-						d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-						clip-rule="evenodd"
-					/>
-				</svg>
-				<span class="warning-text">
-					Long-running analysis - consider using smaller datasets for testing
-				</span>
-			</div>
-		{/if}
 	</div>
 {:else if method}
 	<div class="timing-estimate rounded-md border border-gray-200 bg-gray-50 p-3">
 		<div class="timing-header">
-			<span class="timing-icon">⏱️</span>
+			<span class="timing-icon text-gray-500">
+				<Clock class="h-4 w-4" />
+			</span>
 			<span class="timing-label text-gray-600"> Timing Estimate </span>
 			<span class="timing-value text-gray-600">
 				{($currentFile || fileMetrics) && !hasValidData
@@ -175,27 +176,4 @@
 		cursor: help;
 	}
 
-	.timing-warning {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		margin-top: 8px;
-		padding: 6px 8px;
-		background: rgba(251, 191, 36, 0.1);
-		border: 1px solid rgba(251, 191, 36, 0.2);
-		border-radius: 4px;
-	}
-
-	.warning-icon {
-		width: 14px;
-		height: 14px;
-		color: #f59e0b;
-		flex-shrink: 0;
-	}
-
-	.warning-text {
-		color: #92400e;
-		font-size: 11px;
-		font-weight: 500;
-	}
 </style>

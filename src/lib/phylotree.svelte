@@ -10,6 +10,7 @@
 	export let branchTestMode = true;
 	export let selectedBranches = [];
 	export let viewerType = 'phylotree'; // Fixed to phylotree viewer
+	export let selectable = true; // Enable/disable branch selection
 
 	let treeContainer;
 	let tree;
@@ -128,8 +129,19 @@
 	}
 
 	function renderPhylotreeViewer() {
+		// Ensure we have a valid container
+		if (!treeContainer) {
+			return;
+		}
+
+		// Ensure newick string ends with semicolon (required by phylotree parser)
+		let normalizedNewick = newickString.trim();
+		if (!normalizedNewick.endsWith(';')) {
+			normalizedNewick += ';';
+		}
+
 		// Initialize tree from Newick string
-		tree = new phylotree.phylotree(newickString);
+		tree = new phylotree.phylotree(normalizedNewick);
 
 		// Check for parsed tags in the tree
 		if (tree.parsed_tags && tree.parsed_tags.length) {
@@ -157,15 +169,18 @@
 			}
 		}
 
-		// Render the tree with colorizers
+		// Clear the container first
+		treeContainer.innerHTML = '';
+
+		// Render the tree with colorizers - use the specific container element
 		renderedTree = tree.render({
-			container: '.tree-container',
+			container: treeContainer,
 			height: height,
 			width: width,
 			'left-right-spacing': 'fit-to-size',
 			'top-bottom-spacing': 'fit-to-size',
 			'show-menu': true, // Enable menu functionality
-			selectable: true, // Enable node selection
+			selectable: selectable, // Enable/disable node selection
 			collapsible: true, // Enable collapse/expand
 			reroot: true, // Enable rerooting
 			hide: true, // Enable hiding nodes
@@ -173,9 +188,8 @@
 			'edge-styler': edgeColorizer // Apply edge colorizer
 		});
 
-		// Clear the container and append the SVG element
+		// Append the SVG element
 		if (treeContainer) {
-			treeContainer.innerHTML = '';
 			treeContainer.appendChild(renderedTree.show());
 
 			// Add click handlers for the nodes

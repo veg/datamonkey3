@@ -4,6 +4,8 @@
 	import { persistentFileStore, currentFile } from '../stores/fileInfo';
 	import { browser } from '$app/environment';
 	import AnalysisCard from './AnalysisCard.svelte';
+	import { Loader2, BadgeCheck } from 'lucide-svelte';
+	import { trackEvent } from './utils/analytics.js';
 
 	// Props
 	export let onSelectAnalysis = (id) => {}; // Callback when analysis is selected
@@ -104,7 +106,16 @@
 		const { analysisId } = event.detail;
 		if (confirm('Are you sure you want to cancel this analysis?')) {
 			try {
+				// Find the analysis to get method and progress for tracking
+				const analysis = sortedAnalyses.find((a) => a.id === analysisId);
+
 				await analysisStore.cancelAnalysis(analysisId);
+
+				// Track analysis cancellation
+				trackEvent('analysis-cancelled', {
+					method: analysis?.method || 'unknown',
+					progress: analysis?.progress || 0
+				});
 			} catch (error) {
 				console.error('Error cancelling analysis:', error);
 				alert('Failed to cancel analysis: ' + error.message);
@@ -117,7 +128,15 @@
 		const { analysisId } = event.detail;
 		if (confirm('Are you sure you want to delete this analysis? This action cannot be undone.')) {
 			try {
+				// Find the analysis to get method for tracking
+				const analysis = sortedAnalyses.find((a) => a.id === analysisId);
+
 				await analysisStore.deleteAnalysis(analysisId);
+
+				// Track analysis deletion
+				trackEvent('analysis-deleted', {
+					method: analysis?.method || 'unknown'
+				});
 			} catch (error) {
 				console.error('Error deleting analysis:', error);
 				alert('Failed to delete analysis: ' + error.message);
@@ -157,46 +176,34 @@
 <div class="analysis-history">
 	{#if $analysisStore.isLoading}
 		<div class="flex items-center justify-center p-4">
-			<svg
-				class="mr-2 h-4 w-4 animate-spin"
-				xmlns="http://www.w3.org/2000/svg"
-				fill="none"
-				viewBox="0 0 24 24"
-			>
-				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
-				></circle>
-				<path
-					class="opacity-75"
-					fill="currentColor"
-					d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-				></path>
-			</svg>
+			<Loader2 class="mr-2 h-4 w-4 animate-spin" />
 			<span>Loading analyses...</span>
 		</div>
 	{:else if $analysisStore.error}
-		<div class="rounded border border-status-error-border bg-status-error-bg p-3 text-status-error-text">
-			<p>Error: {$analysisStore.error}</p>
+		<div class="rounded-xl border border-status-error-border bg-gradient-to-b from-red-50 to-white p-6 text-center text-status-error-text">
+			<div class="mx-auto mb-4 h-24 w-24 overflow-hidden rounded-xl">
+				<img
+					src="/img/mascot-error.png"
+					alt="Datamonkey mascot encountered an error"
+					class="h-full w-auto opacity-60"
+				/>
+			</div>
+			<p class="font-medium">Error: {$analysisStore.error}</p>
 		</div>
 	{:else if sortedAnalyses.length === 0}
-		<div class="rounded border border-border-subtle bg-surface-raised p-4 text-center text-text-silver">
+		<div class="rounded-xl border border-border-subtle bg-gradient-to-b from-brand-whisper to-white p-6 text-center text-text-slate shadow-sm">
 			<div class="flex flex-col items-center">
-				<svg
-					class="mb-3 h-12 w-12 text-text-silver"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
-				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						stroke-width="1.5"
-						d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"
-					></path>
-				</svg>
-				<p class="font-medium">
+				<div class="mb-4 overflow-hidden rounded-xl">
+					<img
+						src="/img/mascot-waiting.png"
+						alt="Datamonkey mascot"
+						class="h-28 w-auto opacity-50 transition-opacity hover:opacity-70"
+					/>
+				</div>
+				<p class="font-medium text-text-rich">
 					No analyses found{filterByCurrentFile ? ' for the current file' : ''}.
 				</p>
-				<p class="mt-2 text-sm">Run an analysis method (FEL, SLAC, etc.) to see results here.</p>
+				<p class="mt-2 text-sm">Run an analysis method to see results here.</p>
 			</div>
 		</div>
 	{:else}

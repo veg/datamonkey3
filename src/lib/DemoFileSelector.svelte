@@ -1,41 +1,40 @@
 <script>
 	import { onMount } from 'svelte';
 	import { createEventDispatcher } from 'svelte';
+	import { Dna, Sparkles, ArrowRight } from 'lucide-svelte';
+	import { trackEvent } from './utils/analytics.js';
 
 	const dispatch = createEventDispatcher();
 
 	// Sample files available for demo with enhanced metadata
+	// Names are user-friendly to help new users understand what to expect
 	const demoFiles = [
 		{
 			name: 'CD2-slim.fna',
-			description: 'CD2 gene alignment',
-			detail: '10 sequences • FASTA format',
+			description: 'Quick Start Example',
+			detail: '10 sequences • Fast results',
 			path: '/test-data/CD2-slim.fna',
-			icon: 'dna',
 			size: 'small'
 		},
 		{
 			name: 'small.nex',
-			description: 'Small alignment',
-			detail: 'NEXUS format • Quick test',
+			description: 'NEXUS with Tree',
+			detail: 'Includes phylogenetic tree',
 			path: '/test-data/small.nex',
-			icon: 'file',
 			size: 'small'
 		},
 		{
 			name: 'medium.nex',
-			description: 'Medium alignment',
-			detail: 'NEXUS format • Standard',
+			description: 'Standard Example',
+			detail: 'Typical analysis size',
 			path: '/test-data/medium.nex',
-			icon: 'file',
 			size: 'medium'
 		},
 		{
 			name: 'large.nex',
-			description: 'Large alignment',
-			detail: 'NEXUS format • Extended',
+			description: 'Large Dataset',
+			detail: 'For testing performance',
 			path: '/test-data/large.nex',
-			icon: 'file',
 			size: 'large'
 		}
 	];
@@ -62,6 +61,9 @@
 			// Add metadata to indicate this is a demo file
 			const metadata = { isDemo: true, source: 'demoSelector' };
 
+			// Track demo file load
+			trackEvent('demo-file-loaded', { filename: fileName });
+
 			// Dispatch the file to the parent component
 			dispatch('selectFile', { file, metadata });
 		} catch (error) {
@@ -77,13 +79,7 @@
 		<div
 			class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-brand-whisper text-brand-royal sm:h-8 sm:w-8"
 		>
-			<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 sm:h-4 sm:w-4" viewBox="0 0 20 20" fill="currentColor">
-				<path
-					fill-rule="evenodd"
-					d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 8.707 8.293a1 1 0 00-1.414 0l-2 2a1 1 0 101.414 1.414L8 10.414l1.293 1.293a1 1 0 001.414 0l4-4z"
-					clip-rule="evenodd"
-				/>
-			</svg>
+			<Sparkles class="h-3.5 w-3.5 sm:h-4 sm:w-4" />
 		</div>
 		<div class="min-w-0">
 			<span class="text-sm font-semibold text-text-rich sm:text-premium-body">Try a sample file</span>
@@ -114,37 +110,7 @@
 							? 'bg-brand-royal text-white'
 							: 'bg-brand-ghost text-brand-royal group-hover:bg-brand-whisper'}"
 					>
-						{#if demoFile.icon === 'dna'}
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								class="h-4 w-4 sm:h-5 sm:w-5"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-							>
-								<path d="M2 15c6.667-6 13.333 0 20-6" />
-								<path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993" />
-								<path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993" />
-								<path d="M17 6l-2.5-2.5" />
-								<path d="M14 8l-3-3" />
-								<path d="M7 18l2.5 2.5" />
-								<path d="M10 16l3 3" />
-							</svg>
-						{:else}
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								class="h-4 w-4 sm:h-5 sm:w-5"
-								viewBox="0 0 20 20"
-								fill="currentColor"
-							>
-								<path
-									fill-rule="evenodd"
-									d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z"
-									clip-rule="evenodd"
-								/>
-							</svg>
-						{/if}
+						<Dna class="h-4 w-4 sm:h-5 sm:w-5" />
 					</div>
 
 					<!-- Size indicator badge -->
@@ -178,20 +144,7 @@
 					class="mt-2 flex items-center justify-between border-t border-border-platinum pt-2 opacity-100 transition-opacity duration-premium sm:mt-premium-sm sm:pt-premium-sm sm:opacity-0 sm:group-hover:opacity-100"
 				>
 					<span class="text-[10px] font-medium text-brand-royal sm:text-premium-caption">Load file</span>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-3 w-3 transform text-brand-royal transition-transform duration-premium group-hover:translate-x-1 sm:h-4 sm:w-4"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke="currentColor"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M14 5l7 7m0 0l-7 7m7-7H3"
-						/>
-					</svg>
+					<ArrowRight class="h-3 w-3 transform text-brand-royal transition-transform duration-premium group-hover:translate-x-1 sm:h-4 sm:w-4" />
 				</div>
 			</button>
 		{/each}

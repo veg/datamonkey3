@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { treeStore } from '../stores/tree';
 	import { currentFile, fileMetricsStore } from '../stores/fileInfo';
+	import { Loader2, ChevronRight, TreeDeciduous } from 'lucide-svelte';
 
 	// Tree status constants
 	const STATUS = {
@@ -154,8 +155,8 @@
 </script>
 
 <div class="mb-premium-xl">
-	<h2 class="mb-premium-md text-premium-header font-semibold text-text-rich">
-		<span class="mr-premium-xs">🌳</span> Phylogenetic Tree
+	<h2 class="mb-premium-md flex items-center text-premium-header font-semibold text-text-rich">
+		<TreeDeciduous class="mr-2 h-5 w-5 text-green-600" /> Phylogenetic Tree
 	</h2>
 
 	<div class="rounded-premium border border-border-platinum bg-white p-premium-lg shadow-premium">
@@ -175,26 +176,7 @@
 					>
 						{#if treeStatus === STATUS.GENERATING}
 							<span class="inline-flex items-center">
-								<svg
-									class="-ml-1 mr-2 h-4 w-4 animate-spin text-brand-royal"
-									xmlns="http://www.w3.org/2000/svg"
-									fill="none"
-									viewBox="0 0 24 24"
-								>
-									<circle
-										class="opacity-25"
-										cx="12"
-										cy="12"
-										r="10"
-										stroke="currentColor"
-										stroke-width="4"
-									></circle>
-									<path
-										class="opacity-75"
-										fill="currentColor"
-										d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-									></path>
-								</svg>
+								<Loader2 class="-ml-1 mr-2 h-4 w-4 animate-spin text-brand-royal" />
 								Status: {getStatusText()}
 							</span>
 						{:else}
@@ -243,19 +225,9 @@
 					class="flex items-center text-premium-body text-brand-royal transition-colors duration-premium hover:text-brand-deep"
 					disabled={treeStatus === STATUS.GENERATING}
 				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="mr-premium-xs h-5 w-5 transition-transform duration-premium"
-						class:rotate-90={showAdvancedOptions}
-						viewBox="0 0 20 20"
-						fill="currentColor"
-					>
-						<path
-							fill-rule="evenodd"
-							d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-							clip-rule="evenodd"
-						/>
-					</svg>
+					<ChevronRight
+						class="mr-premium-xs h-5 w-5 transition-transform duration-premium {showAdvancedOptions ? 'rotate-90' : ''}"
+					/>
 					Advanced Tree Options
 				</button>
 

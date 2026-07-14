@@ -2,9 +2,21 @@
 	import '../app.css';
 	import AnalysisStatusIndicator from '../lib/AnalysisStatusIndicator.svelte';
 	import BackendConnectivityIndicator from '../lib/BackendConnectivityIndicator.svelte';
+	import Toast from '../lib/Toast.svelte';
+	import { X, Menu, FlaskConical } from 'lucide-svelte';
+	import { env } from '$env/dynamic/public';
+	import { afterNavigate } from '$app/navigation';
 
 	// Get version from Vite define
 	const version = __APP_VERSION__;
+
+	// Announcement banner state
+	let bannerDismissed = $state(false);
+
+	// Umami analytics (only if configured)
+	const umamiUrl = env.PUBLIC_UMAMI_URL;
+	const umamiWebsiteId = env.PUBLIC_UMAMI_WEBSITE_ID;
+	const umamiEnabled = umamiUrl && umamiWebsiteId;
 
 	let { children } = $props();
 
@@ -18,10 +30,16 @@
 	function closeMobileMenu() {
 		mobileMenuOpen = false;
 	}
+
+	// Track SPA route changes in Umami so each navigation registers as a pageview
+	afterNavigate(() => {
+		if (typeof window.umami !== 'undefined') {
+			window.umami.track();
+		}
+	});
 </script>
 
 <svelte:head>
-	<link rel="stylesheet" href="https://observablehq.com/_next/static/css/92c0a8010b575b66.css" />
 	<link
 		rel="stylesheet"
 		href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css"
@@ -33,15 +51,50 @@
 		href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
 	/>
 	<title>Datamonkey 3 - Sequence Analysis Platform</title>
+	{#if umamiEnabled}
+		{@html `<script defer src="${umamiUrl}" data-website-id="${umamiWebsiteId}"></script>`}
+	{/if}
 </svelte:head>
 
 <div class="flex min-h-screen flex-col bg-brand-ghost">
+	<!-- PRIME Announcement Banner -->
+	{#if !bannerDismissed}
+		<div class="prime-banner">
+			<div class="container mx-auto flex items-center justify-between px-4 py-2.5 sm:px-premium-xl">
+				<div class="flex flex-1 items-center justify-center gap-2 text-sm font-medium">
+					<FlaskConical size={16} class="shrink-0" />
+					<span>
+						<strong>New:</strong> PRIME — Property-Informed Models of Evolution is now available.
+						<a
+							href="https://www.biorxiv.org/content/10.64898/2026.03.09.710461v1"
+							target="_blank"
+							rel="noopener noreferrer"
+							class="prime-banner-link"
+						>
+							Read the preprint &rarr;
+						</a>
+					</span>
+				</div>
+				<button
+					type="button"
+					class="prime-banner-close"
+					onclick={() => bannerDismissed = true}
+					aria-label="Dismiss announcement"
+				>
+					<X size={16} />
+				</button>
+			</div>
+		</div>
+	{/if}
+
 	<nav class="border-b border-border-platinum bg-white shadow-sm">
 		<div class="container mx-auto flex items-center justify-between px-4 py-3 sm:px-premium-xl sm:py-premium-md">
-			<a class="flex items-center" href="/" onclick={closeMobileMenu}>
+			<a class="flex items-center gap-2" href="/?tab=data" onclick={closeMobileMenu}>
+				<img src="/img/logo.png" alt="Datamonkey logo" class="h-8 w-auto" />
 				<span class="text-lg font-bold tracking-premium-tight text-text-rich sm:text-premium-header">
 					<span class="text-brand-royal">Datamonkey</span> <span class="text-accent-copper">3</span>
 				</span>
+				<span class="rounded bg-accent-copper px-1.5 py-0.5 text-xs font-semibold text-white">BETA</span>
 			</a>
 
 			<!-- Mobile menu button -->
@@ -54,15 +107,9 @@
 			>
 				<span class="sr-only">Open main menu</span>
 				{#if mobileMenuOpen}
-					<!-- Close icon -->
-					<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-					</svg>
+					<X class="h-6 w-6" />
 				{:else}
-					<!-- Hamburger icon -->
-					<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-					</svg>
+					<Menu class="h-6 w-6" />
 				{/if}
 			</button>
 
@@ -72,9 +119,11 @@
 					<li>
 						<a
 							class="rounded-premium-sm px-3 py-2 text-premium-brand font-medium text-text-rich transition-colors duration-premium hover:bg-brand-whisper hover:text-brand-royal"
-							href="/"
+							href="http://help.datamonkey.org"
+							target="_blank"
+							rel="noopener noreferrer"
 						>
-							Home
+							Help
 						</a>
 					</li>
 				</ul>
@@ -93,10 +142,11 @@
 				<div class="space-y-1 px-4 pb-4 pt-2">
 					<a
 						class="block rounded-premium-sm px-3 py-3 text-base font-medium text-text-rich transition-colors duration-premium hover:bg-brand-whisper hover:text-brand-royal"
-						href="/"
-						onclick={closeMobileMenu}
+						href="http://help.datamonkey.org"
+						target="_blank"
+						rel="noopener noreferrer"
 					>
-						Home
+						Help
 					</a>
 				</div>
 				<div class="border-t border-border-platinum px-4 py-3">
@@ -146,3 +196,38 @@
 		</div>
 	</footer>
 </div>
+
+<!-- Global Toast Notifications -->
+<Toast />
+
+<style>
+	.prime-banner {
+		background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 50%, #5b21b6 100%);
+		color: white;
+	}
+
+	.prime-banner-link {
+		color: #fed7aa;
+		text-decoration: underline;
+		text-decoration-color: rgba(254, 215, 170, 0.4);
+		text-underline-offset: 2px;
+	}
+
+	.prime-banner-link:hover {
+		color: white;
+		text-decoration-color: white;
+	}
+
+	.prime-banner-close {
+		padding: 4px;
+		border-radius: 4px;
+		color: rgba(255, 255, 255, 0.7);
+		cursor: pointer;
+		transition: all 200ms;
+	}
+
+	.prime-banner-close:hover {
+		color: white;
+		background: rgba(255, 255, 255, 0.15);
+	}
+</style>

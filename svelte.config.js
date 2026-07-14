@@ -1,5 +1,6 @@
 import { mdsvex } from 'mdsvex';
-import adapter from '@sveltejs/adapter-auto';
+import adapterNode from '@sveltejs/adapter-node';
+import adapterCloudflare from '@sveltejs/adapter-cloudflare';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 
 /** @type {import('@sveltejs/kit').Config} */
@@ -9,10 +10,9 @@ const config = {
 	preprocess: [vitePreprocess(), mdsvex()],
 
 	kit: {
-		// Using auto adapter - automatically detects deployment environment
-		// For Cloudflare deployment: npm run deploy:cloudflare (requires wrangler)
-		// For other platforms: adapter will auto-detect or can be configured manually
-		adapter: adapter(),
+		// Use adapter-node for production server (BUILD_TARGET=node npm run build)
+		// Use adapter-cloudflare for Cloudflare deployment (default)
+		adapter: process.env.BUILD_TARGET === 'node' ? adapterNode() : adapterCloudflare(),
 
 		// Configure any environment variables that need to be exposed to the client
 		env: {

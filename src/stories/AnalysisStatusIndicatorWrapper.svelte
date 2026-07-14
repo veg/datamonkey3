@@ -2,6 +2,7 @@
 <script>
 	import { writable } from 'svelte/store';
 	import { goto } from '$app/navigation';
+	import { CheckCircle2, AlertTriangle, Loader2 } from 'lucide-svelte';
 
 	export let mockActiveAnalyses = null;
 
@@ -56,7 +57,7 @@
 		{#if runningCount > 0}
 			<div class="flex items-center">
 				<span class="inline-flex items-center justify-center text-sm">
-					<span class="pulse-animation mr-1 h-2 w-2 rounded-full bg-blue-500"></span>
+					<Loader2 class="mr-1 h-4 w-4 animate-spin text-blue-500" />
 					<span class="font-medium text-blue-600">{runningCount}</span>
 				</span>
 			</div>
@@ -68,7 +69,7 @@
 					<span class="mx-1.5 text-gray-300">•</span>
 				{/if}
 				<span class="inline-flex items-center justify-center text-sm">
-					<span class="mr-1 text-green-500">✓</span>
+					<CheckCircle2 class="mr-1 h-4 w-4 text-green-500" />
 					<span class="font-medium text-green-600">{completedCount}</span>
 				</span>
 			</div>
@@ -80,7 +81,7 @@
 					<span class="mx-1.5 text-gray-300">•</span>
 				{/if}
 				<span class="inline-flex items-center justify-center text-sm">
-					<span class="mr-1 text-red-500">⚠</span>
+					<AlertTriangle class="mr-1 h-4 w-4 text-red-500" />
 					<span class="font-medium text-red-600">{failedCount}</span>
 				</span>
 			</div>
@@ -88,24 +89,3 @@
 	</button>
 {/if}
 
-<style>
-	/* Animation for the pulsing indicator */
-	.pulse-animation {
-		animation: pulse 2s infinite;
-	}
-
-	@keyframes pulse {
-		0% {
-			opacity: 1;
-			transform: scale(1);
-		}
-		50% {
-			opacity: 0.5;
-			transform: scale(1.05);
-		}
-		100% {
-			opacity: 1;
-			transform: scale(1);
-		}
-	}
-</style>

@@ -11,6 +11,7 @@
 		FadeVisualization,
 		GardVisualization
 	} from 'hyphy-scope';
+	import DataReaderResults from '$lib/dataReaderResults.svelte';
 
 	export let analysis = {};
 	export let file = {};
@@ -103,29 +104,7 @@
 
 					<!-- Fallback display for methods not fully supported by hyphy-scope -->
 					{#if analysis.method === 'datareader'}
-						<div class="data-reader-results">
-							<h3 class="mb-2 text-lg font-bold">File Information</h3>
-							{#if resultData.FILE_INFO}
-								<div class="mb-4">
-									<p><strong>Type:</strong> {resultData.FILE_INFO.type || 'Unknown'}</p>
-									<p><strong>Sequences:</strong> {resultData.FILE_INFO.sequences || 0}</p>
-									<p><strong>Sites:</strong> {resultData.FILE_INFO.sites || 0}</p>
-								</div>
-							{/if}
-
-							{#if resultData.FILE_PARTITION_INFO}
-								<h3 class="mb-2 text-lg font-bold">Partition Information</h3>
-								<div class="partition-info">
-									{#each Object.entries(resultData.FILE_PARTITION_INFO) as [key, partition]}
-										<div class="mb-2 border-l-4 border-blue-500 pl-2">
-											<p><strong>Partition {key}:</strong></p>
-											<p><strong>Sites:</strong> {partition.sites || 0}</p>
-											<p><strong>Sequences:</strong> {partition.sequences || 0}</p>
-										</div>
-									{/each}
-								</div>
-							{/if}
-						</div>
+						<DataReaderResults fileMetricsJSON={resultData} />
 					{:else if !visualizationComponent}
 						<!-- Generic JSON display for unsupported methods -->
 						<div class="json-display">

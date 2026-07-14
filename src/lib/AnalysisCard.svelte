@@ -1,6 +1,19 @@
 <script>
 	import { createEventDispatcher, onMount } from 'svelte';
 	import { persistentFileStore } from '../stores/fileInfo';
+	import {
+		File,
+		Clock,
+		Loader2,
+		RefreshCw,
+		AlertCircle,
+		CheckCircle,
+		Pause,
+		Eye,
+		XCircle,
+		Download,
+		Trash2
+	} from 'lucide-svelte';
 
 	// Props
 	export let analysis = {};
@@ -49,35 +62,25 @@
 		}
 	}
 
-	// Get method display name with icon
-	function getMethodIcon(method) {
-		// Return SVG icon based on method
-		switch (method) {
-			case 'fel':
-				return `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-14a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V4z" clip-rule="evenodd" />
-        </svg>`;
-			case 'meme':
-				return `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-          <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
-        </svg>`;
-			case 'slac':
-				return `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 8.707 8.293a1 1 0 00-1.414 0l-2 2a1 1 0 101.414 1.414L8 10.414l1.293 1.293a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-        </svg>`;
-			case 'busted':
-				return `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L11 10.586 14.586 7H12z" clip-rule="evenodd" />
-        </svg>`;
-			case 'datareader':
-				return `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd" />
-        </svg>`;
-			default:
-				return `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd" />
-        </svg>`;
-		}
+	// Get method short code for display
+	function getMethodCode(method) {
+		const codes = {
+			fel: 'FEL',
+			meme: 'MEME',
+			slac: 'SLAC',
+			busted: 'BSTD',
+			fubar: 'FBAR',
+			absrel: 'aBSR',
+			relax: 'RELX',
+			gard: 'GARD',
+			bgm: 'BGM',
+			'contrast-fel': 'cFEL',
+			'multi-hit': 'MH',
+			fade: 'FADE',
+			prime: 'PRIM',
+			datareader: 'DATA'
+		};
+		return codes[method] || method?.toUpperCase()?.slice(0, 4) || '?';
 	}
 
 	// Generate a simple preview of the analysis result
@@ -172,6 +175,7 @@
 </script>
 
 <div
+	data-testid="analysis-card"
 	class="analysis-card mb-3 rounded-lg border transition-all duration-200 {compact
 		? 'p-3'
 		: 'p-4'} {selected
@@ -186,7 +190,9 @@
 				? 'h-8 w-8'
 				: 'h-10 w-10'} flex flex-shrink-0 items-center justify-center rounded-md bg-blue-100 text-blue-600"
 		>
-			{@html getMethodIcon(analysis.method)}
+			<span class="font-mono {compact ? 'text-[9px]' : 'text-[10px]'} font-bold leading-none">
+				{getMethodCode(analysis.method)}
+			</span>
 		</div>
 
 		<div class="flex-grow">
@@ -209,60 +215,27 @@
 					class:text-red-800={analysis.status === 'error'}
 					class:bg-orange-100={analysis.status === 'cancelled' || analysis.status === 'interrupted'}
 					class:text-orange-800={analysis.status === 'cancelled' || analysis.status === 'interrupted'}
-					class:bg-gray-100={!['completed', 'running', 'pending', 'error', 'cancelled', 'interrupted'].includes(
+					class:bg-blue-100={analysis.status === 'reconnecting'}
+					class:text-blue-800={analysis.status === 'reconnecting'}
+					class:bg-amber-100={analysis.status === 'connection_lost'}
+					class:text-amber-800={analysis.status === 'connection_lost'}
+					class:bg-gray-100={!['completed', 'running', 'pending', 'error', 'cancelled', 'interrupted', 'reconnecting', 'connection_lost'].includes(
 						analysis.status
 					)}
-					class:text-gray-800={!['completed', 'running', 'pending', 'error', 'cancelled', 'interrupted'].includes(
+					class:text-gray-800={!['completed', 'running', 'pending', 'error', 'cancelled', 'interrupted', 'reconnecting', 'connection_lost'].includes(
 						analysis.status
 					)}
 				>
 					{#if analysis.status === 'running' || analysis.status === 'pending'}
-						<svg
-							class="-ml-0.5 mr-1.5 h-2 w-2 animate-spin"
-							xmlns="http://www.w3.org/2000/svg"
-							fill="none"
-							viewBox="0 0 24 24"
-						>
-							<circle
-								class="opacity-25"
-								cx="12"
-								cy="12"
-								r="10"
-								stroke="currentColor"
-								stroke-width="4"
-							></circle>
-							<path
-								class="opacity-75"
-								fill="currentColor"
-								d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-							></path>
-						</svg>
+						<Loader2 class="-ml-0.5 mr-1.5 h-3 w-3 animate-spin" />
+					{:else if analysis.status === 'reconnecting'}
+						<RefreshCw class="-ml-0.5 mr-1.5 h-3 w-3 animate-pulse" />
+					{:else if analysis.status === 'connection_lost'}
+						<AlertCircle class="-ml-0.5 mr-1.5 h-3 w-3" />
 					{:else if analysis.status === 'completed'}
-						<svg
-							class="-ml-0.5 mr-1.5 h-3 w-3"
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 20 20"
-							fill="currentColor"
-						>
-							<path
-								fill-rule="evenodd"
-								d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-								clip-rule="evenodd"
-							/>
-						</svg>
+						<CheckCircle class="-ml-0.5 mr-1.5 h-3 w-3" />
 					{:else if analysis.status === 'interrupted'}
-						<svg
-							class="-ml-0.5 mr-1.5 h-3 w-3"
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 20 20"
-							fill="currentColor"
-						>
-							<path
-								fill-rule="evenodd"
-								d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
-								clip-rule="evenodd"
-							/>
-						</svg>
+						<Pause class="-ml-0.5 mr-1.5 h-3 w-3" />
 					{/if}
 					<span class="capitalize"
 						>{analysis.status === 'completed'
@@ -271,7 +244,11 @@
 								? 'Cancelled'
 								: analysis.status === 'interrupted'
 									? 'Interrupted'
-									: analysis.status || 'unknown'}</span
+									: analysis.status === 'reconnecting'
+										? 'Reconnecting...'
+										: analysis.status === 'connection_lost'
+											? 'Connection Lost'
+											: analysis.status || 'unknown'}</span
 					>
 				</div>
 			</div>
@@ -279,34 +256,12 @@
 			<!-- Info -->
 			<div class="text-gray-500 {compact ? 'mt-0.5 text-xs' : 'mt-1 text-sm'}">
 				<div class="flex items-center">
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="mr-1 h-3 w-3"
-						viewBox="0 0 20 20"
-						fill="currentColor"
-					>
-						<path
-							fill-rule="evenodd"
-							d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"
-							clip-rule="evenodd"
-						/>
-					</svg>
+					<File class="mr-1 h-3 w-3" />
 					<span class="truncate">{file ? file.filename : 'Unknown file'}</span>
 				</div>
 
 				<div class="mt-0.5 flex items-center">
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="mr-1 h-3 w-3"
-						viewBox="0 0 20 20"
-						fill="currentColor"
-					>
-						<path
-							fill-rule="evenodd"
-							d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
-							clip-rule="evenodd"
-						/>
-					</svg>
+					<Clock class="mr-1 h-3 w-3" />
 					<span class="text-gray-600">
 						{#if analysis.status === 'completed'}
 							Completed {formatDate(analysis.completedAt || analysis.createdAt)}
@@ -348,19 +303,7 @@
 				on:click|stopPropagation={viewAnalysis}
 				class="inline-flex items-center rounded bg-blue-100 px-2.5 py-1.5 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-200"
 			>
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					class="mr-1 h-3 w-3"
-					viewBox="0 0 20 20"
-					fill="currentColor"
-				>
-					<path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-					<path
-						fill-rule="evenodd"
-						d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z"
-						clip-rule="evenodd"
-					/>
-				</svg>
+				<Eye class="mr-1 h-3 w-3" />
 				View
 			</button>
 
@@ -371,18 +314,7 @@
 					class="inline-flex items-center rounded bg-orange-100 px-2.5 py-1.5 text-xs font-medium text-orange-700 transition-colors hover:bg-orange-200"
 					title="Cancel this analysis"
 				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="mr-1 h-3 w-3"
-						viewBox="0 0 20 20"
-						fill="currentColor"
-					>
-						<path
-							fill-rule="evenodd"
-							d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-							clip-rule="evenodd"
-						/>
-					</svg>
+					<XCircle class="mr-1 h-3 w-3" />
 					Cancel
 				</button>
 			{/if}
@@ -393,65 +325,31 @@
 					on:click|stopPropagation={exportAnalysis}
 					class="inline-flex items-center rounded bg-green-100 px-2.5 py-1.5 text-xs font-medium text-green-700 transition-colors hover:bg-green-200"
 				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="mr-1 h-3 w-3"
-						viewBox="0 0 20 20"
-						fill="currentColor"
-					>
-						<path
-							fill-rule="evenodd"
-							d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z"
-							clip-rule="evenodd"
-						/>
-					</svg>
+					<Download class="mr-1 h-3 w-3" />
 					Export
 				</button>
 			{/if}
 
-			<!-- Re-run button - for interrupted analyses -->
-			{#if analysis.status === 'interrupted'}
+			<!-- Re-run button - for interrupted and connection_lost analyses -->
+			{#if analysis.status === 'interrupted' || analysis.status === 'connection_lost'}
 				<button
 					on:click|stopPropagation={rerunAnalysis}
-					class="inline-flex items-center rounded bg-orange-100 px-2.5 py-1.5 text-xs font-medium text-orange-700 transition-colors hover:bg-orange-200"
-					title="Re-run this interrupted analysis"
+					class="inline-flex items-center rounded px-2.5 py-1.5 text-xs font-medium transition-colors {analysis.status === 'connection_lost' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-orange-100 text-orange-700 hover:bg-orange-200'}"
+					title="Re-run this {analysis.status === 'connection_lost' ? 'disconnected' : 'interrupted'} analysis"
 				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="mr-1 h-3 w-3"
-						viewBox="0 0 20 20"
-						fill="currentColor"
-					>
-						<path
-							fill-rule="evenodd"
-							d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
-							clip-rule="evenodd"
-						/>
-					</svg>
+					<RefreshCw class="mr-1 h-3 w-3" />
 					Re-run
 				</button>
 			{/if}
 
-			<!-- Delete button - for completed/error/cancelled/interrupted analyses -->
-			{#if ['completed', 'error', 'cancelled', 'interrupted'].includes(analysis.status)}
+			<!-- Delete button - for completed/error/cancelled/interrupted/connection_lost analyses -->
+			{#if ['completed', 'error', 'cancelled', 'interrupted', 'connection_lost'].includes(analysis.status)}
 				<button
 					on:click|stopPropagation={deleteAnalysis}
 					class="inline-flex items-center rounded bg-red-100 px-2.5 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-200"
 					title="Delete this analysis"
 				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="mr-1 h-3 w-3"
-						viewBox="0 0 20 20"
-						fill="currentColor"
-					>
-						<path fill-rule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" clip-rule="evenodd" />
-						<path
-							fill-rule="evenodd"
-							d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414L9.586 12l-2.293 2.293a1 1 0 101.414 1.414L11 13.414l2.293 2.293a1 1 0 001.414-1.414L12.414 12l2.293-2.293z"
-							clip-rule="evenodd"
-						/>
-					</svg>
+					<Trash2 class="mr-1 h-3 w-3" />
 					Delete
 				</button>
 			{/if}

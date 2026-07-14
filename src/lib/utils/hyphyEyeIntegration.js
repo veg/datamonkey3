@@ -58,7 +58,9 @@ export function storeAnalysisForHyphyEye(analysisData, method) {
  */
 export function openInHyphyEye(analysisId, method, newTab = true) {
 	const methodName = method.toLowerCase().replace('-', '');
-	const url = `${FINAL_HYPHY_EYE_URL}/pages/${methodName}?id=${analysisId}`;
+	const methodUrlMap = { 'bstill': 'fubar' };
+	const pageName = methodUrlMap[methodName] || methodName;
+	const url = `${FINAL_HYPHY_EYE_URL}/pages/${pageName}?id=${analysisId}`;
 
 	if (newTab) {
 		window.open(url, '_blank', 'noopener,noreferrer');
@@ -88,7 +90,9 @@ export function shareWithHyphyEye(analysisData, method, newTab = true) {
  */
 export function getHyphyEyeUrl(method, analysisId = null) {
 	const methodName = method.toLowerCase().replace('-', '');
-	let url = `${FINAL_HYPHY_EYE_URL}/pages/${methodName}`;
+	const methodUrlMap = { 'bstill': 'fubar' };
+	const pageName = methodUrlMap[methodName] || methodName;
+	let url = `${FINAL_HYPHY_EYE_URL}/pages/${pageName}`;
 
 	if (analysisId) {
 		url += `?id=${analysisId}`;
@@ -151,7 +155,7 @@ export function cleanupOldAnalysisData(maxAge = 7 * 24 * 60 * 60 * 1000) {
  * @returns {Array} - Array of supported method names
  */
 export function getSupportedMethods() {
-	return ['fel', 'contrastfel', 'meme', 'busted', 'absrel', 'gard', 'nrm', 'multihit', 'slac', 'fubar'];
+	return ['fel', 'contrastfel', 'meme', 'busted', 'absrel', 'gard', 'nrm', 'multihit', 'slac', 'fubar', 'prime', 'bstill'];
 }
 
 /**

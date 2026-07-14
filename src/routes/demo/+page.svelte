@@ -40,7 +40,7 @@ AGTGGGACCGTCTGGGGTGCCCTGGGTCATGGCATCAACCTGAACATCCCT`;
 	let usingSampleData = true;
 	let jobId = null;
 
-	// FEL analysis parameters - corrected to match official DataMonkey specification
+	// FEL analysis parameters - corrected to match official Datamonkey specification
 	let felParams = {
 		analysis_type: 'fel',
 		code: 'Universal',
@@ -74,7 +74,7 @@ AGTGGGACCGTCTGGGGTGCCCTGGGTCATGGCATCAACCTGAACATCCCT`;
 			isConnected = true;
 			statusMessages = [
 				...statusMessages,
-				{ msg: 'Connected to DataMonkey server', type: 'success' }
+				{ msg: 'Connected to Datamonkey server', type: 'success' }
 			];
 		});
 
@@ -212,11 +212,11 @@ AGTGGGACCGTCTGGGGTGCCCTGGGTCATGGCATCAACCTGAACATCCCT`;
 </script>
 
 <svelte:head>
-	<title>DataMonkey FEL Analysis Demo</title>
+	<title>Datamonkey FEL Analysis Demo</title>
 </svelte:head>
 
 <div class="container mx-auto max-w-6xl p-6">
-	<h1 class="mb-6 text-3xl font-bold text-gray-900">DataMonkey FEL Analysis Demo</h1>
+	<h1 class="mb-6 text-3xl font-bold text-gray-900">Datamonkey FEL Analysis Demo</h1>
 
 	<!-- Connection Status -->
 	<div class="mb-6 rounded-lg border p-4">

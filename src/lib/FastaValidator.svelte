@@ -2,6 +2,8 @@
 	import { onMount, createEventDispatcher } from 'svelte';
 	import { validateFasta, repairFasta, toFastaFormat, ERROR_TYPES } from './utils/fastaValidation';
 	import { exportData } from './utils/exportUtils';
+	import { Zap, Download, Check } from 'lucide-svelte';
+	import { trackEvent } from './utils/analytics.js';
 
 	// Props
 	export let file = null;
@@ -51,6 +53,13 @@
 
 			// Validate FASTA content
 			validationResults = validateFasta(fileContent, validationOptions);
+
+			// Track file validation
+			trackEvent('file-validated', {
+				isValid: validationResults.valid,
+				errorCount: validationResults.errors?.length || 0,
+				warningCount: validationResults.warnings?.length || 0
+			});
 
 			// Dispatch result
 			dispatch('validated', validationResults);
@@ -324,18 +333,7 @@
 						on:click={repairFastaData}
 						class="flex items-center rounded bg-brand-royal px-3 py-1 text-white hover:bg-brand-deep"
 					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							class="mr-1 h-4 w-4"
-							viewBox="0 0 20 20"
-							fill="currentColor"
-						>
-							<path
-								fill-rule="evenodd"
-								d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"
-								clip-rule="evenodd"
-							/>
-						</svg>
+						<Zap class="mr-1 h-4 w-4" />
 						Repair FASTA File
 					</button>
 				{:else}
@@ -385,18 +383,7 @@
 							on:click={exportRepaired}
 							class="flex items-center rounded bg-status-success px-3 py-1 text-white hover:bg-status-success-text"
 						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								class="mr-1 h-4 w-4"
-								viewBox="0 0 20 20"
-								fill="currentColor"
-							>
-								<path
-									fill-rule="evenodd"
-									d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z"
-									clip-rule="evenodd"
-								/>
-							</svg>
+							<Download class="mr-1 h-4 w-4" />
 							Export Repaired FASTA
 						</button>
 
@@ -405,18 +392,7 @@
 							class="flex items-center rounded bg-brand-royal px-3 py-1 text-white hover:bg-brand-deep"
 							disabled={!repairedData.valid}
 						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								class="mr-1 h-4 w-4"
-								viewBox="0 0 20 20"
-								fill="currentColor"
-							>
-								<path
-									fill-rule="evenodd"
-									d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-									clip-rule="evenodd"
-								/>
-							</svg>
+							<Check class="mr-1 h-4 w-4" />
 							Use Repaired Version
 						</button>
 					</div>

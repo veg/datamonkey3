@@ -1,11 +1,13 @@
 /**
  * BackendAnalysisRunner - Handles server-side analysis execution via Socket.IO
- * Integrates with the existing DataMonkey backend server used in demo pages
+ * Integrates with the existing Datamonkey backend server used in demo pages
  */
 
 import io from 'socket.io-client';
 import { DATAMONKEY_SERVER_URL } from '../config/env.ts';
 import { BaseAnalysisRunner } from './BaseAnalysisRunner.js';
+import { analysisStore } from '../../stores/analyses.js';
+import { sanitizeSequenceNames } from '../utils/fastaValidation.js';
 
 /**
  * Strip embedded trees from alignment data
@@ -160,13 +162,23 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 		this.socket.on('script error', async (error) => {
 			console.error('❌ Backend analysis error:', error);
 
+			// Detect tree-related errors and provide clearer message
+			const errorMsg = error.message || error || '';
+			let userFacingError = `Analysis failed: ${errorMsg}`;
+
+			if (errorMsg.includes('Illegal right hand side in call to Topology') ||
+				errorMsg.includes('tree string is invalid') ||
+				errorMsg.includes('Newick tree spec')) {
+				userFacingError = 'Tree format error. Please select "Inferred NJ tree" in the Analyze tab, or upload a valid Newick tree file.';
+			}
+
 			// Update all active analyses as failed (since we don't have specific job context)
 			for (const [jobId, analysisId] of this.activeAnalyses.entries()) {
 				await this.completeAnalysis(
 					analysisId,
 					false,
 					null,
-					`Analysis failed: ${error.message || error}`
+					userFacingError
 				);
 				this.activeAnalyses.delete(jobId);
 			}
@@ -194,8 +206,8 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 			configKeys: Object.keys(config || {})
 		});
 
-		// Validate input using base class method
-		this.validateInput(fastaData, treeData, method);
+		// Validate input using base class method (includes codon alignment check)
+		this.validateInput(fastaData, treeData, method, config);
 
 		if (!this.socket || !this.socket.connected) {
 			console.log('🔌 Socket not connected, attempting to connect...');
@@ -216,14 +228,15 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 			// Build arguments preview for tracking
 			const argsPreview = this.buildArgumentsPreview(method, config, treeData, analysisParams);
 
-			// Start analysis tracking using base class method
-			this.startAnalysisTracking(analysisId, method, 'backend', null, argsPreview);
+			// Start analysis tracking using base class method (includes jobId for reconnection)
+			this.startAnalysisTracking(analysisId, method, 'backend', null, argsPreview, jobId);
 
 			// Submit to backend
 			// Map method names to backend socket event names
 			const methodNameMap = {
 				'contrast-fel': 'cfel',
-				'multi-hit': 'multihit'
+				'multi-hit': 'multihit',
+				'b-still': 'bstill'
 			};
 			const backendMethodName = methodNameMap[method.toLowerCase()] || method.toLowerCase();
 			const eventName = `${backendMethodName}:spawn`;
@@ -231,16 +244,26 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 			// Strip embedded trees from alignment data (NEXUS or FASTA)
 			const cleanedFastaData = stripEmbeddedTrees(fastaData);
 
+			// Sanitize sequence names to remove characters invalid in Newick format
+			const { sanitizedFasta, sanitizedTree } = sanitizeSequenceNames(
+				cleanedFastaData,
+				treeData
+			);
+
 			console.log(`📤 Submitting ${method} analysis to backend:`, eventName, {
-				alignmentLength: cleanedFastaData.length,
-				treeLength: treeData.length,
+				alignmentLength: sanitizedFasta.length,
+				treeLength: sanitizedTree.length,
+				jobId,
 				jobParams: analysisParams
 			});
 
 			const submitData = {
-				alignment: cleanedFastaData,
-				tree: treeData,
-				job: analysisParams
+				alignment: sanitizedFasta,
+				tree: sanitizedTree,
+				job: {
+					id: jobId, // Include jobId for reconnection support (backend 2.8.0+)
+					...analysisParams
+				}
 			};
 
 			this.socket.emit(eventName, submitData);
@@ -258,6 +281,98 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 			await this.completeAnalysis(analysisId, false, null, `Submission failed: ${error.message}`);
 			this.activeAnalyses.delete(jobId);
 			throw error;
+		}
+	}
+
+	/**
+	 * Attempt to reconnect to orphaned backend jobs after page refresh
+	 * Uses the new job:status and {method}:resubscribe Socket.IO events
+	 * @param {Array} analysesToReconnect - Analyses from attemptBackendReconnection()
+	 */
+	async reconnectToJobs(analysesToReconnect) {
+		// Ensure socket is connected before attempting reconnection
+		if (!this.socket?.connected) {
+			console.log('🔌 Socket not connected, establishing connection for reconnection...');
+			try {
+				await this.connect();
+			} catch (error) {
+				console.error('❌ Failed to connect for job reconnection:', error);
+				// Mark all analyses as connection_lost since we can't reach the server
+				for (const analysis of analysesToReconnect) {
+					await analysisStore.updateAnalysis(analysis.id, {
+						status: 'connection_lost',
+						error: 'Could not connect to server to check job status.',
+						updatedAt: Date.now()
+					});
+				}
+				return;
+			}
+		}
+
+		console.log(`🔄 Attempting to reconnect to ${analysesToReconnect.length} backend jobs`);
+
+		for (const analysis of analysesToReconnect) {
+			const jobId = analysis.metadata?.jobId;
+			const method = analysis.method?.toLowerCase();
+
+			if (!jobId) {
+				console.warn(`⚠️ Analysis ${analysis.id} has no jobId, skipping`);
+				continue;
+			}
+
+			console.log(`🔄 Querying status for job ${jobId} (analysis ${analysis.id.slice(0, 8)}...)`);
+
+			// Query current job status from backend
+			this.socket.emit('job:status', { jobId }, async (response) => {
+				try {
+					if (response.status === 'completed') {
+						// Job finished while we were away - retrieve results!
+						console.log(`✅ Job ${jobId} completed, retrieving results`);
+						await this.completeAnalysis(analysis.id, true, response.results);
+					} else if (response.status === 'running' || response.status === 'queued') {
+						// Job still running or queued - resubscribe to events
+						console.log(`🔄 Job ${jobId} ${response.status}, resubscribing`);
+						this.activeAnalyses.set(jobId, analysis.id);
+
+						// Resubscribe to job events
+						const methodNameMap = {
+							'contrast-fel': 'cfel',
+							'multi-hit': 'multihit'
+						};
+						const backendMethodName = methodNameMap[method] || method;
+						this.socket.emit(`${backendMethodName}:resubscribe`, { id: jobId });
+
+						// Update status back to running
+						await analysisStore.updateAnalysis(analysis.id, {
+							status: 'running',
+							updatedAt: Date.now()
+						});
+					} else if (response.status === 'not_found') {
+						// Job expired or doesn't exist on server
+						console.log(`❌ Job ${jobId} not found on server`);
+						await analysisStore.updateAnalysis(analysis.id, {
+							status: 'connection_lost',
+							error: 'Job no longer exists on server. It may have completed or expired.',
+							updatedAt: Date.now()
+						});
+					} else {
+						// Unknown status
+						console.warn(`⚠️ Unknown status '${response.status}' for job ${jobId}`);
+						await analysisStore.updateAnalysis(analysis.id, {
+							status: 'connection_lost',
+							error: `Unexpected job status: ${response.status}`,
+							updatedAt: Date.now()
+						});
+					}
+				} catch (error) {
+					console.error(`Error handling reconnection for job ${jobId}:`, error);
+					await analysisStore.updateAnalysis(analysis.id, {
+						status: 'connection_lost',
+						error: `Reconnection failed: ${error.message}`,
+						updatedAt: Date.now()
+					});
+				}
+			});
 		}
 	}
 
@@ -307,7 +422,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 					resample: config.resample || 0,
 					'confidence-interval': config.confidenceIntervals ? true : false,
 					pvalue: config.pValueThreshold || 0.1,
-					branches: 'All',
+					branches: config.branchesToTest === 'Interactive' ? 'FG' : (config.branchesToTest || 'All'),
 					samples: 100
 				};
 
@@ -315,7 +430,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 				return {
 					...baseParams,
 					pvalue: config.pvalue || config.pValueThreshold || 0.1,
-					branches: config.branches || 'All',
+					branches: config.branchesToTest === 'Interactive' ? 'FG' : (config.branchesToTest || 'All'),
 					samples: config.samples || 100,
 					code: config.code || 'Universal'
 				};
@@ -341,11 +456,22 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 					branches: 'All'
 				};
 
+			case 'b-still':
+				return {
+					...baseParams,
+					grid: config.grid || 20,
+					concentration_parameter: config.concentration_parameter || 0.5,
+					method: config.method || 'Variational-Bayes',
+					ebf: config.ebf || 10,
+					radius_threshold: config.radius_threshold || 0.5,
+					branches: 'All'
+				};
+
 			case 'absrel':
 				return {
 					...baseParams,
 					// Map aBSREL-specific parameters to backend format
-					branches: config.branchesToTest || 'All',
+					branches: config.branchesToTest === 'Interactive' ? 'FG' : (config.branchesToTest || 'All'),
 					multiple_hits: config.multipleHits || 'None',
 					srv: config.srv || 'Yes',
 					blb: config.blb || 1.0
@@ -371,7 +497,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 				return {
 					...baseParams,
 					// Map BUSTED-specific parameters to backend format
-					branches: config.branchesToTest || 'All',
+					branches: config.branchesToTest === 'Interactive' ? 'FG' : (config.branchesToTest || 'All'),
 					srv: config.srv || 'Yes',
 					'error-sink':
 						errorSinkValue === true
@@ -390,10 +516,10 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 				// Contrast-FEL uses branch-set as an array for multiple sets
 				const branchSets = [];
 				if (config.branchSet1 || config['branch-set1']) {
-					branchSets.push(config.branchSet1 || config['branch-set1'] || 'Set_1');
+					branchSets.push(config.branchSet1 || config['branch-set1'] || 'Set1');
 				}
 				if (config.branchSet2 || config['branch-set2']) {
-					branchSets.push(config.branchSet2 || config['branch-set2'] || 'Set_2');
+					branchSets.push(config.branchSet2 || config['branch-set2'] || 'Set2');
 				}
 
 				return {
@@ -403,18 +529,31 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 					permutations: config.permutations === 'Yes' ? 'Yes' : 'No',
 					pvalue: config.pvalue || config.pValueThreshold || 0.05,
 					qvalue: config.qvalue || config.qValueThreshold || 0.2,
-					'branch-set': branchSets.length > 0 ? branchSets : ['Set_1', 'Set_2'],
+					'branch-set': branchSets.length > 0 ? branchSets : ['Set1', 'Set2'],
 					output: config.output || ''
 				};
 
 			case 'gard':
 				// Map frontend rv to backend site_to_site_variation
 				const rvMap = { None: 'none', GDD: 'general_discrete', Gamma: 'beta_gamma' };
+				const gardDatatype = config.datatype || 'nucleotide';
+				let gardModel = config.model || 'GTR';
+
+				// Safety net: validate model is compatible with datatype
+				const nucleotideModels = ['GTR', 'HKY85', 'TN93', 'JC69'];
+				const proteinModels = ['JTT', 'WAG', 'LG', 'Dayhoff'];
+				if ((gardDatatype === 'nucleotide' || gardDatatype === 'codon') && !nucleotideModels.includes(gardModel)) {
+					console.warn(`GARD: Model "${gardModel}" incompatible with ${gardDatatype} data, falling back to GTR`);
+					gardModel = 'GTR';
+				} else if (gardDatatype === 'protein' && !proteinModels.includes(gardModel)) {
+					console.warn(`GARD: Model "${gardModel}" incompatible with protein data, falling back to JTT`);
+					gardModel = 'JTT';
+				}
+
 				return {
 					...baseParams,
-					// Map GARD-specific parameters to backend format
-					datatype: config.datatype || 'codon',
-					model: config.model || 'JTT',
+					datatype: gardDatatype,
+					model: gardModel,
 					run_mode: config.mode || 'Normal',
 					site_to_site_variation: rvMap[config.rv] || 'none',
 					rate_classes: config.rate_classes || 4,
@@ -452,6 +591,15 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 					'kill-zero-lengths': config.killZeroLengths || config['kill-zero-lengths'] || 'No'
 				};
 
+			case 'prime':
+				return {
+					...baseParams,
+					// Map PRIME-specific parameters to backend format
+					branches: config.branchesToTest === 'Interactive' ? 'FG' : (config.branchesToTest || 'All'),
+					'property-set': config.propertySet || '5PROP',
+					pvalue: config.pValueThreshold || 0.1,
+					'impute-states': config.imputeStates || 'No'
+				};
 			default:
 				return baseParams;
 		}

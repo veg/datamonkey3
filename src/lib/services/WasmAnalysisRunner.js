@@ -7,6 +7,21 @@ import { BaseAnalysisRunner } from './BaseAnalysisRunner.js';
 import { aioliStore } from '../../stores/aioli.js';
 import { get } from 'svelte/store';
 import { getCachedOrCompute, generateAnalysisKey } from '../utils/cacheUtils.js';
+import { sanitizeSequenceNames } from '../utils/fastaValidation.js';
+import { safeParseJSON } from '../utils/jsonUtils.js';
+
+/**
+ * hyphy-analyses custom analyses that are NOT packed into the WASM /res/ image.
+ * These `.bf` files are vendored under static/hyphy-analyses/ and mounted into the
+ * WASM filesystem at runtime (their libv3/SelectionAnalyses/TemplateModels
+ * dependencies are already present in the packed image). Keyed by lowercased method.
+ */
+const CUSTOM_ANALYSIS_BATCH_FILES = {
+	nrm: {
+		url: '/hyphy-analyses/NucleotideNonREV/NRM.bf',
+		fileName: 'NRM.bf'
+	}
+};
 
 /**
  * Strip embedded trees from alignment data
@@ -99,8 +114,8 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 			console.log('No tree data provided');
 		}
 
-		// Validate input using base class method
-		this.validateInput(fastaData, treeData, method);
+		// Validate input using base class method (includes codon alignment check)
+		this.validateInput(fastaData, treeData, method, config);
 
 		// Ensure WASM is initialized
 		await this.initialize();
@@ -165,30 +180,59 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 		// Strip any embedded trees from alignment data (NEXUS or FASTA)
 		const cleanedFastaData = stripEmbeddedTrees(fastaData);
 
+		// Sanitize sequence names to remove characters invalid in Newick format
+		const { sanitizedFasta, sanitizedTree } = sanitizeSequenceNames(
+			cleanedFastaData,
+			treeData
+		);
+
 		// Create temporary file from cleaned FASTA data
-		const inputFile = new File([cleanedFastaData], 'user.nex', { type: 'text/plain' });
+		const inputFile = new File([sanitizedFasta], 'user.nex', { type: 'text/plain' });
 
 		// Prepare files to mount
-		const filesToMount = [{ name: 'user.nex', data: cleanedFastaData }];
+		const filesToMount = [{ name: 'user.nex', data: sanitizedFasta }];
 
 		// Add tree file if provided
-		if (treeData && treeData.trim()) {
+		if (sanitizedTree && sanitizedTree.trim()) {
 			console.log('🌳 TREE DEBUG - Tree data being mounted:');
-			console.log('Tree length:', treeData.length);
+			console.log('Tree length:', sanitizedTree.length);
 			console.log(
 				'Tree content (first 200 chars):',
-				treeData.substring(0, 200) + (treeData.length > 200 ? '...' : '')
+				sanitizedTree.substring(0, 200) + (sanitizedTree.length > 200 ? '...' : '')
 			);
-			console.log('Tree has {FG} tags:', treeData.includes('{FG}'));
+			console.log('Tree has {FG} tags:', sanitizedTree.includes('{FG}'));
 			console.log('🌳🔥 FULL TREE FILE CONTENTS BEING WRITTEN TO /shared/data/user.tree:');
 			console.log('=== START TREE FILE ===');
-			console.log(treeData);
+			console.log(sanitizedTree);
 			console.log('=== END TREE FILE ===');
-			filesToMount.push({ name: 'user.tree', data: treeData });
+			filesToMount.push({ name: 'user.tree', data: sanitizedTree });
+		}
+
+		// Some analyses (e.g. NRM) are hyphy-analyses custom batch files that are NOT
+		// packed into the WASM /res/ image. Vendor them under static/hyphy-analyses/
+		// and mount the required one at runtime. All of their LoadFunctionLibrary
+		// dependencies (libv3/*, SelectionAnalyses/modules/*, TemplateModels/*) ARE
+		// already in /res/, so only the top-level .bf needs mounting.
+		const customAnalysisPath = CUSTOM_ANALYSIS_BATCH_FILES[method.toLowerCase()];
+		let mountedCustomBatchFile = null;
+		if (customAnalysisPath) {
+			const bfResponse = await fetch(customAnalysisPath.url);
+			if (!bfResponse.ok) {
+				throw new Error(
+					`Failed to fetch custom analysis batch file for ${method}: ${customAnalysisPath.url} (${bfResponse.status})`
+				);
+			}
+			const bfText = await bfResponse.text();
+			filesToMount.push({ name: customAnalysisPath.fileName, data: bfText });
 		}
 
 		// Mount the files
 		const inputFiles = await cliObj.mount(filesToMount);
+
+		// The custom batch file (if any) is the last entry we pushed onto filesToMount.
+		if (customAnalysisPath) {
+			mountedCustomBatchFile = inputFiles[inputFiles.length - 1];
+		}
 
 		this.updateProgress(analysisId, 'running', 20, 'Building analysis command...');
 
@@ -197,8 +241,15 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 		args.push(`--alignment ${inputFiles[0]}`);
 
 		// Add tree argument if tree data was provided
-		if (treeData && treeData.trim()) {
+		if (sanitizedTree && sanitizedTree.trim()) {
 			args.push(`--tree ${inputFiles[1]}`);
+		}
+
+		// NRM (nucleotide non-reversibility) writes its JSON to <alignment>.NRM.json by
+		// default; pass --output explicitly so the result path matches what we download
+		// below, regardless of how the batch file derives its default.
+		if (method.toLowerCase() === 'nrm') {
+			args.push(`--output ${inputFiles[0]}.NRM.json`);
 		}
 
 		// Map configuration parameters to HyPhy command line arguments
@@ -213,7 +264,8 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 				key !== 'branchSet1' &&
 				key !== 'branchSet2' &&
 				key !== 'testBranches' &&
-				key !== 'referenceBranches'
+				key !== 'referenceBranches' &&
+				key !== 'variant'
 			) {
 				// Handle specific FEL parameter mappings
 				if (key === 'branchesToTest') {
@@ -234,13 +286,25 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 							console.log('🌳 WASM - Converting Interactive to FG for HyPhy');
 							args.push(`--branches FG`);
 						}
-					} else if (value && value !== 'All') {
-						// For other values like 'Internal', 'Leaves', etc., pass them directly
-						args.push(`--branches ${value}`);
+					} else {
+						// Always pass --branches explicitly (including 'All') to avoid
+						// stale state issues with Emscripten's callMain between invocations
+						args.push(`--branches ${value || 'All'}`);
 					}
-					// Skip 'All' since it's the default
+				} else if (key === 'propertySet') {
+					// PRIME property set parameter
+					args.push(`--property-set ${value}`);
+				} else if (key === 'imputeStates') {
+					// PRIME impute states parameter
+					args.push(`--impute-states ${value}`);
 				} else if (key === 'geneticCode') {
-					// Use genetic code string value directly for HyPhy
+					// Pass the descriptive string value (HyPhy WASM does not accept the
+					// numeric code id on the CLI). Known limitation: aioli's exec() does
+					// a plain command.split(' '), so multi-word names like
+					// 'Vertebrate mitochondrial' get split into '--code Vertebrate' +
+					// stray 'mitochondrial' and HyPhy rejects the truncated value. The
+					// proper fix is to refactor args into an array passed to
+					// cliObj.exec(cmd, argsArray) — tracked separately.
 					console.log('🧬 WASM - Using genetic code:', value);
 					args.push(`--code ${value}`);
 				} else if (key === 'srv') {
@@ -353,18 +417,38 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 			}
 		}
 
-		// Map method names to HyPhy command names
-		const methodCommandMap = {
-			'multi-hit': 'fmm',
-			multihit: 'fmm',
-			'MULTI-HIT': 'fmm',
-			nrm: 'NRM',
-			NRM: 'NRM'
+		// Map method names to HyPhy batch file paths (relative to LIBPATH/TemplateBatchFiles/)
+		// Using explicit paths avoids issues with method name resolution across multiple callMain invocations
+		const methodBatchFileMap = {
+			'multi-hit': 'SelectionAnalyses/FitMultiModel.bf',
+			multihit: 'SelectionAnalyses/FitMultiModel.bf',
+			'MULTI-HIT': 'SelectionAnalyses/FitMultiModel.bf',
+			absrel: 'SelectionAnalyses/aBSREL.bf',
+			bgm: 'BGM.bf',
+			busted: 'SelectionAnalyses/BUSTED.bf',
+			'contrast-fel': 'SelectionAnalyses/contrast-fel.bf',
+			fade: 'SelectionAnalyses/FADE.bf',
+			fel: 'SelectionAnalyses/FEL.bf',
+			fubar: 'SelectionAnalyses/FUBAR.bf',
+			gard: 'GARD.bf',
+			meme: 'SelectionAnalyses/MEME.bf',
+			prime: 'SelectionAnalyses/PRIME.bf',
+			relax: 'SelectionAnalyses/RELAX.bf',
+			slac: 'SelectionAnalyses/SLAC.bf',
+			'b-still': 'SelectionAnalyses/B-STILL.bf'
 		};
-		const hyphyCommand = methodCommandMap[method] || method;
+		const methodKey = method.toLowerCase();
+		const batchFile = methodBatchFileMap[methodKey];
+		// Custom analyses run from the runtime-mounted batch file path; stock analyses
+		// run from the packed /res/ tree; anything else falls back to the bare method name.
+		const hyphyCommand = mountedCustomBatchFile
+			? mountedCustomBatchFile
+			: batchFile
+				? `/res/TemplateBatchFiles/${batchFile}`
+				: methodKey;
 
 		// Build and execute the command
-		const fullHyphyCommand = `hyphy LIBPATH=/shared/hyphy/ ${hyphyCommand} ${args.join(' ')}`;
+		const fullHyphyCommand = `hyphy LIBPATH=/res/ ${hyphyCommand} ${args.join(' ')}`;
 		console.log(`Executing HyPhy command: ${fullHyphyCommand}`);
 
 		this.updateProgress(analysisId, 'running', 40, `Executing ${method} analysis...`);
@@ -374,7 +458,7 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 		const stdout = await cmdResult.stdout;
 
 		// Add command execution details to stdout for debugging
-		const commandInfo = `\n=== HyPhy Command Execution ===\nCommand: ${fullHyphyCommand}\nFiles mounted: ${filesToMount.map((f) => f.name).join(', ')}\nTree data provided: ${treeData && treeData.trim() ? 'Yes' : 'No'}\n================================\n\n`;
+		const commandInfo = `\n=== HyPhy Command Execution ===\nCommand: ${fullHyphyCommand}\nFiles mounted: ${filesToMount.map((f) => f.name).join(', ')}\nTree data provided: ${sanitizedTree && sanitizedTree.trim() ? 'Yes' : 'No'}\n================================\n\n`;
 		const enhancedStdout = commandInfo + stdout;
 
 		// Check for common HyPhy errors
@@ -392,6 +476,15 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 			}
 		}
 
+		// Check for tree-related errors
+		if (stdout.includes('Illegal right hand side in call to Topology') ||
+			stdout.includes('tree string is invalid') ||
+			stdout.includes('Newick tree spec')) {
+			throw new Error(
+				'Tree format error. Please select "Inferred NJ tree" in the Analyze tab, or upload a valid Newick tree file.'
+			);
+		}
+
 		this.updateProgress(analysisId, 'processing', 80, 'Processing results...');
 
 		// Map method names to their result file extensions
@@ -399,8 +492,8 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 			'multi-hit': 'FITTER',
 			multihit: 'FITTER',
 			'MULTI-HIT': 'FITTER',
-			nrm: 'NRM',
-			NRM: 'NRM'
+			'b-still': 'FUBAR-inv',
+			'B-STILL': 'FUBAR-inv'
 		};
 		const resultFileSuffix = resultFileMap[method] || method.toUpperCase();
 
@@ -409,7 +502,17 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 		const response = await fetch(jsonBlob);
 		const blob = await response.blob();
 		const jsonText = await blob.text();
-		const jsonData = JSON.parse(jsonText);
+
+		// Guard against HTML responses (e.g. dev-server 404 when HyPhy produced no result file).
+		// Without this, safeParseJSON surfaces the raw V8 message ("Unexpected token '<', \"<!doctype...\"")
+		// which is meaningless to users and noisy in telemetry.
+		if (jsonText.trim().startsWith('<!') || jsonText.trim().startsWith('<html')) {
+			throw new Error(
+				`HyPhy ${method} analysis did not produce a result file. Check the analysis output for errors.`
+			);
+		}
+
+		const jsonData = safeParseJSON(jsonText);
 
 		this.updateProgress(analysisId, 'saving', 95, 'Saving results...');
 
@@ -445,7 +548,8 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 				key !== 'branchSet1' &&
 				key !== 'branchSet2' &&
 				key !== 'testBranches' &&
-				key !== 'referenceBranches'
+				key !== 'referenceBranches' &&
+				key !== 'variant'
 			) {
 				// Handle specific FEL parameter mappings
 				if (key === 'branchesToTest') {
@@ -459,13 +563,25 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 						} else {
 							args.push(`--branches FG`);
 						}
-					} else if (value && value !== 'All') {
-						// For other values like 'Internal', 'Leaves', etc., pass them directly
-						args.push(`--branches ${value}`);
+					} else {
+						// Always pass --branches explicitly (including 'All') to avoid
+						// stale state issues with Emscripten's callMain between invocations
+						args.push(`--branches ${value || 'All'}`);
 					}
-					// Skip 'All' since it's the default
+				} else if (key === 'propertySet') {
+					// PRIME property set parameter
+					args.push(`--property-set ${value}`);
+				} else if (key === 'imputeStates') {
+					// PRIME impute states parameter
+					args.push(`--impute-states ${value}`);
 				} else if (key === 'geneticCode') {
-					// Use genetic code string value directly for HyPhy
+					// Pass the descriptive string value (HyPhy WASM does not accept the
+					// numeric code id on the CLI). Known limitation: aioli's exec() does
+					// a plain command.split(' '), so multi-word names like
+					// 'Vertebrate mitochondrial' get split into '--code Vertebrate' +
+					// stray 'mitochondrial' and HyPhy rejects the truncated value. The
+					// proper fix is to refactor args into an array passed to
+					// cliObj.exec(cmd, argsArray) — tracked separately.
 					console.log('🧬 WASM - Using genetic code:', value);
 					args.push(`--code ${value}`);
 				} else if (key === 'srv') {
@@ -568,7 +684,7 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 		}
 
 		return {
-			command: `hyphy LIBPATH=/shared/hyphy/ ${method} ${args.join(' ')}`,
+			command: `hyphy LIBPATH=/res/ ${method.toLowerCase()} ${args.join(' ')}`,  // Preview shows method name for readability
 			method: method.toUpperCase(),
 			parameters: config,
 			treeData: treeData

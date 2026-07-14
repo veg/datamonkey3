@@ -3,7 +3,6 @@
 	import { analysisStore } from '../stores/analyses';
 	import { persistentFileStore } from '../stores/fileInfo';
 	import ExportPanel from './ExportPanel.svelte';
-	import EnhancedExportPanel from './EnhancedExportPanel.svelte';
 	import FelVisualization from './FelVisualization.svelte';
 	import AnalysisProgress from './AnalysisProgress.svelte';
 	import { FINAL_HYPHY_EYE_URL } from './config/env';
@@ -12,6 +11,7 @@
 		isMethodSupported,
 		getHyphyEyeUrl
 	} from './utils/hyphyEyeIntegration';
+	import { safeParseJSON } from './utils/jsonUtils';
 	import {
 		FelVisualization as HyphyScopeFel,
 		SimpleFelVisualization,
@@ -22,11 +22,13 @@
 		BgmVisualization,
 		FadeVisualization,
 		GardVisualization,
-		FubarVisualization
+		FubarVisualization,
+		PrimeVisualization
 	} from 'hyphy-scope';
 	import AbsrelVisualizationWrapper from './AbsrelVisualizationWrapper.svelte';
 	import FubarVisualizationWrapper from './FubarVisualizationWrapper.svelte';
 	import MultiHitVisualizationWrapper from './MultiHitVisualizationWrapper.svelte';
+	import { Server, Monitor, ExternalLink } from 'lucide-svelte';
 
 	export let analysisId = null;
 
@@ -45,23 +47,8 @@
 		error = null;
 
 		try {
-			// Try to get analysis from server first (most up-to-date status)
-			try {
-				const response = await fetch(`/api/analyses/${id}`);
-				if (response.ok) {
-					const serverAnalysis = await response.json();
-					// Update local store with server data to keep them in sync
-					await analysisStore.updateAnalysis(id, serverAnalysis);
-					analysis = serverAnalysis;
-				} else {
-					// Fall back to local storage if server request fails
-					analysis = await analysisStore.getAnalysis(id);
-				}
-			} catch (err) {
-				console.warn('Server fetch failed, using local data:', err);
-				// Fall back to local storage
-				analysis = await analysisStore.getAnalysis(id);
-			}
+			// Get analysis from local IndexedDB storage
+			analysis = await analysisStore.getAnalysis(id);
 
 			if (!analysis) {
 				error = 'Analysis not found';
@@ -91,7 +78,7 @@
 				try {
 					// Check if result is already an object (from backend) or needs parsing (from WebAssembly)
 					if (typeof analysis.result === 'string') {
-						resultData = JSON.parse(analysis.result);
+						resultData = safeParseJSON(analysis.result);
 					} else {
 						// Already parsed object from backend
 						resultData = analysis.result;
@@ -144,6 +131,8 @@
 			case 'slac':
 				return SlacVisualization;
 			case 'fubar':
+			case 'b-still':
+			case 'bstill':
 				return FubarVisualizationWrapper;
 			case 'bgm':
 				return BgmVisualization;
@@ -154,10 +143,11 @@
 			case 'multi-hit':
 			case 'multihit':
 				return MultiHitVisualizationWrapper;
-		case 'nrm':
-			// NRM doesn't have a hyphy-scope visualization yet - will fall back to raw results
-			return null;
-
+			case 'nrm':
+				// NRM doesn't have a hyphy-scope visualization yet - will fall back to raw results
+				return null;
+			case 'prime':
+				return PrimeVisualization;
 			default:
 				return null;
 		}
@@ -187,21 +177,28 @@
 	});
 </script>
 
-<div class="analysis-viewer">
+<div class="analysis-viewer" data-testid="analysis-viewer">
 	{#if loading}
 		<div class="flex flex-col items-center justify-center p-8">
 			<div class="loader mb-4"></div>
 			<p>Loading analysis results...</p>
 		</div>
 	{:else if error}
-		<div class="error-container p-4 text-status-error">
-			<h3 class="font-bold">Error</h3>
-			<p>{error}</p>
+		<div class="error-container flex flex-col items-center rounded-2xl bg-gradient-to-b from-red-50 to-white p-8 text-center">
+			<div class="mb-5 overflow-hidden rounded-xl shadow-sm">
+				<img
+					src="/img/mascot-error.png"
+					alt="Datamonkey mascot encountered an error"
+					class="h-36 w-auto opacity-60"
+				/>
+			</div>
+			<h3 class="mb-2 text-lg font-semibold text-text-rich">Something went wrong</h3>
+			<p class="max-w-md text-status-error-text">{error}</p>
 		</div>
 	{:else if analysis && file}
 		<div class="analysis-container">
-			<!-- Enhanced Export panel with options -->
-			<EnhancedExportPanel {analysisId} />
+			<!-- Export panel with options -->
+			<ExportPanel {analysisId} />
 
 			<div class="bg-surface-sunken p-4">
 				<div class="flex items-center justify-between">
@@ -226,22 +223,12 @@
 						<span class="font-medium">
 							{#if analysis.metadata?.executionMode === 'backend'}
 								<span class="inline-flex items-center text-status-info">
-									<svg class="mr-1 h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
-										<path
-											d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"
-										/>
-									</svg>
+									<Server class="mr-1 h-3 w-3" />
 									Server
 								</span>
 							{:else if analysis.metadata?.executionMode === 'wasm'}
 								<span class="inline-flex items-center text-brand-royal">
-									<svg class="mr-1 h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
-										<path
-											fill-rule="evenodd"
-											d="M3 5a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2h-2.22l.123.489.804.804A1 1 0 0113 18H7a1 1 0 01-.707-1.707l.804-.804L7.22 15H5a2 2 0 01-2-2V5zm5.771 7H5V5h10v7H8.771z"
-											clip-rule="evenodd"
-										/>
-									</svg>
+									<Monitor class="mr-1 h-3 w-3" />
 									Local (WebAssembly)
 								</span>
 							{:else}
@@ -399,23 +386,10 @@
 									<p class="mb-2 text-status-info-text">View results with automatic data sharing:</p>
 									<button
 										on:click={() => shareWithHyphyEye(resultData, analysis.method)}
-										class="inline-block rounded-md bg-brand-royal px-4 py-2 text-white transition-colors hover:bg-brand-deep"
+										class="inline-flex items-center rounded-md bg-brand-royal px-4 py-2 text-white transition-colors hover:bg-brand-deep"
 									>
 										View in HyPhy-eye
-										<svg
-											xmlns="http://www.w3.org/2000/svg"
-											class="ml-1 inline-block h-4 w-4"
-											fill="none"
-											viewBox="0 0 24 24"
-											stroke="currentColor"
-										>
-											<path
-												stroke-linecap="round"
-												stroke-linejoin="round"
-												stroke-width="2"
-												d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-											/>
-										</svg>
+										<ExternalLink class="ml-1 h-4 w-4" />
 									</button>
 									<p class="mt-2 text-sm text-brand-royal">
 										Analysis results will be automatically shared via localStorage.
@@ -430,23 +404,10 @@
 											.replace('-', '')}"
 										target="_blank"
 										rel="noopener noreferrer"
-										class="inline-block rounded-md bg-brand-royal px-4 py-2 text-white transition-colors hover:bg-brand-deep"
+										class="inline-flex items-center rounded-md bg-brand-royal px-4 py-2 text-white transition-colors hover:bg-brand-deep"
 									>
 										Open {analysis.method.toUpperCase()} Results in hyphy-eye
-										<svg
-											xmlns="http://www.w3.org/2000/svg"
-											class="ml-1 inline-block h-4 w-4"
-											fill="none"
-											viewBox="0 0 24 24"
-											stroke="currentColor"
-										>
-											<path
-												stroke-linecap="round"
-												stroke-linejoin="round"
-												stroke-width="2"
-												d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-											/>
-										</svg>
+										<ExternalLink class="ml-1 h-4 w-4" />
 									</a>
 									<p class="mt-2 text-sm text-text-slate">
 										Note: You will need to upload your result JSON to hyphy-eye manually.

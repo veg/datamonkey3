@@ -82,9 +82,16 @@ function checkTreeString (treeS, treeID) {
         notify("info", "Aminoacid translation in " + BASE_CGI_URL_STRING + "showdata.pl?" + filePath + ".aa'");
       }
     }
-	if (Abs(treeS))
+	// Only attempt to parse tree if it's a String containing valid Newick
+	// DATAFILE_TREE can be "{}" (AssociativeList) for files without trees
+	// Must use nested ifs because HyPhy doesn't short-circuit && operator
+	if (Type(treeS) == "String")
 	{
-		Topology t 	= treeS;
+		if (Abs(treeS) > 0)
+		{
+			if ((treeS $ "\\(")[0] >= 0)
+			{
+				Topology t 	= treeS;
 		leafCount 	= TipCount (t) - Abs (removedSequences);
 		
 		internalLabels = {};
@@ -166,9 +173,11 @@ function checkTreeString (treeS, treeID) {
 				
 			}
 		}
-		else
+			else
 		{
-      notify(warning, "A tree (#" + treeID + ") was found in the data file, but the number of leaves (" + leafCount + ") did not match the number of sequences in the file.");
+			notify("warning", "A tree (#" + treeID + ") was found in the data file, but the number of leaves (" + leafCount + ") did not match the number of sequences in the file.");
+		}
+			}
 		}
 	}
 	return "";
@@ -502,7 +511,7 @@ if (Abs(renameSequenceWarning))
 if (padWarning)
 {
   notify("warning", "It appears that some of the sequences were of unequal length and were padded by HyPhy. This could be because unaligned sequences were uploaded or non-standard characters were used to mark gaps ('-' and '?' are allowed; but '~' (BioEdit) and '_' for example, are not)." +
-					 "Always use the standard IUPAC-IUB character table (http://en.wikipedia.org/wiki/Nucleic_acid_notation#IUPAC_notation) to prepare the alignment for DataMonkey.org.");
+					 "Always use the standard IUPAC-IUB character table (http://en.wikipedia.org/wiki/Nucleic_acid_notation#IUPAC_notation) to prepare the alignment for Datamonkey.org.");
 }
 
 /* convert to AA */
@@ -584,6 +593,16 @@ file_info_record ["sites"] = filteredData.sites;
 
 DataSetFilter filteredData = CreateFilter (ds,1);
 
+/* Always emit a canonical FASTA so the JS layer has a single known format
+   to submit downstream, regardless of what the user uploaded (PHYLIP, MEGA,
+   CLUSTAL, NEXUS, FASTA all collapse to the same shape here).
+   DATA_FILE_PRINT_FORMAT = 9 is "FASTA sequential" per HyPhy's ConvertDataFile.bf
+   (note: 6 is NEXUS sequential, not FASTA — the legacy rewrite at line 583
+   above uses 6 because it re-reads with ReadDataFile's autodetection, but
+   we need real FASTA for the JS layer that doesn't autodetect). */
+DATA_FILE_PRINT_FORMAT = 9;
+fprintf("/shared/data/user.fasta", CLEAR_FILE, filteredData);
+
 if (buildNJtree) {
   InferTreeTopology(1.0);
   treeString 		= TreeMatrix2TreeString (1);
@@ -593,9 +612,15 @@ if (buildNJtree) {
 
 file_info_record["sequences"] = filteredData.species;
 file_info_record["timestamp"] = Format(Time(1),20,0);
-file_info_record["goodtree"] = goodTree; 
-file_info_record["nj"] = treeString; 
+file_info_record["goodtree"] = goodTree;
+file_info_record["nj"] = treeString;
 file_info_record["rawsites"] = filteredData.sites;
+
+// Validation details - expose what datareader detected for UI display
+file_info_record["duplicate_sequences"] = dupSeqCount;
+file_info_record["sequences_renamed"] = renames;
+file_info_record["ambiguous_sites"] = padWarning;
+file_info_record["stop_codons_stripped"] = terminalCodonsStripped;
 
 sequence_records = {};
 GetString(seqNames, filteredData, -1);

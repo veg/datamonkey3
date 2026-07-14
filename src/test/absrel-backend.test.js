@@ -1,11 +1,11 @@
 /**
- * Manual test for DataMonkey ABSREL backend integration
+ * Manual test for Datamonkey ABSREL backend integration
  *
- * This test requires a running DataMonkey server on localhost:7015
+ * This test requires a running Datamonkey server on localhost:7015
  * Run with: npm run test:absrel-backend
  *
  * This test is excluded from CI/automated testing since it requires
- * an external DataMonkey server to be running.
+ * an external Datamonkey server to be running.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -48,7 +48,7 @@ const SERVER_URL = 'http://localhost:7015';
 const CONNECTION_TIMEOUT = 5000; // 5 seconds
 const ANALYSIS_TIMEOUT = 300000; // 5 minutes
 
-describe('DataMonkey ABSREL Backend Integration', () => {
+describe('Datamonkey ABSREL Backend Integration', () => {
 	let socket;
 	let isServerAvailable = false;
 
@@ -68,7 +68,7 @@ describe('DataMonkey ABSREL Backend Integration', () => {
 				socket.on('connect', () => {
 					clearTimeout(timeout);
 					isServerAvailable = true;
-					console.log('✅ DataMonkey server is available');
+					console.log('✅ Datamonkey server is available');
 					resolve();
 				});
 
@@ -78,9 +78,9 @@ describe('DataMonkey ABSREL Backend Integration', () => {
 				});
 			});
 		} catch (error) {
-			console.log('⚠️  DataMonkey server not available, skipping tests');
+			console.log('⚠️  Datamonkey server not available, skipping tests');
 			console.log('   To run these tests:');
-			console.log('   1. Start DataMonkey server on localhost:7015');
+			console.log('   1. Start Datamonkey server on localhost:7015');
 			console.log('   2. Run: npm run test:absrel-backend');
 			console.log(`   Error: ${error.message}`);
 		}
@@ -92,7 +92,7 @@ describe('DataMonkey ABSREL Backend Integration', () => {
 		}
 	});
 
-	it('should connect to DataMonkey server', async () => {
+	it('should connect to Datamonkey server', async () => {
 		if (!isServerAvailable) {
 			console.log('Skipping test - server not available');
 			return;
@@ -335,7 +335,7 @@ export class ABSRELBackendTester {
 
 			this.socket.on('connect', () => {
 				clearTimeout(timeout);
-				console.log('✅ Connected to DataMonkey server');
+				console.log('✅ Connected to Datamonkey server');
 				this.setupEventHandlers();
 				resolve();
 			});

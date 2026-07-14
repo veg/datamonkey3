@@ -66,7 +66,7 @@ AGTGGGACCGTCTGGGGTGCCCTGGGTCATGGCATCAACCTGGACATCCCTAAGCTGGGCAACGTGACCGGTTATGCCAA
 			isConnected = true;
 			statusMessages = [
 				...statusMessages,
-				{ msg: 'Connected to DataMonkey server', type: 'success' }
+				{ msg: 'Connected to Datamonkey server', type: 'success' }
 			];
 		});
 
@@ -203,11 +203,11 @@ AGTGGGACCGTCTGGGGTGCCCTGGGTCATGGCATCAACCTGGACATCCCTAAGCTGGGCAACGTGACCGGTTATGCCAA
 </script>
 
 <svelte:head>
-	<title>DataMonkey GARD Analysis Demo</title>
+	<title>Datamonkey GARD Analysis Demo</title>
 </svelte:head>
 
 <div class="container mx-auto max-w-6xl p-6">
-	<h1 class="mb-6 text-3xl font-bold text-gray-900">DataMonkey GARD Analysis Demo</h1>
+	<h1 class="mb-6 text-3xl font-bold text-gray-900">Datamonkey GARD Analysis Demo</h1>
 
 	<div class="mb-4 rounded-lg bg-blue-50 p-4">
 		<h2 class="text-lg font-semibold text-blue-800">About GARD</h2>

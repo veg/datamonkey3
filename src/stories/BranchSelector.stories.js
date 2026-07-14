@@ -1,4 +1,5 @@
 import BranchSelector from '../lib/BranchSelector.svelte';
+import BranchSelectorWithExport from './BranchSelectorWithExport.svelte';
 
 export default {
 	title: 'Components/BranchSelector',
@@ -7,7 +8,7 @@ export default {
 		docs: {
 			description: {
 				component:
-					'Interactive phylogenetic tree with branch selection capabilities for FEL analysis'
+					'Interactive phylogenetic tree with branch selection capabilities for analysis methods like FEL, SLAC, Contrast-FEL, and RELAX'
 			}
 		}
 	},
@@ -18,16 +19,21 @@ export default {
 		},
 		selectedBranches: {
 			control: 'object',
-			description: 'Array of currently selected branch objects'
+			description: 'Array of branch names or objects with name/id for initial selection'
 		},
 		selectionMode: {
 			control: { type: 'select' },
 			options: ['foreground', 'background'],
-			description: 'Type of branch selection (foreground for positive selection testing)'
+			description: 'Type of branch selection (maps to single-set mode internally)'
+		},
+		mode: {
+			control: { type: 'select' },
+			options: ['single-set', 'multi-set'],
+			description: 'Selection mode: single-set for FG/BG, multi-set for Contrast-FEL/RELAX'
 		},
 		allowMultiSelect: {
 			control: 'boolean',
-			description: 'Allow multiple branch selection'
+			description: 'Allow multiple branch selection (single-set mode only)'
 		},
 		disabled: {
 			control: 'boolean',
@@ -36,6 +42,14 @@ export default {
 		height: {
 			control: { type: 'range', min: 200, max: 800, step: 50 },
 			description: 'Height of the tree container in pixels'
+		},
+		width: {
+			control: { type: 'range', min: 400, max: 1200, step: 50 },
+			description: 'Width of the tree container in pixels'
+		},
+		initialSetNames: {
+			control: 'object',
+			description: 'Custom set names for multi-set mode (e.g., ["TEST", "REFERENCE"] for RELAX)'
 		}
 	}
 };
@@ -67,19 +81,18 @@ Default.args = {
 	treeData: sampleTreeData,
 	selectedBranches: [],
 	selectionMode: 'foreground',
+	mode: 'single-set',
 	allowMultiSelect: true,
 	disabled: false,
-	height: 400
+	height: 400,
+	width: 800
 };
 
-// With preselected branches
+// With preselected branches (using actual node names from tree)
 export const WithPreselection = Template.bind({});
 WithPreselection.args = {
 	...Default.args,
-	selectedBranches: [
-		{ id: 'Branch_1', name: 'Branch 1' },
-		{ id: 'Branch_3', name: 'Branch 3' }
-	]
+	selectedBranches: ['HUMAN', 'CHIMP', 'BABOON']
 };
 
 // Background selection mode
@@ -87,6 +100,22 @@ export const BackgroundMode = Template.bind({});
 BackgroundMode.args = {
 	...Default.args,
 	selectionMode: 'background'
+};
+
+// Multi-set mode (for Contrast-FEL)
+export const MultiSetMode = Template.bind({});
+MultiSetMode.args = {
+	...Default.args,
+	mode: 'multi-set',
+	initialSetNames: null // Will default to Set_1, Set_2
+};
+
+// RELAX mode with TEST/REFERENCE sets
+export const RelaxMode = Template.bind({});
+RelaxMode.args = {
+	...Default.args,
+	mode: 'multi-set',
+	initialSetNames: ['TEST', 'REFERENCE']
 };
 
 // Larger tree
@@ -102,10 +131,7 @@ export const Disabled = Template.bind({});
 Disabled.args = {
 	...Default.args,
 	disabled: true,
-	selectedBranches: [
-		{ id: 'Branch_1', name: 'Branch 1' },
-		{ id: 'Branch_2', name: 'Branch 2' }
-	]
+	selectedBranches: ['HUMAN', 'CHIMP']
 };
 
 // No tree data
@@ -144,11 +170,10 @@ export const InteractiveDemo = {
 		props: args,
 		on: {
 			selectionChange: (event) => {
-				// Update the args to reflect the change
-				args.selectedBranches = event.detail.branches;
 				console.log('Demo - Selection changed:', {
 					count: event.detail.count,
-					branches: event.detail.branches.map((b) => b.name || b.id)
+					selectedBranches: event.detail.selectedBranches,
+					taggedNewick: event.detail.taggedNewick?.substring(0, 100) + '...'
 				});
 			},
 			error: (event) => {
@@ -160,5 +185,41 @@ export const InteractiveDemo = {
 		...Default.args,
 		selectionMode: 'foreground',
 		height: 450
+	}
+};
+
+// Multi-set mode with visible Newick export
+const ExportTemplate = (args) => ({
+	Component: BranchSelectorWithExport,
+	props: args
+});
+
+export const MultiSetWithExport = ExportTemplate.bind({});
+MultiSetWithExport.args = {
+	...Default.args,
+	mode: 'multi-set',
+	height: 400
+};
+MultiSetWithExport.parameters = {
+	docs: {
+		description: {
+			story: 'Multi-set mode with a visible export panel showing the tagged Newick string. Use this to verify that set tags are properly applied to selected branches.'
+		}
+	}
+};
+
+// RELAX mode with export
+export const RelaxModeWithExport = ExportTemplate.bind({});
+RelaxModeWithExport.args = {
+	...Default.args,
+	mode: 'multi-set',
+	initialSetNames: ['TEST', 'REFERENCE'],
+	height: 400
+};
+RelaxModeWithExport.parameters = {
+	docs: {
+		description: {
+			story: 'RELAX analysis mode with TEST/REFERENCE sets and visible Newick export.'
+		}
 	}
 };

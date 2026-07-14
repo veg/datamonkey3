@@ -1,5 +1,6 @@
 <script>
 	import { onMount, createEventDispatcher } from 'svelte';
+	import { AlertCircle, AlertTriangle, Info, X, ChevronDown } from 'lucide-svelte';
 
 	// Props
 	export let error = null;
@@ -12,7 +13,7 @@
 
 	// Local state
 	let timer = null;
-	let isExpanded = false;
+	let isExpanded = true;
 
 	const dispatch = createEventDispatcher();
 
@@ -41,24 +42,14 @@
 		}
 	}
 
-	// Get appropriate icon based on level
-	function getIcon() {
-		switch (level) {
-			case 'error':
-				return `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
-        </svg>`;
-			case 'warning':
-				return `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
-        </svg>`;
-			case 'info':
-			default:
-				return `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zm-1 7a1 1 0 102 0v-3a1 1 0 10-2 0v3z" clip-rule="evenodd" />
-        </svg>`;
-		}
-	}
+	// Map level to icon component
+	const levelIcons = {
+		error: AlertCircle,
+		warning: AlertTriangle,
+		info: Info
+	};
+
+	$: LevelIcon = levelIcons[level] || Info;
 
 	// Handle dismissal
 	function dismiss() {
@@ -100,7 +91,7 @@
 	<div class="error-handler mb-4 rounded border p-4 shadow-sm {styles.container}" role="alert">
 		<div class="flex">
 			<div class="mr-3 flex-shrink-0 {styles.icon}">
-				{@html getIcon()}
+				<svelte:component this={LevelIcon} class="h-5 w-5" />
 			</div>
 			<div class="flex-grow">
 				<div class="flex items-start justify-between">
@@ -114,18 +105,7 @@
 							class="ml-4 inline-flex rounded p-1.5 transition-colors {styles.button} focus:outline-none focus:ring-2 focus:ring-offset-2"
 							aria-label="Dismiss"
 						>
-							<svg
-								class="h-4 w-4"
-								xmlns="http://www.w3.org/2000/svg"
-								viewBox="0 0 20 20"
-								fill="currentColor"
-							>
-								<path
-									fill-rule="evenodd"
-									d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-									clip-rule="evenodd"
-								/>
-							</svg>
+							<X class="h-4 w-4" />
 						</button>
 					{/if}
 				</div>
@@ -138,19 +118,9 @@
 							class="inline-flex items-center text-sm {styles.button} rounded px-2 py-1 transition-colors focus:outline-none"
 						>
 							<span>Details</span>
-							<svg
-								class="ml-1 h-4 w-4 transform transition-transform"
-								class:rotate-180={isExpanded}
-								xmlns="http://www.w3.org/2000/svg"
-								viewBox="0 0 20 20"
-								fill="currentColor"
-							>
-								<path
-									fill-rule="evenodd"
-									d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-									clip-rule="evenodd"
-								/>
-							</svg>
+							<ChevronDown
+								class="ml-1 h-4 w-4 transform transition-transform {isExpanded ? 'rotate-180' : ''}"
+							/>
 						</button>
 
 						{#if isExpanded}

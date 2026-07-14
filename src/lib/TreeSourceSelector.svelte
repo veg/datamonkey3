@@ -1,6 +1,9 @@
-<!-- TreeSourceSelector.svelte - Tree source selection component for Storybook -->
+<!-- TreeSourceSelector.svelte - Tree source selection component with tree previews -->
 <script>
 	import { createEventDispatcher } from 'svelte';
+	import { Upload, X, ChevronDown, ChevronUp } from '$lib/icons';
+	import PhyloTree from './phylotree.svelte';
+	import { trackEvent } from './utils/analytics.js';
 
 	const dispatch = createEventDispatcher();
 
@@ -9,24 +12,32 @@
 	export let hasInferredTree = true; // Whether NJ tree from alignment metrics exists
 	export let treeSource = 'inferred'; // 'uploaded' | 'inferred' | 'upload-new'
 	export let disabled = false;
+	export let uploadedTreeNewick = ''; // Newick string for uploaded tree
+	export let inferredTreeNewick = ''; // Newick string for NJ tree
 
 	// File upload state
 	let fileInput;
 	let uploadedFile = null;
+	let newUploadedNewick = ''; // Newick from newly uploaded file
 
-	// Status display
-	const getStatusText = () => {
+	// Preview state
+	let showUploadedPreview = false;
+	let showInferredPreview = false;
+	let showNewUploadPreview = false;
+
+	// Status display - parameters are used for Svelte reactivity tracking
+	const getStatusText = (_treeSource, _uploadedFile, _hasUploadedTree, _hasInferredTree) => {
 		if (treeSource === 'uploaded' && hasUploadedTree) {
-			return '✓ Using uploaded tree';
+			return 'Using uploaded tree';
 		} else if (treeSource === 'inferred' && hasInferredTree) {
-			return '✓ Using neighbor-joining tree from alignment metrics';
+			return 'Using neighbor-joining tree';
 		} else if (treeSource === 'upload-new') {
 			if (uploadedFile) {
-				return `✓ Ready to use ${uploadedFile.name}`;
+				return `Using ${uploadedFile.name}`;
 			}
-			return '⚪ Select tree file to upload';
+			return 'Select tree file to upload';
 		}
-		return '⚪ Select tree source';
+		return 'Select tree source';
 	};
 
 	// Event handlers
@@ -39,13 +50,27 @@
 		});
 	}
 
-	function handleFileUpload() {
+	async function handleFileUpload() {
 		const file = fileInput?.files?.[0];
 		if (file) {
 			uploadedFile = file;
+
+			// Read the file content to get Newick string
+			try {
+				const content = await file.text();
+				newUploadedNewick = content.trim();
+			} catch (e) {
+				console.error('Error reading tree file:', e);
+				newUploadedNewick = '';
+			}
+
+			// Track tree upload
+			trackEvent('tree-uploaded', { source: 'upload-new' });
+
 			dispatch('fileUploaded', {
 				file,
-				treeSource: 'upload-new'
+				treeSource: 'upload-new',
+				newick: newUploadedNewick
 			});
 			handleTreeSourceChange();
 		}
@@ -53,14 +78,35 @@
 
 	function clearUploadedFile() {
 		uploadedFile = null;
+		newUploadedNewick = '';
+		showNewUploadPreview = false;
 		if (fileInput) {
 			fileInput.value = '';
 		}
 		handleTreeSourceChange();
 	}
 
+	function toggleUploadedPreview() {
+		showUploadedPreview = !showUploadedPreview;
+	}
+
+	function toggleInferredPreview() {
+		showInferredPreview = !showInferredPreview;
+	}
+
+	function toggleNewUploadPreview() {
+		showNewUploadPreview = !showNewUploadPreview;
+	}
+
+	// Truncate Newick string for display
+	function truncateNewick(newick, maxLength = 60) {
+		if (!newick) return '';
+		if (newick.length <= maxLength) return newick;
+		return newick.substring(0, maxLength) + '...';
+	}
+
 	// Reactive statements
-	$: statusText = getStatusText();
+	$: statusText = getStatusText(treeSource, uploadedFile, hasUploadedTree, hasInferredTree);
 </script>
 
 <div class="tree-source-selector">
@@ -70,7 +116,7 @@
 			<label class="source-label">Tree Source:</label>
 			<div class="status-badge">
 				<span class="status-content">
-					Status: {statusText}
+					{statusText}
 				</span>
 			</div>
 		</div>
@@ -79,49 +125,122 @@
 	<!-- Tree Source Options -->
 	<div class="tree-source-options">
 		{#if hasUploadedTree}
+			<div class="option-block">
+				<label class="option-row">
+					<input
+						type="radio"
+						bind:group={treeSource}
+						value="uploaded"
+						on:change={handleTreeSourceChange}
+						{disabled}
+						class="option-radio"
+					/>
+					<span class="option-content">
+						<span class="option-text">Use uploaded tree</span>
+					</span>
+				</label>
+
+				{#if uploadedTreeNewick}
+					<div class="tree-preview-section">
+						<button
+							type="button"
+							class="preview-toggle"
+							on:click={toggleUploadedPreview}
+						>
+							{#if showUploadedPreview}
+								<ChevronUp class="toggle-icon" />
+								<span>Hide tree</span>
+							{:else}
+								<ChevronDown class="toggle-icon" />
+								<span>Show tree</span>
+							{/if}
+						</button>
+
+						{#if showUploadedPreview}
+							<div class="tree-preview-container">
+								<div class="newick-string">
+									<span class="newick-label">Newick:</span>
+									<code class="newick-code">{uploadedTreeNewick}</code>
+								</div>
+								<PhyloTree
+									newickString={uploadedTreeNewick}
+									height={250}
+									width={400}
+									selectable={false}
+								/>
+							</div>
+						{/if}
+					</div>
+				{/if}
+			</div>
+		{/if}
+
+		<div class="option-block">
 			<label class="option-row">
 				<input
 					type="radio"
 					bind:group={treeSource}
-					value="uploaded"
+					value="inferred"
 					on:change={handleTreeSourceChange}
-					{disabled}
+					disabled={!hasInferredTree || disabled}
 					class="option-radio"
 				/>
 				<span class="option-content">
-					<span class="option-text">Use uploaded tree</span>
+					<span class="option-text">Use neighbor-joining tree</span>
+					<span class="option-hint">(Generated from alignment)</span>
 				</span>
 			</label>
-		{/if}
 
-		<label class="option-row">
-			<input
-				type="radio"
-				bind:group={treeSource}
-				value="inferred"
-				on:change={handleTreeSourceChange}
-				disabled={!hasInferredTree || disabled}
-				class="option-radio"
-			/>
-			<span class="option-content">
-				<span class="option-text">Use neighbor-joining tree</span>
-				<span class="option-hint">(Generated during alignment file metrics)</span>
-			</span>
-		</label>
+			{#if inferredTreeNewick && hasInferredTree}
+				<div class="tree-preview-section">
+					<button
+						type="button"
+						class="preview-toggle"
+						on:click={toggleInferredPreview}
+					>
+						{#if showInferredPreview}
+							<ChevronUp class="toggle-icon" />
+							<span>Hide tree</span>
+						{:else}
+							<ChevronDown class="toggle-icon" />
+							<span>Show tree</span>
+						{/if}
+					</button>
 
-		<label class="option-row">
-			<input
-				type="radio"
-				bind:group={treeSource}
-				value="upload-new"
-				on:change={handleTreeSourceChange}
-				{disabled}
-				class="option-radio"
-			/>
-			<span class="option-content">
-				<span class="option-text">Upload a different tree</span>
-			</span>
-		</label>
+					{#if showInferredPreview}
+						<div class="tree-preview-container">
+							<div class="newick-string">
+								<span class="newick-label">Newick:</span>
+								<code class="newick-code">{inferredTreeNewick}</code>
+							</div>
+							<PhyloTree
+								newickString={inferredTreeNewick}
+								height={250}
+								width={400}
+								selectable={false}
+							/>
+						</div>
+					{/if}
+				</div>
+			{/if}
+		</div>
+
+		<div class="option-block">
+			<label class="option-row disabled">
+				<input
+					type="radio"
+					bind:group={treeSource}
+					value="upload-new"
+					on:change={handleTreeSourceChange}
+					disabled={true}
+					class="option-radio"
+				/>
+				<span class="option-content">
+					<span class="option-text">Upload a different tree</span>
+					<span class="option-hint">(Not implemented yet)</span>
+				</span>
+			</label>
+		</div>
 	</div>
 
 	<!-- File Upload Section (shown when upload-new is selected) -->
@@ -138,14 +257,7 @@
 					id="tree-file-input"
 				/>
 				<label for="tree-file-input" class="file-input-label" class:disabled>
-					<svg class="upload-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-						/>
-					</svg>
+					<Upload class="upload-icon" />
 					{#if uploadedFile}
 						<span class="file-name">{uploadedFile.name}</span>
 						<span class="file-size">({(uploadedFile.size / 1024).toFixed(1)} KB)</span>
@@ -163,17 +275,44 @@
 						class="clear-file-btn"
 						title="Remove selected file"
 					>
-						<svg class="clear-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M6 18L18 6M6 6l12 12"
-							/>
-						</svg>
+						<X class="clear-icon" />
 					</button>
 				{/if}
 			</div>
+
+			<!-- Preview for newly uploaded tree -->
+			{#if newUploadedNewick}
+				<div class="tree-preview-section">
+					<button
+						type="button"
+						class="preview-toggle"
+						on:click={toggleNewUploadPreview}
+					>
+						{#if showNewUploadPreview}
+							<ChevronUp class="toggle-icon" />
+							<span>Hide tree</span>
+						{:else}
+							<ChevronDown class="toggle-icon" />
+							<span>Show tree</span>
+						{/if}
+					</button>
+
+					{#if showNewUploadPreview}
+						<div class="tree-preview-container">
+							<div class="newick-string">
+								<span class="newick-label">Newick:</span>
+								<code class="newick-code">{newUploadedNewick}</code>
+							</div>
+							<PhyloTree
+								newickString={newUploadedNewick}
+								height={250}
+								width={400}
+								selectable={false}
+							/>
+						</div>
+					{/if}
+				</div>
+			{/if}
 		</div>
 	{/if}
 </div>
@@ -223,8 +362,14 @@
 	.tree-source-options {
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
+		gap: 8px;
 		margin-bottom: 20px;
+	}
+
+	.option-block {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
 	}
 
 	.option-row {
@@ -266,6 +411,76 @@
 		font-size: 12px;
 		color: #9ca3af;
 		font-style: italic;
+	}
+
+	/* Tree Preview Styles */
+	.tree-preview-section {
+		margin-left: 28px;
+		margin-top: 4px;
+	}
+
+	.preview-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 4px 8px;
+		background: none;
+		border: 1px solid #e5e7eb;
+		border-radius: 4px;
+		font-size: 12px;
+		color: #6b7280;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.preview-toggle:hover {
+		background: #f9fafb;
+		border-color: #d1d5db;
+		color: #374151;
+	}
+
+	:global(.toggle-icon) {
+		width: 14px;
+		height: 14px;
+	}
+
+	.tree-preview-container {
+		margin-top: 8px;
+		padding: 12px;
+		background: #f9fafb;
+		border: 1px solid #e5e7eb;
+		border-radius: 8px;
+		overflow: auto;
+		max-width: 100%;
+	}
+
+	.newick-string {
+		margin-bottom: 12px;
+		padding: 8px;
+		background: #f3f4f6;
+		border-radius: 4px;
+		overflow-x: auto;
+	}
+
+	.newick-label {
+		font-size: 11px;
+		font-weight: 600;
+		color: #6b7280;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		display: block;
+		margin-bottom: 4px;
+	}
+
+	.newick-code {
+		font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+		font-size: 11px;
+		color: #374151;
+		word-break: break-all;
+		white-space: pre-wrap;
+		display: block;
+		max-height: 60px;
+		overflow-y: auto;
 	}
 
 	/* Upload Section Styles */
@@ -320,14 +535,14 @@
 		background: #f3f4f6;
 	}
 
-	.upload-icon {
+	:global(.upload-icon) {
 		width: 24px;
 		height: 24px;
 		color: #6b7280;
 		margin-bottom: 8px;
 	}
 
-	.file-input-label:hover:not(.disabled) .upload-icon {
+	.file-input-label:hover:not(.disabled) :global(.upload-icon) {
 		color: #3b82f6;
 	}
 
@@ -380,7 +595,7 @@
 		cursor: not-allowed;
 	}
 
-	.clear-icon {
+	:global(.clear-icon) {
 		width: 16px;
 		height: 16px;
 	}

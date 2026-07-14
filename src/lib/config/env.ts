@@ -15,6 +15,6 @@ export const FINAL_HYPHY_EYE_URL =
 // When in production (or cloudflare), PAGES_URL will be '//responsive-iframe.hyphy-eye.pages.dev/pages'
 // In development, it will be '//localhost:3000/pages'
 
-// DataMonkey backend server configuration
+// Datamonkey backend server configuration
 export const DATAMONKEY_SERVER_URL =
 	import.meta.env.VITE_DATAMONKEY_SERVER_URL || 'http://localhost:7015';

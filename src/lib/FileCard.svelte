@@ -1,5 +1,6 @@
 <script>
 	import { createEventDispatcher } from 'svelte';
+	import { Dna, FileSpreadsheet, FileJson, FileCode, FileText, File, ChevronUp, ChevronDown, Trash2, Check } from '$lib/icons';
 
 	// Props
 	export let file = {};
@@ -9,6 +10,34 @@
 
 	// Event dispatcher
 	const dispatch = createEventDispatcher();
+
+	// Map file extensions to Lucide icon components
+	const fileIconMap = {
+		// Sequence files - use Dna icon
+		fasta: Dna,
+		fa: Dna,
+		fna: Dna,
+		fastq: Dna,
+		fq: Dna,
+		nex: Dna,
+		nexus: Dna,
+		phy: Dna,
+		phylip: Dna,
+		// Tabular data
+		csv: FileSpreadsheet,
+		tsv: FileSpreadsheet,
+		// Structured data
+		json: FileJson,
+		xml: FileCode,
+		// Text
+		txt: FileText
+	};
+
+	// Get file icon component based on extension
+	function getFileIcon(filename) {
+		const ext = filename?.split('.').pop()?.toLowerCase() || '';
+		return fileIconMap[ext] || File;
+	}
 
 	// Format date for display
 	function formatDate(timestamp) {
@@ -57,68 +86,32 @@
 		else return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
 	}
 
-	// Get file type icon and color based on file type
-	function getFileTypeInfo(filename, contentType) {
+	// Get file type color based on file type
+	function getFileTypeColor(filename) {
 		const fileExtension = filename ? filename.split('.').pop().toLowerCase() : '';
 
-		// Define file type categories
-		const fileTypes = {
-			fasta: {
-				icon: 'M10 10L4 14v-8l6 4zm2-4v8l6-4-6-4z',
-				color: 'bg-accent-cream text-accent-copper'
-			},
-			fastq: {
-				icon: 'M10 10L4 14v-8l6 4zm2-4v8l6-4-6-4z',
-				color: 'bg-accent-cream text-accent-copper'
-			},
-			nex: {
-				icon: 'M10 10L4 14v-8l6 4zm2-4v8l6-4-6-4z',
-				color: 'bg-accent-cream text-accent-copper'
-			},
-			nexus: {
-				icon: 'M10 10L4 14v-8l6 4zm2-4v8l6-4-6-4z',
-				color: 'bg-accent-cream text-accent-copper'
-			},
-			phy: {
-				icon: 'M10 10L4 14v-8l6 4zm2-4v8l6-4-6-4z',
-				color: 'bg-accent-cream text-accent-copper'
-			},
-			phylip: {
-				icon: 'M10 10L4 14v-8l6 4zm2-4v8l6-4-6-4z',
-				color: 'bg-accent-cream text-accent-copper'
-			},
-			txt: {
-				icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
-				color: 'bg-brand-whisper text-text-slate'
-			},
-			csv: {
-				icon: 'M4 4v16l6-4.5V16l6 4.5V4a1 1 0 00-1-1H5a1 1 0 00-1 1z',
-				color: 'bg-accent-cream text-accent-warm'
-			},
-			tsv: {
-				icon: 'M4 4v16l6-4.5V16l6 4.5V4a1 1 0 00-1-1H5a1 1 0 00-1 1z',
-				color: 'bg-accent-cream text-accent-warm'
-			},
-			json: {
-				icon: 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z',
-				color: 'bg-brand-whisper text-brand-deep'
-			},
-			xml: {
-				icon: 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z',
-				color: 'bg-brand-whisper text-brand-deep'
-			}
+		// Define file type color categories
+		const colorMap = {
+			// Sequence files - warm copper/cream
+			fasta: 'bg-accent-cream text-accent-copper',
+			fa: 'bg-accent-cream text-accent-copper',
+			fastq: 'bg-accent-cream text-accent-copper',
+			fq: 'bg-accent-cream text-accent-copper',
+			nex: 'bg-accent-cream text-accent-copper',
+			nexus: 'bg-accent-cream text-accent-copper',
+			phy: 'bg-accent-cream text-accent-copper',
+			phylip: 'bg-accent-cream text-accent-copper',
+			// Tabular - green tint
+			csv: 'bg-green-100 text-green-700',
+			tsv: 'bg-green-100 text-green-700',
+			// Structured - blue/purple tints
+			json: 'bg-blue-100 text-blue-700',
+			xml: 'bg-purple-100 text-purple-700',
+			// Text - neutral
+			txt: 'bg-brand-whisper text-text-slate'
 		};
 
-		// Check if the file extension is in our defined types
-		if (fileExtension && fileTypes[fileExtension]) {
-			return fileTypes[fileExtension];
-		}
-
-		// Default file icon
-		return {
-			icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
-			color: 'bg-brand-whisper text-brand-royal'
-		};
+		return colorMap[fileExtension] || 'bg-brand-whisper text-brand-royal';
 	}
 
 	// Get time ago string
@@ -183,7 +176,8 @@
 	}
 
 	// Get file type info based on the file
-	$: fileTypeInfo = getFileTypeInfo(file.filename, file.contentType);
+	$: FileIcon = getFileIcon(file.filename);
+	$: fileTypeColor = getFileTypeColor(file.filename);
 	$: fileTypeLabel = getFileTypeLabel(file.filename, file.contentType);
 	$: timeAgo = getTimeAgo(file.createdAt);
 
@@ -218,22 +212,9 @@
 			<div class="flex min-w-0 flex-1 items-center">
 				<!-- File icon based on type -->
 				<div
-					class="mr-2 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg sm:mr-premium-md sm:h-10 sm:w-10 sm:rounded-premium-sm {fileTypeInfo.color}"
+					class="mr-2 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg sm:mr-premium-md sm:h-10 sm:w-10 sm:rounded-premium-sm {fileTypeColor}"
 				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-5 w-5 sm:h-6 sm:w-6"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke="currentColor"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d={fileTypeInfo.icon}
-						/>
-					</svg>
+					<svelte:component this={FileIcon} class="h-5 w-5 sm:h-6 sm:w-6" />
 				</div>
 
 				<!-- File info -->
@@ -264,31 +245,9 @@
 					aria-label={showDetails ? 'Hide details' : 'Show details'}
 				>
 					{#if showDetails}
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							class="h-4 w-4 sm:h-5 sm:w-5"
-							viewBox="0 0 20 20"
-							fill="currentColor"
-						>
-							<path
-								fill-rule="evenodd"
-								d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z"
-								clip-rule="evenodd"
-							/>
-						</svg>
+						<ChevronUp class="h-4 w-4 sm:h-5 sm:w-5" />
 					{:else}
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							class="h-4 w-4 sm:h-5 sm:w-5"
-							viewBox="0 0 20 20"
-							fill="currentColor"
-						>
-							<path
-								fill-rule="evenodd"
-								d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-								clip-rule="evenodd"
-							/>
-						</svg>
+						<ChevronDown class="h-4 w-4 sm:h-5 sm:w-5" />
 					{/if}
 				</button>
 
@@ -298,18 +257,7 @@
 					title="Delete file"
 					aria-label="Delete file"
 				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-4 w-4 sm:h-5 sm:w-5"
-						viewBox="0 0 20 20"
-						fill="currentColor"
-					>
-						<path
-							fill-rule="evenodd"
-							d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
-							clip-rule="evenodd"
-						/>
-					</svg>
+					<Trash2 class="h-4 w-4 sm:h-5 sm:w-5" />
 				</button>
 			</div>
 		</div>
@@ -359,18 +307,7 @@
 						on:click={selectFile}
 						class="flex min-h-[44px] items-center rounded-premium-sm bg-brand-gradient px-4 py-2 text-sm font-medium text-white shadow-sm transition-all duration-premium hover:bg-brand-deep focus:outline-none focus:ring-2 focus:ring-brand-royal focus:ring-offset-2"
 					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							class="mr-2 h-4 w-4"
-							viewBox="0 0 20 20"
-							fill="currentColor"
-						>
-							<path
-								fill-rule="evenodd"
-								d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-								clip-rule="evenodd"
-							/>
-						</svg>
+						<Check class="mr-2 h-4 w-4" />
 						Select File
 					</button>
 				</div>

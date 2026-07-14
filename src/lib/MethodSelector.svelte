@@ -2,8 +2,12 @@
 <script>
 	import { createEventDispatcher } from 'svelte';
 	import { backendConnectivity } from '../stores/backendConnectivity.js';
+	import { fileMetricsStore } from '../stores/fileInfo';
 	import { treeStore } from '../stores/tree';
 	import BranchSelector from './BranchSelector.svelte';
+	import AnalysisTimingEstimate from './AnalysisTimingEstimate.svelte';
+	import { AlertTriangle, Play, Loader2 } from 'lucide-svelte';
+	import { trackEvent } from './utils/analytics.js';
 
 	export let methodConfig;
 	export let runMethod = null;
@@ -13,6 +17,7 @@
 
 	// Supported methods - easy to update when methods are implemented
 	const SUPPORTED_METHODS = [
+		'b-still',
 		'fel',
 		'slac',
 		'fubar',
@@ -24,11 +29,18 @@
 		'meme',
 		'multi-hit',
 		'nrm',
+		'prime',
 		'relax'
 	];
 
 	// Method info with simplified descriptions and runtime estimates
 	const METHOD_INFO = {
+		'b-still': {
+			name: 'B-STILL',
+			fullName: 'Bayesian Significance Test of Invariant Low Likelihoods',
+			shortDescription: 'Detect invariant sites via posterior probabilities and Empirical Bayes Factors',
+			supported: true
+		},
 		fel: {
 			name: 'FEL',
 			fullName: 'Fixed Effects Likelihood',
@@ -101,6 +113,12 @@
 			shortDescription: 'Directional evolution analysis',
 			supported: true
 		},
+		prime: {
+			name: 'PRIME',
+			fullName: 'PRoperty Informed Models of Evolution',
+			shortDescription: 'Detect property-dependent selection at individual sites',
+			supported: true
+		},
 		'contrast-fel': {
 			name: 'Contrast-FEL',
 			fullName: 'Contrast Fixed Effects Likelihood',
@@ -114,6 +132,7 @@
 	let geneticCode = 'Universal';
 	let geneticCodeId = 0; // For matching HyPhy numeric codes
 	let executionMode = 'local'; // 'local' or 'backend'
+	let isSubmitting = false; // Track submission state for button feedback
 
 	// Genetic code mapping (HyPhy uses numeric IDs)
 	const GENETIC_CODES = [
@@ -328,6 +347,94 @@
 					'Sites with posterior probability above this threshold are considered under positive selection'
 			}
 		},
+		'b-still': {
+			grid: {
+				type: 'number',
+				label: 'Number of grid points',
+				default: 20,
+				min: 5,
+				max: 50,
+				description: 'Grid points per dimension (total grid = D²)'
+			},
+			concentration_parameter: {
+				type: 'number',
+				label: 'Concentration parameter',
+				default: 0.5,
+				min: 0.001,
+				max: 1,
+				step: 0.001,
+				description: 'Dirichlet prior concentration parameter'
+			},
+			method: {
+				type: 'select',
+				label: 'Posterior estimation method',
+				default: 'Variational-Bayes',
+				options: ['Variational-Bayes', 'Collapsed-Gibbs', 'Metropolis-Hastings'],
+				description: 'Method for estimating the posterior distribution'
+			},
+			ebf: {
+				type: 'number',
+				label: 'EBF threshold',
+				default: 10,
+				min: 1,
+				max: 1000,
+				step: 1,
+				description: 'Empirical Bayes Factor threshold for reporting invariant sites'
+			},
+			radius_threshold: {
+				type: 'number',
+				label: 'Radius threshold',
+				default: 0.5,
+				min: 0,
+				max: 10,
+				step: 0.1,
+				description: 'Expected substitution multiplier for near-zero regime'
+			}
+		},
+		'b-still': {
+			grid: {
+				type: 'number',
+				label: 'Number of grid points',
+				default: 20,
+				min: 5,
+				max: 50,
+				description: 'Grid points per dimension (total grid = D²)'
+			},
+			concentration_parameter: {
+				type: 'number',
+				label: 'Concentration parameter',
+				default: 0.5,
+				min: 0.001,
+				max: 1,
+				step: 0.001,
+				description: 'Dirichlet prior concentration parameter'
+			},
+			method: {
+				type: 'select',
+				label: 'Posterior estimation method',
+				default: 'Variational-Bayes',
+				options: ['Variational-Bayes', 'Collapsed-Gibbs', 'Metropolis-Hastings'],
+				description: 'Method for estimating the posterior distribution'
+			},
+			ebf: {
+				type: 'number',
+				label: 'EBF threshold',
+				default: 10,
+				min: 1,
+				max: 1000,
+				step: 1,
+				description: 'Empirical Bayes Factor threshold for reporting invariant sites'
+			},
+			radius_threshold: {
+				type: 'number',
+				label: 'Radius threshold',
+				default: 0.5,
+				min: 0,
+				max: 10,
+				step: 0.1,
+				description: 'Expected substitution multiplier for near-zero regime'
+			}
+		},
 		absrel: {
 			// Branch selection options
 			branchesToTest: {
@@ -471,15 +578,26 @@
 			datatype: {
 				type: 'select',
 				label: 'Data type',
-				default: 'codon',
+				default: 'nucleotide',
 				options: ['codon', 'nucleotide', 'protein'],
 				description: 'Type of data to analyze for recombination'
 			},
 			model: {
 				type: 'select',
 				label: 'Substitution model',
-				default: 'JTT',
+				default: 'GTR',
 				options: ['JTT', 'WAG', 'LG', 'Dayhoff', 'GTR', 'HKY85', 'TN93', 'JC69'],
+				filteredOptionsBy: 'datatype',
+				filteredOptions: {
+					codon: ['GTR', 'HKY85', 'TN93', 'JC69'],
+					nucleotide: ['GTR', 'HKY85', 'TN93', 'JC69'],
+					protein: ['JTT', 'WAG', 'LG', 'Dayhoff']
+				},
+				filteredDefaults: {
+					codon: 'GTR',
+					nucleotide: 'GTR',
+					protein: 'JTT'
+				},
 				description: 'Substitution model to use for the analysis'
 			},
 			mode: {
@@ -657,12 +775,68 @@
 				description: 'Use triple islands for the analysis'
 			}
 		},
+		prime: {
+			// PRIME variant selection
+			variant: {
+				type: 'select',
+				label: 'PRIME Variant',
+				default: 'S-PRIME',
+				options: [
+					'S-PRIME',
+					{ value: 'G-PRIME', label: 'G-PRIME (coming soon)', disabled: true },
+					{ value: 'E-PRIME', label: 'E-PRIME (coming soon)', disabled: true }
+				],
+				description: 'S-PRIME: site-level property-informed model'
+			},
+			// Branch selection options
+			branchesToTest: {
+				type: 'select',
+				label: 'Branches to Test',
+				default: 'All',
+				options: ['All', 'Internal', 'Leaves', 'Unlabeled', 'Interactive'],
+				description: 'Which branches to test for property-dependent selection'
+			},
+			interactiveTree: {
+				type: 'interactive-tree',
+				label: 'Select branches on tree',
+				default: '',
+				dependsOn: 'branchesToTest',
+				enabledWhen: ['Interactive'],
+				description: 'Click on tree branches to select them for testing'
+			},
+			// Property set selection
+			propertySet: {
+				type: 'select',
+				label: 'Amino Acid Property Set',
+				default: '5PROP',
+				options: ['5PROP', '4PROP', '3PROP', '2PROP', 'Atchley', 'LCAP'],
+				description: 'Set of amino acid properties to model (5PROP: hydrophobicity, polarity, volume, charge, iso-electric point)'
+			},
+			// P-value threshold
+			pValueThreshold: {
+				type: 'number',
+				label: 'P-value threshold',
+				default: 0.1,
+				min: 0.001,
+				max: 1,
+				step: 0.001,
+				description: 'The p-value threshold to use when testing for property-dependent selection'
+			},
+			// Impute states
+			imputeStates: {
+				type: 'select',
+				label: 'Impute states',
+				default: 'No',
+				options: ['No', 'Yes'],
+				description: 'Use site-level model fits to impute likely character states'
+			}
+		},
 		'contrast-fel': {
 			// Branch selection options
 			branchesToTest: {
 				type: 'select',
 				label: 'Branch Selection Mode',
-				default: 'Custom',
+				default: 'Interactive',
 				options: ['Custom', 'Interactive'],
 				description: 'How to specify branch sets for comparison'
 			},
@@ -786,10 +960,67 @@
 		? METHOD_ADVANCED_OPTIONS[selectedMethod.toLowerCase()] || {}
 		: {};
 
-	// Initialize method options when method changes
+	// Initialize method options when method changes (must run before renderableAdvancedOptions)
 	$: if (selectedMethod && !methodOptions[selectedMethod]) {
 		initializeMethodOptions(selectedMethod);
 	}
+
+	// Track method selection for analytics
+	let lastTrackedMethod = null;
+	$: if (selectedMethod && selectedMethod !== lastTrackedMethod) {
+		lastTrackedMethod = selectedMethod;
+		trackEvent('method-selected', { method: selectedMethod });
+	}
+
+	// Auto-detect data type from uploaded file for GARD
+	$: if ($fileMetricsStore?.FILE_INFO?.gencodeid !== undefined &&
+		selectedMethod?.toLowerCase() === 'gard' &&
+		methodOptions[selectedMethod]) {
+		const gencodeid = $fileMetricsStore.FILE_INFO.gencodeid;
+		const detectedType = gencodeid === -2 ? 'protein' : gencodeid === -1 ? 'nucleotide' : 'codon';
+		if (methodOptions[selectedMethod].datatype !== detectedType) {
+			methodOptions[selectedMethod].datatype = detectedType;
+			methodOptions = { ...methodOptions };
+		}
+	}
+
+	// When GARD datatype changes, ensure model is compatible
+	$: if (selectedMethod?.toLowerCase() === 'gard' && methodOptions[selectedMethod]) {
+		const dt = methodOptions[selectedMethod].datatype;
+		const modelConfig = METHOD_ADVANCED_OPTIONS.gard.model;
+		const validModels = modelConfig.filteredOptions?.[dt];
+		const currentModel = methodOptions[selectedMethod].model;
+		if (validModels && !validModels.includes(currentModel)) {
+			methodOptions[selectedMethod].model = modelConfig.filteredDefaults?.[dt] || validModels[0];
+			methodOptions = { ...methodOptions };
+		}
+	}
+
+	// Pre-computed renderable options array (excludes interactive-tree)
+	$: renderableAdvancedOptions = (selectedMethod && methodOptions[selectedMethod])
+		? Object.entries(currentMethodOptions)
+			.filter(([_, c]) => c.type !== 'interactive-tree')
+			.map(([key, config]) => {
+				const isEnabled = !config.dependsOn ||
+					(methodOptions[selectedMethod] &&
+						config.enabledWhen &&
+						config.enabledWhen.includes(
+							methodOptions[selectedMethod][config.dependsOn]
+						));
+
+				// Resolve filtered options for selects constrained by another option
+				let effectiveConfig = config;
+				if (config.filteredOptionsBy && config.filteredOptions) {
+					const controllerValue = methodOptions[selectedMethod][config.filteredOptionsBy];
+					const filtered = config.filteredOptions[controllerValue];
+					if (filtered) {
+						effectiveConfig = { ...config, options: filtered };
+					}
+				}
+
+				return { key, config: effectiveConfig, isEnabled };
+			})
+		: [];
 
 	// Update genetic code ID when name changes
 	$: {
@@ -808,6 +1039,23 @@
 			geneticCodeId,
 			executionMode
 		});
+	}
+
+	// RELAX branch validation - requires TEST and REFERENCE branches to be tagged
+	$: relaxHasTestBranches = selectedMethod?.toLowerCase() === 'relax' &&
+		methodOptions?.relax?.interactiveTree?.includes('{TEST}');
+	$: relaxHasReferenceBranches = selectedMethod?.toLowerCase() === 'relax' &&
+		(methodOptions?.relax?.interactiveTree?.includes('{REFERENCE}') ||
+		 methodOptions?.relax?.referenceBranches === 'All');
+	$: relaxBranchesValid = selectedMethod?.toLowerCase() !== 'relax' ||
+		(relaxHasTestBranches && relaxHasReferenceBranches);
+
+	// Update a single method option (avoids bind:value inside {#each} which breaks in Svelte 5.23+)
+	function updateMethodOption(key, value) {
+		if (selectedMethod && methodOptions[selectedMethod]) {
+			methodOptions[selectedMethod][key] = value;
+			methodOptions = { ...methodOptions };
+		}
 	}
 
 	// Initialize default values for a method's options
@@ -836,10 +1084,13 @@
 
 	// Run analysis
 	function runAnalysis() {
-		if (selectedMethod && runMethod) {
+		if (selectedMethod && runMethod && !isSubmitting) {
+			isSubmitting = true;
+
 			const analysisConfig = {
 				method: selectedMethod,
 				geneticCode,
+				geneticCodeId,
 				executionMode,
 				...(methodOptions[selectedMethod] || {})
 			};
@@ -852,6 +1103,12 @@
 				`🚀 METHODSELECTOR DEBUG - branchSet1: "${analysisConfig.branchSet1}", branchSet2: "${analysisConfig.branchSet2}"`
 			);
 			runMethod(selectedMethod, analysisConfig);
+
+			// Reset button state after parent has had time to start the analysis
+			// This provides immediate feedback that the click was registered
+			setTimeout(() => {
+				isSubmitting = false;
+			}, 2000);
 		}
 	}
 
@@ -938,7 +1195,7 @@
 	<div class="interface-container">
 		<!-- Method Selection Row -->
 		<div class="method-selection">
-			<select bind:value={selectedMethod} class="method-dropdown">
+			<select bind:value={selectedMethod} class="method-dropdown" data-testid="method-dropdown">
 				<option value={null}>Select an analysis method</option>
 				{#each availableMethods as method}
 					<option value={method.id} disabled={!method.info.supported}>
@@ -1000,16 +1257,20 @@
 				</div>
 				{#if !$backendConnectivity.isConnected}
 					<div class="backend-status-warning">
-						<svg class="warning-icon" viewBox="0 0 20 20" fill="currentColor">
-							<path
-								fill-rule="evenodd"
-								d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-								clip-rule="evenodd"
-							/>
-						</svg>
+						<AlertTriangle class="warning-icon" />
 						<span>Server temporarily unavailable. Please use Local mode.</span>
 					</div>
 				{/if}
+
+				<!-- Timing Estimate - positioned near execution mode -->
+				<div class="mt-3">
+					<AnalysisTimingEstimate
+						method={selectedMethod}
+						methodOptions={methodOptions[selectedMethod] || {}}
+						{geneticCode}
+						executionMode={executionMode === 'local' ? 'wasm' : 'backend'}
+					/>
+				</div>
 			</div>
 		{/if}
 
@@ -1032,18 +1293,6 @@
 							</select>
 						</label>
 					</div>
-
-					<button
-						class="run-button"
-						on:click={runAnalysis}
-						disabled={!selectedMethod || !currentMethod?.info.supported}
-					>
-						{#if currentMethod?.info.supported}
-							Run Analysis
-						{:else}
-							Coming Soon
-						{/if}
-					</button>
 				</div>
 
 				<!-- Divider -->
@@ -1056,68 +1305,68 @@
 					</div>
 
 					<div class="advanced-content">
-						{#if Object.keys(currentMethodOptions).length > 0}
-							{#each Object.entries(currentMethodOptions) as [optionKey, optionConfig]}
-								{@const isEnabled =
-									!optionConfig.dependsOn ||
-									(methodOptions[selectedMethod] &&
-										optionConfig.enabledWhen &&
-										optionConfig.enabledWhen.includes(
-											methodOptions[selectedMethod][optionConfig.dependsOn]
-										))}
-
-								<div class="option-group" class:disabled={!isEnabled}>
-									{#if optionConfig.type === 'number'}
+						{#if renderableAdvancedOptions.length > 0}
+							{#each renderableAdvancedOptions as opt}
+								<div class="option-group" class:disabled={!opt.isEnabled}>
+									{#if opt.config.type === 'number'}
 										<label class="option-label">
-											{optionConfig.label}:
+											{opt.config.label}:
 											<input
 												type="number"
-												bind:value={methodOptions[selectedMethod][optionKey]}
-												min={optionConfig.min || 0}
-												max={optionConfig.max || 1000}
-												step={optionConfig.step || 1}
+												value={methodOptions[selectedMethod]?.[opt.key]}
+												on:input={e => updateMethodOption(opt.key, +e.target.value)}
+												min={opt.config.min || 0}
+												max={opt.config.max || 1000}
+												step={opt.config.step || 1}
 												class="option-input"
-												disabled={!isEnabled}
+												disabled={!opt.isEnabled}
 											/>
 										</label>
-									{:else if optionConfig.type === 'boolean'}
+									{:else if opt.config.type === 'boolean'}
 										<label class="option-checkbox">
 											<input
 												type="checkbox"
-												bind:checked={methodOptions[selectedMethod][optionKey]}
-												disabled={!isEnabled}
+												checked={methodOptions[selectedMethod]?.[opt.key]}
+												on:change={e => updateMethodOption(opt.key, e.target.checked)}
+												disabled={!opt.isEnabled}
 											/>
-											{optionConfig.label}
+											{opt.config.label}
 										</label>
-									{:else if optionConfig.type === 'select'}
+									{:else if opt.config.type === 'select'}
 										<label class="option-label">
-											{optionConfig.label}:
+											{opt.config.label}:
 											<select
-												bind:value={methodOptions[selectedMethod][optionKey]}
+												value={methodOptions[selectedMethod]?.[opt.key]}
+												on:change={e => updateMethodOption(opt.key, e.target.value)}
 												class="option-select"
-												disabled={!isEnabled}
+												disabled={!opt.isEnabled}
 											>
-												{#each optionConfig.options as option}
-													<option value={option}>{option}</option>
+												{#each opt.config.options as option}
+													{#if typeof option === 'object'}
+														<option value={option.value} disabled={option.disabled}>{option.label || option.value}</option>
+													{:else}
+														<option value={option}>{option}</option>
+													{/if}
 												{/each}
 											</select>
 										</label>
-									{:else if optionConfig.type === 'text'}
+									{:else if opt.config.type === 'text'}
 										<label class="option-label">
-											{optionConfig.label}:
+											{opt.config.label}:
 											<input
 												type="text"
-												bind:value={methodOptions[selectedMethod][optionKey]}
-												placeholder={optionConfig.placeholder || ''}
+												value={methodOptions[selectedMethod]?.[opt.key]}
+												on:input={e => updateMethodOption(opt.key, e.target.value)}
+												placeholder={opt.config.placeholder || ''}
 												class="option-input"
-												disabled={!isEnabled}
+												disabled={!opt.isEnabled}
 											/>
 										</label>
 									{/if}
 
-									{#if optionConfig.description}
+									{#if opt.config.description}
 										<div class="option-description">
-											{optionConfig.description}
+											{opt.config.description}
 										</div>
 									{/if}
 								</div>
@@ -1164,15 +1413,17 @@
 						{#key selectedMethod}
 							<BranchSelector
 								treeData={selectedTreeData}
-								height={400}
-								width={800}
+								height={500}
+								width={1000}
 								mode={selectedMethod?.toLowerCase() === 'contrast-fel' ||
 								selectedMethod?.toLowerCase() === 'relax'
 									? 'multi-set'
 									: 'single-set'}
 								initialSetNames={selectedMethod?.toLowerCase() === 'relax'
 									? ['TEST', 'REFERENCE']
-									: null}
+									: selectedMethod?.toLowerCase() === 'contrast-fel'
+										? ['Set1', 'Set2']
+										: null}
 								on:selectionChange={handleBranchSelectionChange}
 							/>
 						{/key}
@@ -1213,6 +1464,35 @@
 			</div>
 		{/if}
 	</div>
+
+	<!-- Run Analysis Button - Always at bottom -->
+	{#if selectedMethod}
+		<div class="run-analysis-container">
+			{#if selectedMethod?.toLowerCase() === 'relax' && !relaxBranchesValid}
+				<div class="branch-validation-warning">
+					<AlertTriangle class="warning-icon" />
+					<span>Please select TEST and REFERENCE branches on the tree before running RELAX.</span>
+				</div>
+			{/if}
+			<button
+				class="run-button-large"
+				class:submitting={isSubmitting}
+				on:click={runAnalysis}
+				disabled={!selectedMethod || !currentMethod?.info.supported || isSubmitting || !relaxBranchesValid}
+				data-testid="run-analysis-btn"
+			>
+				{#if isSubmitting}
+					<Loader2 class="run-icon spinning" />
+					Starting Analysis...
+				{:else if currentMethod?.info.supported}
+					<Play class="run-icon" />
+					Run {currentMethod?.info.name || ''} Analysis
+				{:else}
+					Coming Soon
+				{/if}
+			</button>
+		</div>
+	{/if}
 
 	<!-- Help hint (subtle) -->
 	{#if !selectedMethod}
@@ -1502,30 +1782,91 @@
 		cursor: pointer;
 	}
 
-	.run-button {
-		background: #2563eb;
-		color: white;
-		padding: 8px 20px;
-		border: none;
-		border-radius: 6px;
+	/* Run Analysis Container - Always at bottom */
+	.run-analysis-container {
+		margin-top: 24px;
+		padding-top: 24px;
+		border-top: 1px solid #e2e8f0;
+	}
+
+	.branch-validation-warning {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 12px 16px;
+		margin-bottom: 16px;
+		background-color: #fef3c7;
+		border: 1px solid #f59e0b;
+		border-radius: 8px;
+		color: #92400e;
 		font-size: 14px;
-		font-weight: 500;
+	}
+
+	.branch-validation-warning :global(.warning-icon) {
+		flex-shrink: 0;
+		width: 18px;
+		height: 18px;
+		color: #f59e0b;
+	}
+
+	.run-button-large {
+		width: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
+		background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+		color: white;
+		padding: 16px 32px;
+		border: none;
+		border-radius: 10px;
+		font-size: 18px;
+		font-weight: 600;
 		cursor: pointer;
-		transition: background 0.2s ease;
-		margin-top: 8px;
+		transition: all 0.2s ease;
+		box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25);
 	}
 
-	.run-button:hover:not(:disabled) {
-		background: #1d4ed8;
+	.run-button-large:hover:not(:disabled) {
+		background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+		box-shadow: 0 6px 20px rgba(37, 99, 235, 0.35);
+		transform: translateY(-1px);
 	}
 
-	.run-button:active:not(:disabled) {
+	.run-button-large:active:not(:disabled) {
 		transform: translateY(1px);
+		box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
 	}
 
-	.run-button:disabled {
-		background: #cbd5e0;
+	.run-button-large:disabled {
+		background: linear-gradient(135deg, #cbd5e0 0%, #a0aec0 100%);
 		cursor: not-allowed;
+		box-shadow: none;
+	}
+
+	.run-icon {
+		width: 20px;
+		height: 20px;
+		fill: currentColor;
+		stroke: none;
+	}
+
+	.run-icon.spinning {
+		animation: spin 1s linear infinite;
+	}
+
+	@keyframes spin {
+		from {
+			transform: rotate(0deg);
+		}
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
+	.run-button-large.submitting {
+		background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+		cursor: wait;
 	}
 
 	.advanced-content {
@@ -1624,7 +1965,7 @@
 		border: 2px solid #cbd5e0;
 		border-radius: 8px;
 		background: white;
-		overflow: hidden;
+		overflow: visible;
 		margin-bottom: 16px;
 	}
 

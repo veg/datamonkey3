@@ -40,7 +40,7 @@ AGTGGGACCGTCTGGGGTGCCCTGGGTCATGGCATCAACCTGGACATCCCT`;
 	let usingSampleData = true;
 	let jobId = null;
 
-	// BUSTED analysis parameters - corrected to match DataMonkey documentation
+	// BUSTED analysis parameters - corrected to match Datamonkey documentation
 	let bustedParams = {
 		analysis_type: 'busted',
 		code: 'Universal',
@@ -73,7 +73,7 @@ AGTGGGACCGTCTGGGGTGCCCTGGGTCATGGCATCAACCTGGACATCCCT`;
 			isConnected = true;
 			statusMessages = [
 				...statusMessages,
-				{ msg: 'Connected to DataMonkey server', type: 'success' }
+				{ msg: 'Connected to Datamonkey server', type: 'success' }
 			];
 		});
 
@@ -211,11 +211,11 @@ AGTGGGACCGTCTGGGGTGCCCTGGGTCATGGCATCAACCTGGACATCCCT`;
 </script>
 
 <svelte:head>
-	<title>DataMonkey BUSTED Analysis Demo</title>
+	<title>Datamonkey BUSTED Analysis Demo</title>
 </svelte:head>
 
 <div class="container mx-auto max-w-6xl p-6">
-	<h1 class="mb-6 text-3xl font-bold text-gray-900">DataMonkey BUSTED Analysis Demo</h1>
+	<h1 class="mb-6 text-3xl font-bold text-gray-900">Datamonkey BUSTED Analysis Demo</h1>
 
 	<div class="mb-4 rounded-lg bg-blue-50 p-4">
 		<h2 class="text-lg font-semibold text-blue-800">About BUSTED</h2>

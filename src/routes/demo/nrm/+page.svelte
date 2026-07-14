@@ -65,7 +65,7 @@ AGTGGGACCGTCTGGGGTGCCCTGGGTCATGGCATCAACCTGGACATCCCT`;
 			isConnected = true;
 			statusMessages = [
 				...statusMessages,
-				{ msg: 'Connected to DataMonkey server', type: 'success' }
+				{ msg: 'Connected to Datamonkey server', type: 'success' }
 			];
 		});
 
@@ -203,11 +203,11 @@ AGTGGGACCGTCTGGGGTGCCCTGGGTCATGGCATCAACCTGGACATCCCT`;
 </script>
 
 <svelte:head>
-	<title>DataMonkey NRM Analysis Demo</title>
+	<title>Datamonkey NRM Analysis Demo</title>
 </svelte:head>
 
 <div class="container mx-auto max-w-6xl p-6">
-	<h1 class="mb-6 text-3xl font-bold text-gray-900">DataMonkey NRM Analysis Demo</h1>
+	<h1 class="mb-6 text-3xl font-bold text-gray-900">Datamonkey NRM Analysis Demo</h1>
 
 	<div class="mb-4 rounded-lg bg-blue-50 p-4">
 		<h2 class="text-lg font-semibold text-blue-800">About NRM</h2>

@@ -28,3 +28,25 @@
 	font-family: monospace;
 	white-space: pre-wrap;
 }
+
+/* Fix for hyphy-scope checkboxes being hidden by Tailwind Forms plugin */
+.phylogenetic-tree-viewer input[type="checkbox"],
+.meme-visualization input[type="checkbox"],
+.fel-visualization input[type="checkbox"],
+.absrel-visualization input[type="checkbox"],
+.busted-visualization input[type="checkbox"],
+.relax-visualization input[type="checkbox"],
+.slac-visualization input[type="checkbox"],
+.fubar-visualization input[type="checkbox"],
+.bgm-visualization input[type="checkbox"],
+.gard-visualization input[type="checkbox"],
+.hyphy-scope-container input[type="checkbox"] {
+	appearance: auto;
+	-webkit-appearance: checkbox;
+	width: auto;
+	height: auto;
+	color: inherit;
+	background-color: inherit;
+	border: revert;
+	border-radius: revert;
+}

@@ -6,7 +6,7 @@
 	import Aioli from '@biowasm/aioli';
 
 	let cli = null;
-	let command = 'hyphy LIBPATH=/shared/hyphy/ fel --help';
+	let command = 'hyphy LIBPATH=/res/ fel --help';
 	let output = '';
 	let error = '';
 	let isRunning = false;
@@ -69,14 +69,15 @@ END;`;
 
 	// Quick command templates
 	const commandTemplates = [
-		{ name: 'HyPhy Help', cmd: 'hyphy LIBPATH=/shared/hyphy/ --help' },
-		{ name: 'FEL Help', cmd: 'hyphy LIBPATH=/shared/hyphy/ fel --help' },
-		{ name: 'SLAC Help', cmd: 'hyphy LIBPATH=/shared/hyphy/ slac --help' },
+		{ name: 'HyPhy Help', cmd: 'hyphy LIBPATH=/res/ --help' },
+		{ name: 'FEL Help', cmd: 'hyphy LIBPATH=/res/ fel --help' },
+		{ name: 'SLAC Help', cmd: 'hyphy LIBPATH=/res/ slac --help' },
+		{ name: 'PRIME Help', cmd: 'hyphy LIBPATH=/res/ prime --help' },
 		{ name: 'List mounted files', cmd: 'ls -la /shared/data/' },
-		{ name: 'Check branches parameter', cmd: 'hyphy LIBPATH=/shared/hyphy/ fel --branches' },
+		{ name: 'Check branches parameter', cmd: 'hyphy LIBPATH=/res/ fel --branches' },
 		{
 			name: 'Test FEL with FG branches',
-			cmd: 'hyphy LIBPATH=/shared/hyphy/ fel --alignment /shared/data/test.fasta --tree /shared/data/test.tree --branches FG'
+			cmd: 'hyphy LIBPATH=/res/ fel --alignment /shared/data/test.fasta --tree /shared/data/test.tree --branches FG'
 		},
 		{ name: 'Cat test tree file', cmd: 'cat /shared/data/test.tree' },
 		{ name: 'Cat test fasta file', cmd: 'cat /shared/data/test.fasta' }
@@ -100,8 +101,8 @@ END;`;
 				const cliObj = await new Aioli(
 					{
 						tool: 'hyphy',
-						version: '2.5.63',
-						urlPrefix: 'https://data.hyphy.org/web/biowasm'
+						version: '2.5.98',
+						urlPrefix: `${window.location.origin}/wasm/hyphy/2.5.98`
 					},
 					{
 						printInterleaved: false
@@ -266,10 +267,10 @@ File exists: ${(lsOutput || '').includes('tagged.tree')}`;
 
 			// Now run FEL with --branches FG
 			output +=
-				'Running: hyphy LIBPATH=/shared/hyphy/ fel --alignment /shared/data/test.fasta --tree /shared/data/test.tree --branches FG\n\n';
+				'Running: hyphy LIBPATH=/res/ fel --alignment /shared/data/test.fasta --tree /shared/data/test.tree --branches FG\n\n';
 
 			const felResult = await cli.exec(
-				'hyphy LIBPATH=/shared/hyphy/ fel --alignment /shared/data/test.fasta --tree /shared/data/test.tree --branches FG'
+				'hyphy LIBPATH=/res/ fel --alignment /shared/data/test.fasta --tree /shared/data/test.tree --branches FG'
 			);
 			const felOutput = await felResult.stdout;
 
@@ -319,10 +320,10 @@ File exists: ${(lsOutput || '').includes('tagged.tree')}`;
 			// Now test FEL with the cleaned NEXUS + separate tree file
 			output += 'Running FEL with cleaned NEXUS + separate tree file:\n';
 			output +=
-				'Command: hyphy LIBPATH=/shared/hyphy/ fel --alignment /shared/data/cleaned.nex --tree /shared/data/separate.tree --branches FG\n\n';
+				'Command: hyphy LIBPATH=/res/ fel --alignment /shared/data/cleaned.nex --tree /shared/data/separate.tree --branches FG\n\n';
 
 			const felResult = await cli.exec(
-				'hyphy LIBPATH=/shared/hyphy/ fel --alignment /shared/data/cleaned.nex --tree /shared/data/separate.tree --branches FG'
+				'hyphy LIBPATH=/res/ fel --alignment /shared/data/cleaned.nex --tree /shared/data/separate.tree --branches FG'
 			);
 			const felOutput = await felResult.stdout;
 
@@ -482,7 +483,7 @@ File exists: ${(lsOutput || '').includes('tagged.tree')}`;
 				Use <code class="bg-gray-200 px-1">window.wasmCli</code> in browser console for direct access
 			</li>
 			<li>Files are mounted to <code class="bg-gray-200 px-1">/shared/data/</code></li>
-			<li>HyPhy requires <code class="bg-gray-200 px-1">LIBPATH=/shared/hyphy/</code></li>
+			<li>HyPhy requires <code class="bg-gray-200 px-1">LIBPATH=/res/</code></li>
 			<li>Press Ctrl+Enter to quickly run commands</li>
 			<li>Check the browser console for additional debug output</li>
 		</ul>

@@ -1,4 +1,5 @@
 node_modules
+yarn.lock
 
 # Output
 .output
@@ -59,3 +60,6 @@ coverage
 /playwright-report/
 /playwright/.cache/
 
+
+# Telegram bot token (secret — never commit)
+.telegram-bot-token

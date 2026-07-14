@@ -71,7 +71,7 @@ export const FastAnalysis = {
 		method: 'fel',
 		methodOptions: {},
 		geneticCode: 'Universal',
-		datasetSize: 'small',
+		datasetSize: 'large',
 		executionMode: 'backend'
 	}
 };
@@ -82,7 +82,7 @@ export const MediumSpeedAnalysis = {
 		method: 'meme',
 		methodOptions: {},
 		geneticCode: 'Universal',
-		datasetSize: 'medium',
+		datasetSize: 'large',
 		executionMode: 'backend'
 	}
 };
@@ -102,7 +102,10 @@ export const SlowAnalysis = {
 export const VerySlowAnalysis = {
 	args: {
 		method: 'bgm',
-		methodOptions: {},
+		methodOptions: {
+			steps: 30000,
+			samples: 200
+		},
 		geneticCode: 'Universal',
 		datasetSize: 'large',
 		executionMode: 'backend'

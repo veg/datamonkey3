@@ -45,7 +45,7 @@ export default {
 				component: `
           ## Backend Connectivity Indicator
           
-          Shows the connection status to the DataMonkey server with a visual indicator.
+          Shows the connection status to the Datamonkey server with a visual indicator.
           
           Features:
           - **Green dot**: Connected to server
@@ -75,7 +75,7 @@ export const Connected = () => {
 Connected.parameters = {
 	docs: {
 		description: {
-			story: 'Shows a green dot when successfully connected to the DataMonkey server.'
+			story: 'Shows a green dot when successfully connected to the Datamonkey server.'
 		}
 	}
 };

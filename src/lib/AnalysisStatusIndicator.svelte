@@ -3,6 +3,7 @@
 	import { browser } from '$app/environment';
 	import { analysisStore, activeAnalyses } from '../stores/analyses';
 	import { goto } from '$app/navigation';
+	import { CheckCircle2, AlertTriangle, Pause, Zap, Loader2, RefreshCw } from '$lib/icons';
 
 	// Load analyses on mount to ensure indicator has correct data
 	// This is necessary because the layout mounts before the page
@@ -80,12 +81,22 @@
 		(a) => a.status === 'interrupted' && a.method !== 'datareader'
 	).length;
 
+	// Count reconnecting analyses (backend analyses attempting to reconnect)
+	$: reconnectingCount = $analysisStore.analyses.filter(
+		(a) => a.status === 'reconnecting' && a.method !== 'datareader'
+	).length;
+
+	// Count connection_lost analyses (backend analyses that could not reconnect)
+	$: connectionLostCount = $analysisStore.analyses.filter(
+		(a) => a.status === 'connection_lost' && a.method !== 'datareader'
+	).length;
+
 	// Only show indicator if there are any analyses to display
-	$: showIndicator = runningCount > 0 || completedCount > 0 || failedCount > 0 || interruptedCount > 0;
+	$: showIndicator = runningCount > 0 || completedCount > 0 || failedCount > 0 || interruptedCount > 0 || reconnectingCount > 0 || connectionLostCount > 0;
 
 	// Debug logging when counts change
-	$: if (runningCount > 0 || completedCount > 0 || failedCount > 0 || interruptedCount > 0) {
-		console.log(`📊 [StatusIndicator] running=${runningCount} completed=${completedCount} failed=${failedCount} interrupted=${interruptedCount} (analyses=${$analysisStore.analyses.length}, active=${$activeAnalyses.length})`);
+	$: if (runningCount > 0 || completedCount > 0 || failedCount > 0 || interruptedCount > 0 || reconnectingCount > 0 || connectionLostCount > 0) {
+		console.log(`📊 [StatusIndicator] running=${runningCount} completed=${completedCount} failed=${failedCount} interrupted=${interruptedCount} reconnecting=${reconnectingCount} connectionLost=${connectionLostCount} (analyses=${$analysisStore.analyses.length}, active=${$activeAnalyses.length})`);
 	}
 </script>
 
@@ -98,7 +109,7 @@
 		{#if runningCount > 0}
 			<div class="flex items-center">
 				<span class="inline-flex items-center justify-center text-sm">
-					<span class="pulse-animation mr-1 h-2 w-2 rounded-full bg-blue-500"></span>
+					<Loader2 class="mr-1 h-4 w-4 animate-spin text-blue-500" />
 					<span class="font-medium text-blue-600">{runningCount}</span>
 				</span>
 			</div>
@@ -110,7 +121,7 @@
 					<span class="mx-1.5 text-gray-300">•</span>
 				{/if}
 				<span class="inline-flex items-center justify-center text-sm">
-					<span class="mr-1 text-green-500">✓</span>
+					<CheckCircle2 class="mr-1 h-4 w-4 text-green-500" />
 					<span class="font-medium text-green-600">{completedCount}</span>
 				</span>
 			</div>
@@ -122,7 +133,7 @@
 					<span class="mx-1.5 text-gray-300">•</span>
 				{/if}
 				<span class="inline-flex items-center justify-center text-sm">
-					<span class="mr-1 text-red-500">⚠</span>
+					<AlertTriangle class="mr-1 h-4 w-4 text-red-500" />
 					<span class="font-medium text-red-600">{failedCount}</span>
 				</span>
 			</div>
@@ -134,32 +145,35 @@
 					<span class="mx-1.5 text-gray-300">•</span>
 				{/if}
 				<span class="inline-flex items-center justify-center text-sm">
-					<span class="mr-1 text-orange-500">⏸</span>
+					<Pause class="mr-1 h-4 w-4 text-orange-500" />
 					<span class="font-medium text-orange-600">{interruptedCount}</span>
+				</span>
+			</div>
+		{/if}
+
+		{#if reconnectingCount > 0}
+			<div class="flex items-center">
+				{#if runningCount > 0 || completedCount > 0 || failedCount > 0 || interruptedCount > 0}
+					<span class="mx-1.5 text-gray-300">•</span>
+				{/if}
+				<span class="inline-flex items-center justify-center text-sm">
+					<RefreshCw class="mr-1 h-4 w-4 animate-spin text-blue-400" />
+					<span class="font-medium text-blue-600">{reconnectingCount}</span>
+				</span>
+			</div>
+		{/if}
+
+		{#if connectionLostCount > 0}
+			<div class="flex items-center">
+				{#if runningCount > 0 || completedCount > 0 || failedCount > 0 || interruptedCount > 0 || reconnectingCount > 0}
+					<span class="mx-1.5 text-gray-300">•</span>
+				{/if}
+				<span class="inline-flex items-center justify-center text-sm">
+					<Zap class="mr-1 h-4 w-4 text-amber-500" />
+					<span class="font-medium text-amber-600">{connectionLostCount}</span>
 				</span>
 			</div>
 		{/if}
 	</button>
 {/if}
 
-<style>
-	/* Animation for the pulsing indicator */
-	.pulse-animation {
-		animation: pulse 2s infinite;
-	}
-
-	@keyframes pulse {
-		0% {
-			opacity: 1;
-			transform: scale(1);
-		}
-		50% {
-			opacity: 0.5;
-			transform: scale(1.05);
-		}
-		100% {
-			opacity: 1;
-			transform: scale(1);
-		}
-	}
-</style>

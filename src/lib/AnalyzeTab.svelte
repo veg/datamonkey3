@@ -1,21 +1,28 @@
 <script>
 	import { onMount } from 'svelte';
-	import { currentFile } from '../stores/fileInfo';
-	import { persistentFileStore } from '../stores/fileInfo';
+	import { currentFile, fileMetricsStore, persistentFileStore } from '../stores/fileInfo';
 	import { analysisStore, activeAnalysisProgress } from '../stores/analyses';
 	import { treeStore } from '../stores/tree';
+	import { toastStore } from '../stores/toast';
 	import {
 		backendConnectivity,
 		initializeBackendConnectivity
 	} from '../stores/backendConnectivity.js';
 	import MethodSelector from './MethodSelector.svelte';
-	import AnalysisTimingEstimate from './AnalysisTimingEstimate.svelte';
 	import FileIndicator from './FileIndicator.svelte';
 	import TabNavigation from './TabNavigation.svelte';
-	import TreePrompt from './TreePrompt.svelte';
 	import TreeSourceSelector from './TreeSourceSelector.svelte';
 	import backendAnalysisRunner from './services/BackendAnalysisRunner.js';
 	import wasmAnalysisRunner from './services/WasmAnalysisRunner.js';
+	import { ChevronDown, TreeDeciduous } from '$lib/icons';
+	import { trackEvent } from './utils/analytics.js';
+
+	// Wrap toggleStdOut to add analytics
+	function handleToggleStdOut() {
+		toggleStdOut();
+		// Track after toggle so we capture the new state
+		trackEvent('console-toggled', { visible: !isStdOutVisible });
+	}
 
 	// Props
 	export let methodConfig = {};
@@ -35,22 +42,12 @@
 	// Tree detection
 	$: hasTree = $treeStore && ($treeStore.nj || $treeStore.usertree);
 
-	// Tree inference state
-	let treeGenerated = false;
-
-	// Track current method selection and options for timing estimates
-	let currentSelectedMethod = null;
-	let currentMethodOptions = {};
-	let currentGeneticCode = 'Universal';
-	let currentExecutionMode = 'local';
-
 	// Handle method selection changes from MethodSelector
 	function handleMethodChange(event) {
-		const { method, options, geneticCode, executionMode } = event.detail;
-		currentSelectedMethod = method;
-		currentMethodOptions = options || {};
-		currentGeneticCode = geneticCode || 'Universal';
-		currentExecutionMode = executionMode || 'local';
+		// Event contains method, options, geneticCode, executionMode
+		// Currently used for logging/debugging, timing estimate is now inside MethodSelector
+		const { method } = event.detail;
+		console.log('Method changed:', method);
 	}
 
 	/**
@@ -120,6 +117,19 @@
 
 	// Enhanced runMethod that handles both local and backend execution
 	async function enhancedRunMethod(method, config) {
+		// Show "analysis started" toast
+		const methodName = method.toUpperCase();
+		const executionModeLabel = config.executionMode === 'backend' ? 'server' : 'local';
+		toastStore.info(`${methodName} analysis started (${executionModeLabel})`, {
+			duration: 3000
+		});
+
+		// Track analysis started event
+		trackEvent('analysis-started', {
+			method: methodName,
+			executionMode: config.executionMode
+		});
+
 		try {
 			if (config.executionMode === 'backend') {
 				// Backend execution
@@ -132,35 +142,46 @@
 					throw new Error('No file selected for analysis');
 				}
 
-				// Get full file data including content from storage
-				const fullFileData = await persistentFileStore.getFile($currentFile.id);
-				if (!fullFileData) {
-					throw new Error('Unable to load file data');
+				// Prefer the canonical FASTA emitted by datareader.bf on upload. It
+				// collapses PHYLIP, MEGA, CLUSTAL, NEXUS, FASTA all to a single
+				// known shape, so downstream submission and validation don't have
+				// to handle the matrix of formats. Fall back to reading the user's
+				// original blob if the canonical wasn't cached (older analyses).
+				let fastaData = $fileMetricsStore?.canonicalFasta;
+				if (!fastaData) {
+					const fullFileData = await persistentFileStore.getFile($currentFile.id);
+					if (!fullFileData) {
+						throw new Error('Unable to load file data');
+					}
+					fastaData = await fullFileData.text();
+					if (!fastaData || !fastaData.trim()) {
+						throw new Error('No sequence data available in selected file');
+					}
+					// Only the user's raw upload can have embedded trees; the
+					// canonical FASTA from datareader is already clean.
+					fastaData = stripEmbeddedTrees(fastaData);
 				}
-
-				// Convert file to text to get FASTA data
-				let fastaData = await fullFileData.text();
-				if (!fastaData || !fastaData.trim()) {
-					throw new Error('No sequence data available in selected file');
-				}
-
-				// Strip embedded trees from alignment files (NEXUS or FASTA)
-				fastaData = stripEmbeddedTrees(fastaData);
 
 				// Get tree data based on user's selection
 				let treeData = getSelectedTreeData();
+				console.log('🌳 Tree selection for analysis:', {
+					source: selectedTreeSource,
+					treePreview: treeData ? treeData.substring(0, 100) + '...' : 'none'
+				});
 
 				// Check if we have interactive branch selection with tagged tree
 				if (config.branchesToTest === 'Interactive' && config.interactiveTree) {
 					treeData = config.interactiveTree;
+					console.log('🌳 Using interactive tree instead:', treeData.substring(0, 100) + '...');
 				}
 				if (!treeData) {
+					if (selectedTreeSource === 'inferred') {
+						throw new Error(
+							'No neighbor-joining tree was inferred for this alignment. Please upload your own tree file.'
+						);
+					}
 					const treeSourceName =
-						selectedTreeSource === 'uploaded'
-							? 'uploaded tree'
-							: selectedTreeSource === 'inferred'
-								? 'neighbor-joining tree'
-								: 'uploaded tree file';
+						selectedTreeSource === 'uploaded' ? 'uploaded tree' : 'uploaded tree file';
 					throw new Error(
 						`No ${treeSourceName} available. Please select a different tree source or upload a tree.`
 					);
@@ -179,20 +200,25 @@
 					throw new Error('No file selected for analysis');
 				}
 
-				// Get full file data including content from storage
-				const fullFileData = await persistentFileStore.getFile($currentFile.id);
-				if (!fullFileData) {
-					throw new Error('Unable to load file data');
+				// Prefer the canonical FASTA emitted by datareader.bf on upload. It
+				// collapses PHYLIP, MEGA, CLUSTAL, NEXUS, FASTA all to a single
+				// known shape, so downstream submission and validation don't have
+				// to handle the matrix of formats. Fall back to reading the user's
+				// original blob if the canonical wasn't cached (older analyses).
+				let fastaData = $fileMetricsStore?.canonicalFasta;
+				if (!fastaData) {
+					const fullFileData = await persistentFileStore.getFile($currentFile.id);
+					if (!fullFileData) {
+						throw new Error('Unable to load file data');
+					}
+					fastaData = await fullFileData.text();
+					if (!fastaData || !fastaData.trim()) {
+						throw new Error('No sequence data available in selected file');
+					}
+					// Only the user's raw upload can have embedded trees; the
+					// canonical FASTA from datareader is already clean.
+					fastaData = stripEmbeddedTrees(fastaData);
 				}
-
-				// Convert file to text to get FASTA data
-				let fastaData = await fullFileData.text();
-				if (!fastaData || !fastaData.trim()) {
-					throw new Error('No sequence data available in selected file');
-				}
-
-				// Strip embedded trees from alignment files (NEXUS or FASTA)
-				fastaData = stripEmbeddedTrees(fastaData);
 
 				// Get tree data based on user's selection
 				let treeData = getSelectedTreeData();
@@ -203,12 +229,13 @@
 				}
 
 				if (!treeData) {
+					if (selectedTreeSource === 'inferred') {
+						throw new Error(
+							'No neighbor-joining tree was inferred for this alignment. Please upload your own tree file.'
+						);
+					}
 					const treeSourceName =
-						selectedTreeSource === 'uploaded'
-							? 'uploaded tree'
-							: selectedTreeSource === 'inferred'
-								? 'neighbor-joining tree'
-								: 'uploaded tree file';
+						selectedTreeSource === 'uploaded' ? 'uploaded tree' : 'uploaded tree file';
 					throw new Error(
 						`No ${treeSourceName} available. Please select a different tree source or upload a tree.`
 					);
@@ -224,8 +251,15 @@
 			}
 		} catch (error) {
 			console.error('❌ Analysis execution failed:', error);
-			// Could show error notification to user
-			alert(`Analysis failed: ${error.message}`);
+
+			trackEvent('analysis-start-blocked', {
+				reason: error.message
+			});
+
+			// Show error toast instead of alert
+			toastStore.error(`Analysis failed: ${error.message}`, {
+				duration: 8000
+			});
 		}
 	}
 
@@ -233,17 +267,6 @@
 	onMount(() => {
 		initializeBackendConnectivity();
 	});
-
-	// Handle tree generation prompt
-	function handleGenerateTreeClick() {
-		// Navigate to the Data tab
-		onChange('data');
-	}
-
-	// Handle tree generation completion
-	function handleTreeGenerated() {
-		treeGenerated = true;
-	}
 
 	// Handle tree source change from TreeSourceSelector
 	function handleTreeSourceChange(event) {
@@ -287,6 +310,17 @@
 	$: hasUploadedTree = $treeStore && $treeStore.usertree;
 	$: hasInferredTree = $treeStore && $treeStore.nj;
 
+	// If datareader didn't produce an NJ tree (FILE_INFO.nj missing), the
+	// 'inferred' radio is disabled in the UI but selectedTreeSource defaults
+	// to 'inferred', so users hit "No NJ tree available" when they click Run.
+	// Switch to whichever option is actually available — but only AFTER
+	// datareader has finished. Gating on $fileMetricsStore avoids the mount-time
+	// race where treeStore is briefly empty and we'd switch away from 'inferred'
+	// before the file even loads.
+	$: if ($fileMetricsStore && selectedTreeSource === 'inferred' && !hasInferredTree) {
+		selectedTreeSource = hasUploadedTree ? 'uploaded' : 'upload-new';
+	}
+
 	// Get tree data based on user's selection
 	function getSelectedTreeData() {
 		switch (selectedTreeSource) {
@@ -311,14 +345,11 @@
 	<!-- File Indicator (visible when a file is selected) -->
 	<FileIndicator />
 
-	<!-- Tree Prompt (shown if no tree is available) -->
-	<TreePrompt onGenerateClick={handleGenerateTreeClick} />
-
 	<!-- Tree Source Selector -->
 	{#if $currentFile}
 		<div class="mb-premium-xl">
-			<h2 class="mb-premium-md text-premium-header font-semibold text-text-rich">
-				<span class="mr-premium-xs">🌳</span> Phylogenetic Tree
+			<h2 class="mb-premium-md flex items-center text-premium-header font-semibold text-text-rich">
+				<TreeDeciduous class="mr-2 h-5 w-5 text-green-600" /> Phylogenetic Tree
 			</h2>
 
 			<div
@@ -329,6 +360,8 @@
 					{hasInferredTree}
 					bind:treeSource={selectedTreeSource}
 					disabled={false}
+					uploadedTreeNewick={$treeStore?.usertree || ''}
+					inferredTreeNewick={$treeStore?.nj || ''}
 					on:treeSourceChange={handleTreeSourceChange}
 					on:fileUploaded={handleFileUploaded}
 				/>
@@ -348,52 +381,28 @@
 					<button
 						on:click={(e) => {
 							e.stopPropagation();
-							toggleStdOut();
+							handleToggleStdOut();
 						}}
 						class="mr-premium-md rounded-premium-sm bg-brand-royal px-premium-md py-premium-xs text-premium-meta font-medium text-white transition-all duration-premium hover:bg-brand-deep"
 					>
 						{isStdOutVisible ? 'Hide Console' : 'Show Console'}
 					</button>
 				{/if}
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					class="h-6 w-6 text-brand-royal transition-transform duration-premium"
-					class:rotate-180={analysisSectionExpanded}
-					fill="none"
-					viewBox="0 0 24 24"
-					stroke="currentColor"
-				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						stroke-width="2"
-						d="M19 9l-7 7-7-7"
-					/>
-				</svg>
+				<ChevronDown
+					class="h-6 w-6 text-brand-royal transition-transform duration-premium {analysisSectionExpanded ? 'rotate-180' : ''}"
+				/>
 			</div>
 		</div>
 
 		{#if analysisSectionExpanded}
 			<div class="p-premium-lg">
 				{#if $currentFile}
-					<!-- Method Selector -->
+					<!-- Method Selector (includes timing estimate) -->
 					<MethodSelector
 						{methodConfig}
 						runMethod={enhancedRunMethod}
 						on:methodChange={handleMethodChange}
 					/>
-
-					<!-- Analysis Timing Estimate -->
-					{#if currentSelectedMethod}
-						<div class="mt-premium-md">
-							<AnalysisTimingEstimate
-								method={currentSelectedMethod}
-								methodOptions={currentMethodOptions}
-								geneticCode={currentGeneticCode}
-								executionMode={currentExecutionMode === 'local' ? 'wasm' : 'backend'}
-							/>
-						</div>
-					{/if}
 
 					<!-- Console output (conditionally shown) -->
 					{#if isStdOutVisible}

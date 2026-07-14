@@ -1,6 +1,7 @@
 import { writable, derived } from 'svelte/store';
 import { fileStorage } from '../lib/utils/indexedDBStorage';
 import { browser } from '$app/environment';
+import { trackEvent } from '../lib/utils/analytics.js';
 
 // Basic stores for immediate usage
 export const alignmentFileStore = writable(null);
@@ -104,6 +105,11 @@ function createPersistentFileStore() {
 							isLoading: false
 						};
 					}
+				});
+
+				// Track file upload event
+				trackEvent('file-uploaded', {
+					fileSize: file.size
 				});
 
 				// Return the file ID for reference

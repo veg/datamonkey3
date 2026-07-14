@@ -39,7 +39,7 @@ export function initializeBackendConnectivity(serverUrl = DATAMONKEY_SERVER_URL)
 
 	// Set up event handlers
 	persistentSocket.on('connect', () => {
-		console.log('✅ Backend connectivity: Connected to DataMonkey server');
+		console.log('✅ Backend connectivity: Connected to Datamonkey server');
 		backendConnectivity.update((state) => ({
 			...state,
 			isConnected: true,
@@ -50,7 +50,7 @@ export function initializeBackendConnectivity(serverUrl = DATAMONKEY_SERVER_URL)
 	});
 
 	persistentSocket.on('disconnect', (reason) => {
-		console.log('🔌 Backend connectivity: Disconnected from DataMonkey server', reason);
+		console.log('🔌 Backend connectivity: Disconnected from Datamonkey server', reason);
 		backendConnectivity.update((state) => ({
 			...state,
 			isConnected: false,

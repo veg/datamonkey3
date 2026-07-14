@@ -2,15 +2,14 @@
 	import { onMount } from 'svelte';
 	import { analysisStore } from '../stores/analyses';
 	import { persistentFileStore } from '../stores/fileInfo';
-	import { exportData } from './utils/exportUtils';
-	import { fileStorage } from './utils/indexedDBStorage';
-	import { parseFasta, toFastaFormat } from './utils/fastaValidation';
+	import JSZip from 'jszip';
+	import { Loader2, Download, FileArchive } from 'lucide-svelte';
+	import { trackEvent } from './utils/analytics.js';
 
 	// Internal state
 	let analyses = [];
 	let files = [];
 	let selectedAnalyses = new Set();
-	let exportFormat = 'json';
 	let isExporting = false;
 	let exportStatus = '';
 	let isSelectAll = false;
@@ -18,14 +17,6 @@
 	let filterFile = 'all';
 	let availableMethods = ['all'];
 	let availableFiles = ['all'];
-	let fastaExportStatus = '';
-
-	// Available export formats
-	const exportFormats = [
-		{ id: 'json', label: 'JSON', description: 'Full data structure' },
-		{ id: 'csv', label: 'CSV', description: 'Tabular format' },
-		{ id: 'txt', label: 'Text', description: 'Plain text summary' }
-	];
 
 	// Load analyses on mount
 	onMount(async () => {
@@ -44,9 +35,9 @@
 				await persistentFileStore.loadFiles();
 			}
 
-			// Get completed analyses
+			// Get completed analyses (excluding datareader)
 			analyses = $analysisStore.analyses
-				.filter((a) => a.status === 'completed')
+				.filter((a) => a.status === 'completed' && a.method !== 'datareader')
 				.sort((a, b) => b.createdAt - a.createdAt);
 
 			files = $persistentFileStore.files;
@@ -75,10 +66,8 @@
 	// Toggle select all
 	function toggleSelectAll() {
 		if (isSelectAll) {
-			// Deselect all
 			selectedAnalyses = new Set();
 		} else {
-			// Select all filtered analyses
 			selectedAnalyses = new Set(filteredAnalyses.map((a) => a.id));
 		}
 		isSelectAll = !isSelectAll;
@@ -91,9 +80,8 @@
 		} else {
 			selectedAnalyses.add(analysisId);
 		}
-		selectedAnalyses = selectedAnalyses; // Trigger reactivity
+		selectedAnalyses = selectedAnalyses;
 
-		// Update select all state
 		isSelectAll =
 			filteredAnalyses.length > 0 && filteredAnalyses.every((a) => selectedAnalyses.has(a.id));
 	}
@@ -110,15 +98,24 @@
 		return file ? file.filename : 'Unknown file';
 	}
 
-	// Export selected analyses
+	// Get base filename without extension
+	function getBaseFileName(fileId) {
+		const filename = getFileName(fileId);
+		return filename.replace(/\.[^/.]+$/, '');
+	}
+
+	// Export selected analyses as a ZIP file
 	async function exportSelectedAnalyses() {
 		if (selectedAnalyses.size === 0) return;
+
+		// Track batch export start
+		trackEvent('batch-export-started', { analysisCount: selectedAnalyses.size });
 
 		isExporting = true;
 		exportStatus = 'Preparing export...';
 
 		try {
-			// Get selected analyses data
+			const zip = new JSZip();
 			const analysesToExport = analyses.filter((a) => selectedAnalyses.has(a.id));
 
 			if (analysesToExport.length === 0) {
@@ -126,76 +123,53 @@
 				return;
 			}
 
-			const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+			exportStatus = `Exporting ${analysesToExport.length} analyses...`;
 
-			// For single exports, we'll create a combined file
-			let exportFilename = `batch_export_${timestamp}`;
-			let exportContent;
+			// Add each analysis as a JSON file in the zip
+			for (const analysis of analysesToExport) {
+				const fullAnalysis = await analysisStore.getAnalysis(analysis.id);
+				const baseFileName = getBaseFileName(analysis.fileId);
+				const method = analysis.method.toUpperCase();
+				const timestamp = new Date(analysis.createdAt)
+					.toISOString()
+					.replace(/[:.]/g, '-')
+					.substring(0, 19);
 
-			if (exportFormat === 'json') {
-				// Create a JSON with all selected analyses
-				const exportData = {
-					exportDate: new Date().toISOString(),
-					analysisCount: analysesToExport.length,
-					analyses: await Promise.all(
-						analysesToExport.map(async (analysis) => {
-							const fullAnalysis = await analysisStore.getAnalysis(analysis.id);
-							const file = files.find((f) => f.id === analysis.fileId);
-
-							return {
-								id: analysis.id,
-								method: analysis.method,
-								createdAt: analysis.createdAt,
-								file: file
-									? {
-											name: file.filename,
-											size: file.size,
-											type: file.contentType
-										}
-									: null,
-								result:
-									typeof fullAnalysis.result === 'string'
-										? JSON.parse(fullAnalysis.result)
-										: fullAnalysis.result
-							};
-						})
-					)
-				};
-
-				exportContent = JSON.stringify(exportData, null, 2);
-			} else if (exportFormat === 'csv') {
-				// Create a CSV with analysis summaries
-				const headers = ['ID', 'Method', 'File', 'Created', 'Status'];
-				const rows = analysesToExport.map((a) => [
-					a.id,
-					a.method,
-					getFileName(a.fileId),
-					new Date(a.createdAt).toISOString(),
-					a.status
-				]);
-
-				exportContent = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
-			} else {
-				// Text format - simple summary
-				exportContent = `Batch Export - ${timestamp}\n\n`;
-				exportContent += `Total Analyses: ${analysesToExport.length}\n\n`;
-
-				for (const analysis of analysesToExport) {
-					exportContent += `ID: ${analysis.id}\n`;
-					exportContent += `Method: ${analysis.method}\n`;
-					exportContent += `File: ${getFileName(analysis.fileId)}\n`;
-					exportContent += `Created: ${formatDate(analysis.createdAt)}\n`;
-					exportContent += `Status: ${analysis.status}\n\n`;
+				// Parse the result if it's a string
+				let resultData;
+				try {
+					resultData =
+						typeof fullAnalysis.result === 'string'
+							? JSON.parse(fullAnalysis.result)
+							: fullAnalysis.result;
+				} catch {
+					resultData = fullAnalysis.result;
 				}
+
+				const filename = `${baseFileName}_${method}_${timestamp}.json`;
+				zip.file(filename, JSON.stringify(resultData, null, 2));
 			}
 
-			// Perform the export
-			exportData(exportContent, exportFilename, exportFormat);
+			// Generate the zip file
+			const zipBlob = await zip.generateAsync({ type: 'blob' });
 
-			exportStatus = `Exported ${analysesToExport.length} analyses successfully`;
+			// Create download link
+			const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+			const zipFilename = `analysis_results_${timestamp}.zip`;
+
+			const url = URL.createObjectURL(zipBlob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = zipFilename;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			URL.revokeObjectURL(url);
+
+			exportStatus = `Exported ${analysesToExport.length} analyses to ${zipFilename}`;
 			setTimeout(() => {
 				exportStatus = '';
-			}, 3000);
+			}, 5000);
 		} catch (error) {
 			console.error('Error exporting analyses:', error);
 			exportStatus = `Export failed: ${error.message}`;
@@ -203,97 +177,9 @@
 			isExporting = false;
 		}
 	}
-
-	// Export FASTA file with corrections
-	async function exportCorrectedFasta(analysisId) {
-		fastaExportStatus = 'Exporting FASTA...';
-
-		try {
-			const analysis = await analysisStore.getAnalysis(analysisId);
-			if (!analysis || analysis.method !== 'datareader') {
-				fastaExportStatus = 'Error: Not a datareader analysis';
-				setTimeout(() => {
-					fastaExportStatus = '';
-				}, 3000);
-				return false;
-			}
-
-			const file = files.find((f) => f.id === analysis.fileId);
-			if (!file) {
-				fastaExportStatus = 'Error: File not found';
-				setTimeout(() => {
-					fastaExportStatus = '';
-				}, 3000);
-				return false;
-			}
-
-			const result =
-				typeof analysis.result === 'string' ? JSON.parse(analysis.result) : analysis.result;
-
-			if (!result || !result.FILE_INFO) {
-				fastaExportStatus = 'Error: Analysis results incomplete';
-				setTimeout(() => {
-					fastaExportStatus = '';
-				}, 3000);
-				return false;
-			}
-
-			// Extract the original FASTA content and export it
-			// Note: datareader results don't contain corrected sequences, so we export the original
-			try {
-				const fileRecord = await fileStorage.getFile(analysis.fileId);
-				if (!fileRecord || !fileRecord.content) {
-					console.error('File content not found');
-					fastaExportStatus = 'Error: File content not found';
-					setTimeout(() => {
-						fastaExportStatus = '';
-					}, 3000);
-					return false;
-				}
-
-				const fileContent = new TextDecoder().decode(fileRecord.content);
-				const { sequences } = parseFasta(fileContent);
-
-				if (sequences && sequences.length > 0) {
-					const fastaContent = toFastaFormat(sequences, { lineLength: 60 });
-					const filename = file.filename.replace(/\.[^/.]+$/, '') + '_exported.fasta';
-					exportData(fastaContent, filename, 'txt');
-
-					fastaExportStatus = `FASTA exported successfully (${sequences.length} sequences)`;
-					setTimeout(() => {
-						fastaExportStatus = '';
-					}, 3000);
-					return true;
-				} else {
-					console.error('No sequences found in file');
-					fastaExportStatus = 'Error: No sequences found in file';
-					setTimeout(() => {
-						fastaExportStatus = '';
-					}, 3000);
-					return false;
-				}
-			} catch (parseError) {
-				console.error('Error parsing FASTA content:', parseError);
-				fastaExportStatus = 'Error: Failed to parse FASTA content';
-				setTimeout(() => {
-					fastaExportStatus = '';
-				}, 3000);
-				return false;
-			}
-		} catch (error) {
-			console.error('Error exporting corrected FASTA:', error);
-			fastaExportStatus = `Error: ${error.message}`;
-			setTimeout(() => {
-				fastaExportStatus = '';
-			}, 3000);
-			return false;
-		}
-	}
 </script>
 
-<div class="batch-export rounded-lg border border-border-subtle bg-white p-4 shadow-sm">
-	<h3 class="mb-3 text-lg font-bold">Batch Export</h3>
-
+<div class="batch-export">
 	<!-- Filter controls -->
 	<div class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
 		<div>
@@ -325,26 +211,6 @@
 		</div>
 	</div>
 
-	<!-- Export format selection -->
-	<div class="mb-4">
-		<label class="mb-1 block text-sm font-medium">Export Format:</label>
-		<div class="flex flex-wrap gap-2">
-			{#each exportFormats as format}
-				<label class="flex cursor-pointer items-center">
-					<input
-						type="radio"
-						name="exportFormat"
-						value={format.id}
-						bind:group={exportFormat}
-						class="mr-1"
-					/>
-					<span class="mr-1 text-sm font-medium">{format.label}</span>
-					<span class="text-xs text-text-silver">({format.description})</span>
-				</label>
-			{/each}
-		</div>
-	</div>
-
 	<!-- Analysis selection table -->
 	<div class="mb-4">
 		<div class="mb-2 flex items-center justify-between">
@@ -358,46 +224,36 @@
 		<div class="max-h-64 overflow-y-auto rounded border border-border-subtle">
 			{#if filteredAnalyses.length === 0}
 				<p class="p-3 text-center text-sm text-text-silver">
-					No analyses available for the selected filters
+					No completed analyses available for export
 				</p>
 			{:else}
 				<table class="w-full table-auto text-sm">
 					<thead class="sticky top-0 bg-surface-sunken">
 						<tr>
 							<th class="w-10 p-2"></th>
-							<th class="w-20 p-2 text-left">Method</th>
+							<th class="p-2 text-left">Method</th>
 							<th class="p-2 text-left">File</th>
-							<th class="w-40 p-2 text-left">Date</th>
-							<th class="w-32 p-2 text-left">Actions</th>
+							<th class="p-2 text-left">Date</th>
 						</tr>
 					</thead>
 					<tbody>
 						{#each filteredAnalyses as analysis (analysis.id)}
-							<tr class="cursor-pointer border-t border-border-subtle hover:bg-surface-raised">
+							<tr
+								class="cursor-pointer border-t border-border-subtle hover:bg-surface-raised"
+								on:click={() => toggleSelection(analysis.id)}
+							>
 								<td class="p-2 text-center">
 									<input
 										type="checkbox"
 										checked={selectedAnalyses.has(analysis.id)}
 										on:change={() => toggleSelection(analysis.id)}
+										on:click|stopPropagation
 										class="h-4 w-4 cursor-pointer"
 									/>
 								</td>
 								<td class="p-2 font-medium">{analysis.method.toUpperCase()}</td>
 								<td class="truncate p-2">{getFileName(analysis.fileId)}</td>
 								<td class="p-2 text-text-slate">{formatDate(analysis.createdAt)}</td>
-								<td class="p-2">
-									{#if analysis.method === 'datareader'}
-										<button
-											on:click|stopPropagation={() => exportCorrectedFasta(analysis.id)}
-											class="rounded bg-status-success px-2 py-1 text-xs text-white hover:bg-status-success-text"
-											title="Export FASTA sequences from this analysis"
-										>
-											Export FASTA
-										</button>
-									{:else}
-										<span class="text-xs text-text-silver">N/A</span>
-									{/if}
-								</td>
 							</tr>
 						{/each}
 					</tbody>
@@ -406,69 +262,38 @@
 		</div>
 
 		<p class="mt-1 text-right text-sm text-text-slate">
-			{selectedAnalyses.size} analyses selected
+			{selectedAnalyses.size} of {filteredAnalyses.length} analyses selected
 		</p>
 	</div>
 
 	<!-- Export button -->
-	<div class="export-actions">
+	<div class="export-actions flex items-center gap-3">
 		<button
 			on:click={exportSelectedAnalyses}
 			disabled={selectedAnalyses.size === 0 || isExporting}
-			class="flex items-center rounded bg-brand-royal px-3 py-1 text-white hover:bg-brand-deep disabled:bg-surface-sunken disabled:text-text-silver"
+			class="flex items-center rounded bg-brand-royal px-4 py-2 font-medium text-white hover:bg-brand-deep disabled:bg-surface-sunken disabled:text-text-silver"
 		>
 			{#if isExporting}
-				<svg
-					class="mr-2 h-4 w-4 animate-spin"
-					xmlns="http://www.w3.org/2000/svg"
-					fill="none"
-					viewBox="0 0 24 24"
-				>
-					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
-					></circle>
-					<path
-						class="opacity-75"
-						fill="currentColor"
-						d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-					></path>
-				</svg>
+				<Loader2 class="mr-2 h-4 w-4 animate-spin" />
 				Exporting...
 			{:else}
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					class="mr-1 h-4 w-4"
-					viewBox="0 0 20 20"
-					fill="currentColor"
-				>
-					<path
-						fill-rule="evenodd"
-						d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z"
-						clip-rule="evenodd"
-					/>
-				</svg>
-				Export Selected Analyses
+				<FileArchive class="mr-2 h-4 w-4" />
+				Download as ZIP
 			{/if}
 		</button>
 
 		{#if exportStatus}
 			<p
-				class="mt-2 text-sm"
+				class="text-sm"
 				class:text-green-600={!exportStatus.includes('failed')}
 				class:text-red-600={exportStatus.includes('failed')}
 			>
 				{exportStatus}
 			</p>
 		{/if}
-
-		{#if fastaExportStatus}
-			<p
-				class="mt-2 text-sm"
-				class:text-green-600={fastaExportStatus.includes('successfully')}
-				class:text-blue-600={fastaExportStatus.includes('Exporting')}
-				class:text-red-600={fastaExportStatus.includes('Error')}
-			>
-				{fastaExportStatus}
-			</p>
-		{/if}
 	</div>
+
+	<p class="mt-3 text-xs text-text-silver">
+		Each analysis will be exported as a separate JSON file in the ZIP archive.
+	</p>
 </div>

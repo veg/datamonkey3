@@ -1,6 +1,9 @@
+import '../app.css';
+import FileCard from '../lib/FileCard.svelte';
+
 export default {
 	title: 'Components/FileCard',
-	component: null,
+	component: FileCard,
 	parameters: {
 		docs: {
 			description: {
@@ -40,14 +43,25 @@ const mockOldFile = {
 	createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days ago
 };
 
-const Template = ({ file, isActive, showDetails, preview }) => ({
-	Component: () => import('../lib/FileCard.svelte'),
-	props: {
-		file,
-		isActive,
-		showDetails,
-		preview
-	}
+const mockJsonFile = {
+	id: 'file-4',
+	filename: 'results.json',
+	size: 4096,
+	contentType: 'application/json',
+	createdAt: new Date().toISOString()
+};
+
+const mockCsvFile = {
+	id: 'file-5',
+	filename: 'data.csv',
+	size: 8192,
+	contentType: 'text/csv',
+	createdAt: new Date().toISOString()
+};
+
+const Template = (args) => ({
+	Component: FileCard,
+	props: args
 });
 
 export const Default = Template.bind({});
@@ -104,4 +118,34 @@ ActiveWithDetails.args = {
 	isActive: true,
 	showDetails: true,
 	preview: '>seq1\nATGCGTAGCTAGCTAGCTAGC\n>seq2\nGCTAGCTAGCTAGCTAGCTAG\n>seq3\nTAGCTAGCTAGCTAGCTAGC'
+};
+
+export const JsonFile = Template.bind({});
+JsonFile.args = {
+	file: mockJsonFile,
+	isActive: false,
+	showDetails: false,
+	preview: null
+};
+JsonFile.parameters = {
+	docs: {
+		description: {
+			story: 'JSON file showing the FileJson icon.'
+		}
+	}
+};
+
+export const CsvFile = Template.bind({});
+CsvFile.args = {
+	file: mockCsvFile,
+	isActive: false,
+	showDetails: false,
+	preview: null
+};
+CsvFile.parameters = {
+	docs: {
+		description: {
+			story: 'CSV file showing the FileSpreadsheet icon.'
+		}
+	}
 };
