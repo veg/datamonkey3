@@ -8,6 +8,10 @@
 	import AnalysisTimingEstimate from './AnalysisTimingEstimate.svelte';
 	import { AlertTriangle, Play, Loader2 } from 'lucide-svelte';
 	import { trackEvent } from './utils/analytics.js';
+	import {
+		countBranchGroups,
+		contrastFelHasEnoughGroups
+	} from './utils/branchGroupValidation.js';
 
 	export let methodConfig;
 	export let runMethod = null;
@@ -1050,6 +1054,15 @@
 	$: relaxBranchesValid = selectedMethod?.toLowerCase() !== 'relax' ||
 		(relaxHasTestBranches && relaxHasReferenceBranches);
 
+	// Contrast-FEL branch validation - compares two or more groups, so at least two
+	// distinct branch groups must be defined before submission. A single group core-dumps
+	// downstream in HyPhy (subtracting an empty matrix from the rate matrix), so gate it here.
+	//   - Interactive mode: count distinct groups tagged on the tree (selectionSetCount).
+	//   - Custom mode: require the first two branch-set text fields to be non-empty.
+	$: contrastFelBranchesValid =
+		selectedMethod?.toLowerCase() !== 'contrast-fel' ||
+		contrastFelHasEnoughGroups(methodOptions?.[selectedMethod] || {});
+
 	// Update a single method option (avoids bind:value inside {#each} which breaks in Svelte 5.23+)
 	function updateMethodOption(key, value) {
 		if (selectedMethod && methodOptions[selectedMethod]) {
@@ -1084,6 +1097,15 @@
 
 	// Run analysis
 	function runAnalysis() {
+		// Safety net: never submit Contrast-FEL with fewer than two branch groups —
+		// the button is also disabled in this state, but guard the handler directly too.
+		if (selectedMethod?.toLowerCase() === 'contrast-fel' && !contrastFelBranchesValid) {
+			console.warn(
+				'🚫 METHODSELECTOR - Blocked Contrast-FEL submission: needs at least two branch groups'
+			);
+			return;
+		}
+
 		if (selectedMethod && runMethod && !isSubmitting) {
 			isSubmitting = true;
 
@@ -1137,6 +1159,10 @@
 			methodOptions[selectedMethod].interactiveTree = taggedNewick || '';
 			methodOptions[selectedMethod].selectedBranchCount = count || 0;
 			methodOptions[selectedMethod].selectedBranchNames = selectedBranches || [];
+
+			// Track the number of distinct, non-empty branch groups tagged on the tree.
+			// Contrast-FEL requires >= 2 to be a valid comparison (see contrastFelBranchesValid).
+			methodOptions[selectedMethod].selectionSetCount = countBranchGroups(selectionSets);
 
 			// For Contrast-FEL multi-set mode, use the actual set names as branch-set parameters
 			console.log('🌳🔥 METHODSELECTOR - Checking Contrast-FEL conditions:', {
@@ -1474,11 +1500,29 @@
 					<span>Please select TEST and REFERENCE branches on the tree before running RELAX.</span>
 				</div>
 			{/if}
+			{#if selectedMethod?.toLowerCase() === 'contrast-fel' && !contrastFelBranchesValid}
+				<div class="branch-validation-warning" data-testid="contrast-fel-groups-warning">
+					<AlertTriangle class="warning-icon" />
+					<span>
+						{#if methodOptions?.[selectedMethod]?.branchesToTest === 'Custom'}
+							Contrast-FEL compares two or more groups — please define at least two branch
+							sets.
+						{:else}
+							Contrast-FEL compares two or more groups — please tag at least two branch
+							groups on the tree.
+						{/if}
+					</span>
+				</div>
+			{/if}
 			<button
 				class="run-button-large"
 				class:submitting={isSubmitting}
 				on:click={runAnalysis}
-				disabled={!selectedMethod || !currentMethod?.info.supported || isSubmitting || !relaxBranchesValid}
+				disabled={!selectedMethod ||
+					!currentMethod?.info.supported ||
+					isSubmitting ||
+					!relaxBranchesValid ||
+					!contrastFelBranchesValid}
 				data-testid="run-analysis-btn"
 			>
 				{#if isSubmitting}
