@@ -2,7 +2,7 @@
  * E2E tests for analysis history management
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/coverage.js';
 import { freshStart, seedCompletedAnalysis, MOCK_FEL_RESULT } from './fixtures/helpers.js';
 
 test.describe('Analysis History Management', () => {

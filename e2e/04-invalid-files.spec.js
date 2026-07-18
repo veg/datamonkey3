@@ -2,7 +2,7 @@
  * E2E tests for invalid file handling
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/coverage.js';
 import { freshStart, uploadFile, TEST_FILES } from './fixtures/helpers.js';
 
 test.describe('Invalid File Handling', () => {

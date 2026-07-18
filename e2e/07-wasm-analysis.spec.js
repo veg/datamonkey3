@@ -5,7 +5,7 @@
  * They use CD2-slim.fna which is the smallest demo file.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/coverage.js';
 import {
 	freshStart,
 	loadDemoFile,
@@ -13,9 +13,7 @@ import {
 	goToResultsTab,
 	selectMethod,
 	clickRunAnalysis,
-	waitForAnalysisCompletion,
-	getRunningCount,
-	getCompletedCount
+	waitForAnalysisCompletion
 } from './fixtures/helpers.js';
 
 test.setTimeout(180000);
@@ -40,10 +38,10 @@ test.describe('WASM Analysis Execution @slow', () => {
 		const started = await clickRunAnalysis(page);
 		expect(started).toBe(true);
 
-		// Status indicator should show running
-		await page.waitForTimeout(2000);
-		const runningCount = await getRunningCount(page);
-		expect(runningCount).toBeGreaterThanOrEqual(1);
+		// Status indicator should show running (web-first: running count >= 1).
+		await expect(
+			page.locator('button[aria-label="View all analyses"] .text-blue-600')
+		).toHaveText(/[1-9]/, { timeout: 15000 });
 
 		// Wait for completion
 		const completed = await waitForAnalysisCompletion(page, 150000);
@@ -89,12 +87,14 @@ test.describe('WASM Analysis Execution @slow', () => {
 		await selectMethod(page, 'FEL');
 
 		await clickRunAnalysis(page);
-		await page.waitForTimeout(1000);
 
-		// Run button should be disabled or show "Starting Analysis..." state
+		// Run button should become disabled or show "Starting Analysis..." state
+		// (web-first: retry until the running state is reflected in the DOM).
 		const runBtn = page.locator('[data-testid="run-analysis-btn"]');
-		const isDisabled = await runBtn.isDisabled();
-		const text = await runBtn.textContent();
-		expect(isDisabled || text.includes('Starting')).toBe(true);
+		await expect(async () => {
+			const isDisabled = await runBtn.isDisabled();
+			const text = await runBtn.textContent();
+			expect(isDisabled || text.includes('Starting')).toBe(true);
+		}).toPass({ timeout: 10000 });
 	});
 });

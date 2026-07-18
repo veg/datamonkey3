@@ -81,11 +81,12 @@ export async function freshStart(page) {
 /**
  * Load a demo file by clicking its sample card
  */
-export async function loadDemoFile(page, fileName = 'CD2-slim.fna') {
+export async function loadDemoFile(page, fileName = 'CD2-slim.fna', { timeout = 30000 } = {}) {
 	const fileCard = page.locator('.sample-card').filter({ hasText: fileName });
 	await fileCard.click();
-	// Wait for datareader to process the file
-	await page.waitForTimeout(3000);
+	// Wait (web-first) for the datareader to finish: sequence-info is the
+	// deterministic post-parse marker (dataReaderResults.svelte).
+	await expect(page.locator('[data-testid="sequence-info"]')).toBeVisible({ timeout });
 }
 
 /**
@@ -130,7 +131,10 @@ export async function goToResultsTab(page) {
 export async function selectMethod(page, methodKey) {
 	const methodSelect = page.locator('[data-testid="method-dropdown"]');
 	await methodSelect.selectOption(methodKey);
-	await page.waitForTimeout(500);
+	// Web-first: confirm the value committed AND the method panel reconciled
+	// (.method-description renders whenever a method is selected).
+	await expect(methodSelect).toHaveValue(methodKey);
+	await expect(page.locator('.method-description')).toBeVisible({ timeout: 15000 });
 }
 
 /**
@@ -148,22 +152,22 @@ export async function clickRunAnalysis(page) {
 /**
  * Wait for an analysis to complete by polling the status indicator
  */
-export async function waitForAnalysisCompletion(page, maxWaitMs = 120000) {
-	const startTime = Date.now();
-	while (Date.now() - startTime < maxWaitMs) {
-		// Check if results tab has become enabled (indicates completion)
-		const resultsTab = page.locator('button:has-text("Results")').first();
-		const isDisabled = await resultsTab.getAttribute('aria-disabled');
-		if (isDisabled !== 'true') {
-			// Check for completed analysis via indicator
-			const greenText = page.locator('button[aria-label="View all analyses"] .text-green-600');
-			if (await greenText.count() > 0) {
-				return true;
-			}
-		}
-		await page.waitForTimeout(2000);
+export async function waitForAnalysisCompletion(page, maxWaitMs = 150000) {
+	// Web-first: retry on Playwright's backoff until the Results tab is enabled
+	// AND the status indicator shows a completed (green) analysis. Preserves the
+	// boolean contract used by callers.
+	try {
+		await expect(async () => {
+			const resultsTab = page.locator('button:has-text("Results")').first();
+			expect(await resultsTab.getAttribute('aria-disabled')).not.toBe('true');
+			await expect(
+				page.locator('button[aria-label="View all analyses"] .text-green-600')
+			).toHaveCount(1);
+		}).toPass({ timeout: maxWaitMs });
+		return true;
+	} catch {
+		return false;
 	}
-	return false;
 }
 
 /**
@@ -178,6 +182,8 @@ export function getStatusIndicator(page) {
  */
 export async function getRunningCount(page) {
 	const indicator = getStatusIndicator(page);
+	// Give the indicator a chance to mount before reading (never throw).
+	await indicator.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
 	if (await indicator.count() === 0) return 0;
 	const blueText = indicator.locator('.text-blue-600');
 	if (await blueText.count() === 0) return 0;
@@ -190,6 +196,8 @@ export async function getRunningCount(page) {
  */
 export async function getCompletedCount(page) {
 	const indicator = getStatusIndicator(page);
+	// Give the indicator a chance to mount before reading (never throw).
+	await indicator.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
 	if (await indicator.count() === 0) return 0;
 	const greenText = indicator.locator('.text-green-600');
 	if (await greenText.count() === 0) return 0;

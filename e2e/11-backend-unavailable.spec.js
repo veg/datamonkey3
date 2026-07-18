@@ -4,7 +4,7 @@
  * Since there's no backend server in test, the backend should show as disconnected.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/coverage.js';
 import { freshStart, loadDemoFile, goToAnalyzeTab, selectMethod } from './fixtures/helpers.js';
 
 test.describe('Backend Unavailable State', () => {

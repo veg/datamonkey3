@@ -12,7 +12,7 @@
  * JSON is produced. It is tagged @slow because it runs a full analysis.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/coverage.js';
 
 test.setTimeout(180000);
 
