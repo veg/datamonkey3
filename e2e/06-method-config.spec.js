@@ -2,7 +2,7 @@
  * E2E tests for method selection and configuration
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/coverage.js';
 import { freshStart, loadDemoFile, goToAnalyzeTab, selectMethod } from './fixtures/helpers.js';
 
 test.describe('Method Selection & Configuration', () => {
@@ -25,7 +25,6 @@ test.describe('Method Selection & Configuration', () => {
 
 	test('selecting FEL shows description and options', async ({ page }) => {
 		await selectMethod(page, 'FEL');
-		await page.waitForTimeout(500);
 
 		// Method description should appear
 		const description = page.locator('.method-description');
@@ -59,15 +58,15 @@ test.describe('Method Selection & Configuration', () => {
 		await selectMethod(page, 'FEL');
 		// FEL has specific options like SRV
 		const srvOption = page.locator('text=Synonymous rate variation');
-		await expect(srvOption).toBeVisible();
+		await expect(srvOption).toBeVisible({ timeout: 10000 });
 
 		// Switch to GARD
 		await selectMethod(page, 'GARD');
 		// GARD has different options (data type)
 		const datatypeOption = page.locator('text=Data type');
-		await expect(datatypeOption).toBeVisible();
+		await expect(datatypeOption).toBeVisible({ timeout: 10000 });
 		// FEL-specific option should be gone
-		await expect(srvOption).not.toBeVisible();
+		await expect(srvOption).not.toBeVisible({ timeout: 10000 });
 	});
 
 	test('Run Analysis button visible when method selected', async ({ page }) => {
@@ -76,8 +75,8 @@ test.describe('Method Selection & Configuration', () => {
 		await expect(runBtn).not.toBeVisible();
 
 		await selectMethod(page, 'FEL');
-		await expect(runBtn).toBeVisible();
-		await expect(runBtn).toBeEnabled();
+		await expect(runBtn).toBeVisible({ timeout: 10000 });
+		await expect(runBtn).toBeEnabled({ timeout: 10000 });
 	});
 
 	test('genetic code can be changed', async ({ page }) => {

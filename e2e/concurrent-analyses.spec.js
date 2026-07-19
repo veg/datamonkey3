@@ -5,7 +5,7 @@
  * multiple analyses running at the same time.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/coverage.js';
 import {
 	freshStart,
 	loadDemoFile,

@@ -8,7 +8,7 @@
  * - Indicator navigates to Results tab when clicked
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/coverage.js';
 import {
 	freshStart,
 	loadDemoFile,
