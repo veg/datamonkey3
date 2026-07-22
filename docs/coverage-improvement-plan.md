@@ -78,10 +78,12 @@ New/extended specs for branches only reachable through the UI:
 | 0 — tooling | ✅ done | `test:coverage` script + vitest coverage config added |
 | 1 — runner error branches | ✅ done | `BackendAnalysisRunner.js` branches 57%→73%, functions 46%→79%; `HyPhyAnalysisRunner.js` 0%→100% branches |
 | 2 — store transitions | ✅ done | `analyses.js` statements 74%→87%, functions 67%→81%, branches 59%→67% |
-| 3 — UI failure-path e2e | pending | — |
-| 4 — CI ratchet | pending | — |
+| 3 — UI failure-path e2e | ✅ done | `17-analysis-failure-states.spec.js` renders the error/connection_lost/interrupted/cancelled card branches; stable at `--retries=0` on chromium + mobile-chrome |
+| 4 — CI ratchet | ✅ done | `test.coverage.thresholds` floors in `vite.config.ts` + a `unit-coverage` CI job; `e2e/README.md` documents the layer split |
 
 Unit suite: 252 → 293 tests. Logic-layer (`src/lib`+`src/stores`) branch coverage 63.6% → 67.6% after Phases 1–2. All green; no new lint errors (the two `vite.config.ts` proxy lint errors and the broken `test:backend` script both pre-date this work).
+
+The coverage ratchet is enforced: `npm run test:coverage` exits non-zero if branch coverage drops below the configured floors (verified — passes now, fails when a floor is set above the achieved level).
 
 Key finding from Phase 1: the previous `reconnection-handling.test.js` "BackendAnalysisRunner" block was a placeholder — it asserted on literals and never executed the runner. The new `runner-reconnect-errors.test.js` actually mocks socket.io + IndexedDB and exercises the code.
 
