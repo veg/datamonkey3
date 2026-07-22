@@ -71,6 +71,20 @@ New/extended specs for branches only reachable through the UI:
 - Turn on a coverage floor in CI at the *newly achieved* branch % (e.g. 65%), ratcheting only upward, so it can't regress.
 - Document the split (unit = logic branches, e2e = UI branches) in `e2e/README` so new work lands in the right layer.
 
+## Progress (measured)
+
+| Phase | Status | Result |
+|-------|--------|--------|
+| 0 — tooling | ✅ done | `test:coverage` script + vitest coverage config added |
+| 1 — runner error branches | ✅ done | `BackendAnalysisRunner.js` branches 57%→73%, functions 46%→79%; `HyPhyAnalysisRunner.js` 0%→100% branches |
+| 2 — store transitions | ✅ done | `analyses.js` statements 74%→87%, functions 67%→81%, branches 59%→67% |
+| 3 — UI failure-path e2e | pending | — |
+| 4 — CI ratchet | pending | — |
+
+Unit suite: 252 → 293 tests. Logic-layer (`src/lib`+`src/stores`) branch coverage 63.6% → 67.6% after Phases 1–2. All green; no new lint errors (the two `vite.config.ts` proxy lint errors and the broken `test:backend` script both pre-date this work).
+
+Key finding from Phase 1: the previous `reconnection-handling.test.js` "BackendAnalysisRunner" block was a placeholder — it asserted on literals and never executed the runner. The new `runner-reconnect-errors.test.js` actually mocks socket.io + IndexedDB and exercises the code.
+
 ## Realistic target
 
 Branch coverage **47% → ~68–72%** over ~2 weeks, dominated by Phases 1–2 (fast unit tests on the runner + store error paths). Lines/statements will drift up as a side effect but aren't the goal — the point is exercising the failure forks where bugs hide.
