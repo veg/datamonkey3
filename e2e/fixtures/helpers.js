@@ -210,6 +210,79 @@ export async function getCompletedCount(page) {
  * Uses the same DB schema as the app: 'datamonkey-db' version 2 with 'files' and 'analyses' stores.
  * Returns the analysis ID.
  */
+/**
+ * Seed an analysis in an arbitrary status (error, connection_lost, interrupted,
+ * cancelled, ...) so failure-path rendering in AnalysisCard can be exercised.
+ * Mirrors seedCompletedAnalysis but takes a status + optional error string.
+ */
+export async function seedAnalysisWithStatus(
+	page,
+	{ status = 'error', method = 'FEL', fileName = 'bglobin.nex', error = null, resultJson = null } = {}
+) {
+	return await page.evaluate(
+		async ({ status, method, fileName, error, resultJson, dbName, dbVersion }) => {
+			function openDB() {
+				return new Promise((resolve, reject) => {
+					const req = indexedDB.open(dbName, dbVersion);
+					req.onupgradeneeded = (e) => {
+						const db = e.target.result;
+						if (!db.objectStoreNames.contains('files')) {
+							db.createObjectStore('files', { keyPath: 'id' });
+						}
+						if (!db.objectStoreNames.contains('analyses')) {
+							db.createObjectStore('analyses', { keyPath: 'id' });
+						}
+					};
+					req.onsuccess = () => resolve(req.result);
+					req.onerror = () => reject(req.error);
+				});
+			}
+
+			const now = Date.now();
+			const analysisId = `seeded-${status}-${method.toLowerCase()}-${now}`;
+			const fileId = `seeded-file-${now}`;
+
+			const db = await openDB();
+
+			const fileTx = db.transaction('files', 'readwrite');
+			fileTx.objectStore('files').put({
+				id: fileId,
+				filename: fileName,
+				size: 1024,
+				type: 'application/octet-stream',
+				uploadedAt: now,
+				content: 'seeded-content'
+			});
+			await new Promise((resolve) => {
+				fileTx.oncomplete = resolve;
+			});
+
+			const record = {
+				id: analysisId,
+				fileId,
+				method: method.toLowerCase(),
+				status,
+				createdAt: now - 60000,
+				completedAt: now,
+				options: {},
+				metadata: { executionMode: 'backend', jobId: `${method.toLowerCase()}-${now}` }
+			};
+			if (error) record.error = error;
+			if (resultJson) record.result = resultJson;
+
+			const analysisTx = db.transaction('analyses', 'readwrite');
+			analysisTx.objectStore('analyses').put(record);
+			await new Promise((resolve) => {
+				analysisTx.oncomplete = resolve;
+			});
+
+			db.close();
+			return analysisId;
+		},
+		{ status, method, fileName, error, resultJson, dbName: DB_NAME, dbVersion: DB_VERSION }
+	);
+}
+
 export async function seedCompletedAnalysis(page, { resultJson, method = 'FEL', fileName = 'bglobin.nex' } = {}) {
 	return await page.evaluate(async ({ resultJson, method, fileName, dbName, dbVersion }) => {
 		function openDB() {
