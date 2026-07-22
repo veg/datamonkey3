@@ -271,3 +271,87 @@ describe('BackendAnalysisRunner.connect', () => {
 		expect(io).not.toHaveBeenCalled();
 	});
 });
+
+describe('BackendAnalysisRunner.validateParameters', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		currentSocket = makeSocket();
+		currentSocket.connected = true;
+		backendAnalysisRunner.socket = currentSocket;
+	});
+
+	it('resolves with the result when the socket fires validated', async () => {
+		const p = backendAnalysisRunner.validateParameters('fel', { pValueThreshold: 0.1 });
+		// The runner registers a one-off 'validated' handler and emits fel:check
+		expect(currentSocket.emit).toHaveBeenCalledWith('fel:check', expect.any(Object));
+		currentSocket.__handlers['validated']({ valid: true });
+		await expect(p).resolves.toEqual({ valid: true });
+		// handler is cleaned up
+		expect(currentSocket.off).toHaveBeenCalledWith('validated', expect.any(Function));
+	});
+
+	it('rejects with a timeout if validated never fires', async () => {
+		vi.useFakeTimers();
+		const p = backendAnalysisRunner.validateParameters('slac', {});
+		p.catch(() => {}); // avoid unhandled rejection while timers advance
+		vi.advanceTimersByTime(10001);
+		await expect(p).rejects.toThrow(/validation timeout/i);
+		vi.useRealTimers();
+	});
+});
+
+describe('BackendAnalysisRunner misc', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		currentSocket = makeSocket();
+		currentSocket.connected = true;
+		backendAnalysisRunner.socket = currentSocket;
+		backendAnalysisRunner.activeAnalyses.clear();
+	});
+
+	it('isConnected reflects socket state', () => {
+		expect(backendAnalysisRunner.isConnected()).toBe(true);
+		currentSocket.connected = false;
+		expect(backendAnalysisRunner.isConnected()).toBe(false);
+		backendAnalysisRunner.socket = null;
+		expect(backendAnalysisRunner.isConnected()).toBe(false);
+	});
+
+	it('disconnect tears down the socket and clears active analyses', () => {
+		backendAnalysisRunner.activeAnalyses.set('job-1', 'a-1');
+		backendAnalysisRunner.disconnect();
+		expect(currentSocket.disconnect).toHaveBeenCalled();
+		expect(backendAnalysisRunner.socket).toBeNull();
+		expect(backendAnalysisRunner.activeAnalyses.size).toBe(0);
+	});
+
+	it('cancelAnalysis emits cancel for the matching jobId', async () => {
+		backendAnalysisRunner.activeAnalyses.set('fel-1', 'a-1');
+		// super.cancelAnalysis -> analysisStore.cancelAnalysis (mocked storage no-op)
+		await backendAnalysisRunner.cancelAnalysis('a-1');
+		expect(currentSocket.emit).toHaveBeenCalledWith('cancel', { jobId: 'fel-1' });
+		expect(backendAnalysisRunner.activeAnalyses.has('fel-1')).toBe(false);
+	});
+
+	it('prepareAnalysisParameters maps genetic code names to ids and applies defaults', () => {
+		const params = backendAnalysisRunner.prepareAnalysisParameters('fel', {
+			geneticCode: 'Vertebrate mitochondrial'
+		});
+		expect(params.gencodeid).toBe(1);
+		expect(params.pvalue).toBe(0.1); // default
+	});
+
+	it('prepareAnalysisParameters falls back to base params for unknown methods', () => {
+		const params = backendAnalysisRunner.prepareAnalysisParameters('unknown-method', {});
+		expect(params).toEqual({ analysis_type: 'unknown-method', gencodeid: 0 });
+	});
+
+	it('GARD falls back to a compatible model when model/datatype mismatch', () => {
+		// protein datatype with a nucleotide-only model -> falls back to JTT
+		const params = backendAnalysisRunner.prepareAnalysisParameters('gard', {
+			datatype: 'protein',
+			model: 'GTR'
+		});
+		expect(params.model).toBe('JTT');
+	});
+});
