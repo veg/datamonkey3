@@ -24,7 +24,19 @@ export default defineConfig({
 			'src/test/*-backend.test.js', // Exclude backend integration tests
 			'src/test/backend-*.test.js' // Exclude any other backend test patterns
 		],
-		environment: 'jsdom'
+		environment: 'jsdom',
+		coverage: {
+			provider: 'v8',
+			reporter: ['text-summary', 'json-summary', 'lcov'],
+			reportsDirectory: './coverage-unit',
+			include: ['src/lib/**', 'src/stores/**'],
+			exclude: [
+				'src/**/*.{test,spec}.{js,ts}',
+				'src/**/__tests__/**',
+				'src/lib/icons/**',
+				'**/*.d.ts'
+			]
+		}
 	},
 
 	define: {
