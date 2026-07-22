@@ -35,7 +35,19 @@ export default defineConfig({
 				'src/**/__tests__/**',
 				'src/lib/icons/**',
 				'**/*.d.ts'
-			]
+			],
+			// Ratchet: floors set just below the achieved levels so a regression
+			// fails CI, but a small fluctuation doesn't flap. Raise these as
+			// coverage improves (Phases 3+). The global `include` pulls in the
+			// many untested .svelte components, which is why the statements/lines
+			// floor is low — branches is the metric we actually invest in.
+			thresholds: {
+				branches: 60,
+				// The runner + store logic we hardened in Phases 1-2 must stay high.
+				'src/lib/services/BackendAnalysisRunner.js': { branches: 70, functions: 75 },
+				'src/lib/services/HyPhyAnalysisRunner.js': { branches: 90 },
+				'src/stores/analyses.js': { statements: 80, functions: 78, branches: 65 }
+			}
 		}
 	},
 

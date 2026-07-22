@@ -7,6 +7,34 @@ on:
     branches: [main]
 
 jobs:
+  unit-coverage:
+    name: Unit Tests + Coverage Ratchet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fails the job if branch/statement/function coverage drops below the
+      # floors in vite.config.ts (test.coverage.thresholds). Raise the floors
+      # as coverage improves — see docs/coverage-improvement-plan.md.
+      - name: Run unit tests with coverage thresholds
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-coverage
+          path: coverage-unit/
+          retention-days: 7
+
   fast-e2e:
     name: Fast E2E Tests
     runs-on: ubuntu-latest
