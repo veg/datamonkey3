@@ -12,25 +12,25 @@ maxToggleSites		 = 50;
 
 
 
-maxSLACSize		     = 500;
-maxFELSize		     = 500;
-maxMEMESize			   = maxFELSize;
-maxPRIMESize		   = maxFELSize;
-maxFUBARSize		   = 5000;
+maxSLACSize		     = 10000;
+maxFELSize		     = 25000;
+maxMEMESize        = 10000;
+maxPRIMESize       = 5000;
+maxFUBARSize		   = 25000;
 maxFADESize	       = maxFUBARSize;
-maxRELSize		     = 75;
+maxRELSize		     = 2000;
 maxBSRSize			   = maxRELSize;
 maxGABranchSize		 = 30;
 maxBGMSize		     = maxSLACSize;
 maxASRSize		     = maxSLACSize;
 maxSBPSize		     = maxSLACSize;
-maxGARDSize		     = 300;
+maxGARDSize		     = 500;
 maxSCUEALSize		   = 500;
 maxCMSSize		 	   = 120;
 maxEVFSize			   = 120;
 maxToggleSize		   = 150;
 maxDEPSSize		 	   = 100;
-maxUploadSize      = 5000;
+maxUploadSize      = 25000;
 
 alignmentSizeLimits		 = {
 {"SLAC",""+maxSLACSize}
