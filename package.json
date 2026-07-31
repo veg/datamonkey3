@@ -21,6 +21,7 @@
 		"test": "npm run test:unit -- --run",
 		"test:backend": "vitest run src/test/*-backend.test.js src/test/backend-*.test.js --reporter=verbose",
 		"test:all": "npm run test && npm run test:backend",
+		"test:coverage": "vitest run --coverage",
 		"test:fel-backend": "vitest run src/test/fel-backend.test.js --reporter=verbose",
 		"test:slac-backend": "vitest run src/test/slac-backend.test.js --reporter=verbose",
 		"test:meme-backend": "vitest run src/test/meme-backend.test.js --reporter=verbose",
