@@ -6,6 +6,7 @@
 	import { treeStore } from '../stores/tree';
 	import BranchSelector from './BranchSelector.svelte';
 	import AnalysisTimingEstimate from './AnalysisTimingEstimate.svelte';
+	import PreScreenGate from './PreScreenGate.svelte';
 	import { AlertTriangle, Play, Loader2 } from 'lucide-svelte';
 	import { trackEvent } from './utils/analytics.js';
 	import {
@@ -1287,6 +1288,15 @@
 						<span>Server temporarily unavailable. Please use Local mode.</span>
 					</div>
 				{/if}
+
+				<!-- MEME pre-screen gate - advisory, sits above the timing estimate -->
+				<div class="mt-3">
+					<PreScreenGate
+						method={selectedMethod}
+						alignment={$fileMetricsStore?.canonicalFasta || ''}
+						tree={$treeStore?.usertree || $treeStore?.nj || ''}
+					/>
+				</div>
 
 				<!-- Timing Estimate - positioned near execution mode -->
 				<div class="mt-3">

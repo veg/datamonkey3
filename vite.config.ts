@@ -66,7 +66,9 @@ export default defineConfig({
 	// Optimize dependencies to prevent long processing times
 	optimizeDeps: {
 		include: ['@biowasm/aioli', 'toml', 'marked', 'socket.io-client'],
-		// Exclude linked packages so changes are picked up immediately
-		exclude: ['phylotree', 'alivibe']
+		// Exclude linked packages so changes are picked up immediately.
+		// onnxruntime-web ships its own WASM assets we vendor under static/prescreen/ort;
+		// pre-bundling it fights that, so exclude it and let the dynamic import resolve at runtime.
+		exclude: ['phylotree', 'alivibe', 'onnxruntime-web']
 	}
 });
