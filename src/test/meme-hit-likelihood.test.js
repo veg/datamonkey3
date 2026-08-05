@@ -425,3 +425,83 @@ describe('copy', () => {
 		expect(HIT_LIKELIHOOD_CAVEAT).toContain('not whether this gene is under selection');
 	});
 });
+
+describe('scope: the estimate only ever talks about MEME', () => {
+	// WHY THIS EXISTS. The model was trained on a single label — did a MEME run report at least one
+	// selected site. It has never scored BUSTED, aBSREL, FUBAR or anything else, so any sentence
+	// about another method is the author's judgement wearing the model's authority, and a reader
+	// cannot tell the two apart. An earlier version shipped five such sentences ("BUSTED can detect
+	// selection here", "FUBAR holds up better than MEME here"). A human caught them; nothing in the
+	// suite did.
+	//
+	// So this walks every state the estimate can reach and asserts no other analysis method is named
+	// in anything a user can read. It is deliberately state-enumeration rather than a grep of the
+	// source: a new string in a new file is still covered, as long as some state renders it.
+	const OTHER_METHODS =
+		/\b(BUSTED|aBSREL|FUBAR|FEL|SLAC|PRIME|RELAX|BGM|GARD|FADE|Contrast-FEL|MULTI-HIT|NRM)\b/i;
+
+	const seqs = Array.from({ length: 20 }, (_, i) => `>t${i}\n${'ATGACTGGTCCC'.repeat(25)}`);
+	const bigAln = seqs.join('\n') + '\n';
+	const bigTree = '(' + Array.from({ length: 20 }, (_, i) => `t${i}:0.08`).join(',') + ');';
+	const tinyAln = '>a\nATGACTGGTCCC\n>b\nATGACAGGTCCC\n>c\nATGACTGATCCC\n';
+	const tinyTree = '((a:0.004,b:0.003):0.002,c:0.005);';
+	const timeTree = '(' + Array.from({ length: 20 }, (_, i) => `t${i}:12.5`).join(',') + ');';
+
+	/** Every field of a result that can reach a screen. */
+	function visibleText(res) {
+		if (!res) return '';
+		const parts = [res.detail, res.caveat, res.note, res.basis, res.tree_source_caveat];
+		if (res.domain && res.domain.summary) parts.push(res.domain.summary);
+		if (res.recommendation) {
+			parts.push(res.recommendation.message, res.recommendation.caveat);
+			for (const alt of res.recommendation.secondary || []) parts.push(alt.message);
+			if (res.recommendation.action) parts.push(res.recommendation.action.label);
+		}
+		return parts.filter(Boolean).join(' — ');
+	}
+
+	it('names no other method in any reachable state', async () => {
+		const states = [
+			['non-MEME method', { method: 'fel', alignment: bigAln, tree: bigTree }],
+			['no alignment', { method: 'meme', alignment: '', tree: bigTree }],
+			['topology-only tree', { method: 'meme', alignment: bigAln, tree: '((a,b),c);' }],
+			['out of distribution', { method: 'meme', alignment: bigAln, tree: timeTree }],
+			['scored, ample data', { method: 'meme', alignment: bigAln, tree: bigTree }],
+			['scored, thin data', { method: 'meme', alignment: tinyAln, tree: tinyTree }],
+			['user tree', { method: 'meme', alignment: bigAln, tree: bigTree, treeSource: 'user' }],
+			['inferred tree', { method: 'meme', alignment: bigAln, tree: bigTree, treeSource: 'nj' }],
+			['unknown tree', { method: 'meme', alignment: bigAln, tree: bigTree, treeSource: 'zzz' }]
+		];
+		for (const [name, args] of states) {
+			const res = await estimateHitLikelihood({ ...args, model, opts: { resampleAvailable: true } });
+			const text = visibleText(res);
+			expect(text, `state "${name}" named another method: ${text}`).not.toMatch(OTHER_METHODS);
+		}
+		// The failure path is constructed, not reachable through estimateHitLikelihood.
+		expect(visibleText(hitLikelihoodError())).not.toMatch(OTHER_METHODS);
+	});
+
+	it('names no other method in the per-level guidance or notes', () => {
+		for (const level of ['likely', 'uncertain', 'unlikely']) {
+			expect(noteForLevel(level)).not.toMatch(OTHER_METHODS);
+		}
+		for (const f of [
+			{ level: 'likely', num_seqs: 100, num_sites: 300, median_pos_dist: 0.05 },
+			{ level: 'uncertain', num_seqs: 50, num_sites: 200, median_pos_dist: 0.02 },
+			{ level: 'unlikely', num_seqs: 10, num_sites: 17, median_pos_dist: 0.03 },
+			{ level: 'unlikely', num_seqs: 8, num_sites: 400, median_pos_dist: 0.3 },
+			{ level: 'unlikely', num_seqs: 40, num_sites: 500, median_pos_dist: 0.05 }
+		]) {
+			const r = recommendFor(f, { resampleAvailable: true });
+			const text = [r.message, r.caveat, ...r.secondary.map((s) => s.message)].join(' ');
+			expect(text, `level ${f.level} named another method: ${text}`).not.toMatch(OTHER_METHODS);
+		}
+	});
+
+	it('the shared caveat still says what the number is NOT', () => {
+		// The one sentence that has to survive any rewrite of the copy.
+		expect(HIT_LIKELIHOOD_CAVEAT).toMatch(/not whether this gene is under selection/i);
+		expect(MODEL_BASIS).toMatch(/MEME/);
+	});
+});
+
