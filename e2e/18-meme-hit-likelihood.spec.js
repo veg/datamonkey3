@@ -74,22 +74,28 @@ test.describe('MEME hit-likelihood', () => {
 	test.beforeEach(async ({ page }) => {
 		await freshStart(page);
 		await loadDemoFile(page, 'CD2-slim.fna');
-		await goToAnalyzeTab(page);
-		// Ensure the method dropdown is present before any selectOption (avoids a
-		// race under load where the WASM-heavy page hasn't rendered the selector yet).
-		await expect(page.locator('[data-testid="method-dropdown"]')).toBeVisible({ timeout: 30000 });
+		// Retry the navigation rather than assuming one click lands. Two things make a single
+		// attempt unreliable: goToAnalyzeTab returns false instead of throwing when the tab is not
+		// yet clickable, and the marker loadDemoFile waits on (sequence-info) is the unconditional
+		// root of dataReaderResults, so it appears when that component mounts rather than when the
+		// file becomes the active selection. In between, clicking Analyze can land back on Data with
+		// "Upload or select a file to get started" and no dropdown at all — which then surfaces much
+		// later as a missing estimator row and reads as a flaky feature rather than a missed click.
+		await expect(async () => {
+			await goToAnalyzeTab(page);
+			await expect(page.locator('[data-testid="method-dropdown"]')).toBeVisible({
+				timeout: 5000
+			});
+		}).toPass({ timeout: 60000 });
 	});
 
 	test('renders a level, a reason and its basis when MEME is selected', async ({ page }) => {
 		await selectMethod(page, 'MEME');
 
 		const row = page.locator('[data-testid="meme-hit-likelihood"]');
-		// Longer than the other waits on purpose. This is the first assertion in the whole suite
-		// that forces the row to mount, and mounting it makes the dev server transform
-		// MemeHitLikelihood.svelte plus hitLikelihood/hitLikelihoodModel/recommendation/treeEnsemble
-		// for the first time. That cold cost lands entirely on this one assertion; every later wait
-		// hits a warm module graph. At 30s it failed on a cold CI runner and passed on retry, which
-		// reads as an unstable feature when it is really a one-off compile.
+		// Longer than the other waits: this is the first assertion in the suite that forces the row
+		// to mount, so the dev server transforms MemeHitLikelihood and its four-module import graph
+		// here. Every later wait hits a warm module graph.
 		await expect(row).toBeVisible({ timeout: 60000 });
 
 		// It resolves to one of the four statuses — never to blank space.
