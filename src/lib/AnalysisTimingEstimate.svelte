@@ -9,6 +9,17 @@
 	export let methodOptions = {};
 	export let geneticCode = 'Universal';
 	export let executionMode = 'backend'; // 'backend' or 'wasm'
+	// 'card' = standalone bordered box (default, unchanged). 'row' = a line inside RunOutlook,
+	// which owns the surrounding chrome; the row drops its own border/background so the card
+	// reads as one panel rather than two stacked coloured boxes.
+	export let variant = 'card';
+
+	// Chrome is only drawn in the 'card' variant. Kept as one expression so the card output
+	// stays byte-identical to what src/stories/AnalysisTimingEstimateWrapper.svelte duplicates.
+	$: cardChrome =
+		estimatedTime && variant === 'card'
+			? `${SPEED_CATEGORIES[estimatedTime.category].bgColor} ${SPEED_CATEGORIES[estimatedTime.category].borderColor} rounded-md border p-3`
+			: '';
 
 	// Get sequence and site data from the appropriate store
 	$: fileMetrics = $fileMetricsStore;
@@ -46,11 +57,7 @@
 </script>
 
 {#if estimatedTime && estimatedTime.minutes !== null}
-	<div
-		class="timing-estimate {SPEED_CATEGORIES[estimatedTime.category].bgColor} {SPEED_CATEGORIES[
-			estimatedTime.category
-		].borderColor} rounded-md border p-3"
-	>
+	<div class="timing-estimate {cardChrome}">
 		<div class="timing-header">
 			<span class="timing-icon flex items-center gap-0.5 {SPEED_CATEGORIES[estimatedTime.category].color}">
 				<svelte:component this={SpeedIcon} class="h-4 w-4" />
@@ -58,12 +65,21 @@
 					<svelte:component this={SpeedIcon} class="h-4 w-4" />
 				{/if}
 			</span>
-			<span class="timing-label {SPEED_CATEGORIES[estimatedTime.category].color}">
-				{SPEED_CATEGORIES[estimatedTime.category].label}
-			</span>
-			<span class="timing-value {SPEED_CATEGORIES[estimatedTime.category].color}">
-				{estimatedTime.description}
-			</span>
+			{#if variant === 'row'}
+				<!-- Inside RunOutlook the row needs an explicit dimension label so it reads in
+				     parallel with the hit-likelihood row; the speed word moves to the value. -->
+				<span class="timing-label text-text-slate">Runtime</span>
+				<span class="timing-value {SPEED_CATEGORIES[estimatedTime.category].color}">
+					{SPEED_CATEGORIES[estimatedTime.category].label} · {estimatedTime.description}
+				</span>
+			{:else}
+				<span class="timing-label {SPEED_CATEGORIES[estimatedTime.category].color}">
+					{SPEED_CATEGORIES[estimatedTime.category].label}
+				</span>
+				<span class="timing-value {SPEED_CATEGORIES[estimatedTime.category].color}">
+					{estimatedTime.description}
+				</span>
+			{/if}
 		</div>
 
 		{#if datasetInfo}
@@ -89,12 +105,16 @@
 
 	</div>
 {:else if method}
-	<div class="timing-estimate rounded-md border border-gray-200 bg-gray-50 p-3">
+	<div class="timing-estimate {variant === 'card' ? 'rounded-md border border-gray-200 bg-gray-50 p-3' : ''}">
 		<div class="timing-header">
 			<span class="timing-icon text-gray-500">
 				<Clock class="h-4 w-4" />
 			</span>
-			<span class="timing-label text-gray-600"> Timing Estimate </span>
+			{#if variant === 'row'}
+				<span class="timing-label text-text-slate">Runtime</span>
+			{:else}
+				<span class="timing-label text-gray-600"> Timing Estimate </span>
+			{/if}
 			<span class="timing-value text-gray-600">
 				{($currentFile || fileMetrics) && !hasValidData
 					? 'Analyzing file...'

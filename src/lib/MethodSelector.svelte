@@ -5,8 +5,8 @@
 	import { fileMetricsStore } from '../stores/fileInfo';
 	import { treeStore } from '../stores/tree';
 	import BranchSelector from './BranchSelector.svelte';
-	import AnalysisTimingEstimate from './AnalysisTimingEstimate.svelte';
-	import PreScreenGate from './PreScreenGate.svelte';
+	import RunOutlook from './RunOutlook.svelte';
+	import { treeHasBranchLengths } from './services/prescreen/scope.js';
 	import { AlertTriangle, Play, Loader2 } from 'lucide-svelte';
 	import { trackEvent } from './utils/analytics.js';
 	import {
@@ -1084,6 +1084,35 @@
 		}
 	}
 
+	// Which tree RunOutlook's MEME estimate should read depth from. Prefer the user's own tree, but
+	// only while its branch lengths are usable: a NEXUS upload often carries a topology-only tree
+	// alongside an inferred NJ tree that does have lengths, and depth is the whole point of the
+	// estimate. The source travels with it so the estimate can disclose that NJ lengths are
+	// nucleotide distances rather than the codon-model lengths MEME fits.
+	$: outlookTree = pickOutlookTree($treeStore);
+
+	function pickOutlookTree(store) {
+		const user = store?.usertree || '';
+		const nj = store?.nj || '';
+		if (treeHasBranchLengths(user)) return { newick: user, source: 'user' };
+		if (treeHasBranchLengths(nj)) return { newick: nj, source: 'nj' };
+		// Neither is usable; hand over whatever exists so the estimate can say why, not nothing.
+		return { newick: user || nj, source: user ? 'user' : nj ? 'nj' : 'unknown' };
+	}
+
+	// Act on a method suggestion from RunOutlook. Only ever moves the dropdown — the user still
+	// chooses the options and presses Run — and only to a method this build actually offers, so a
+	// stale suggestion is a no-op rather than a selector stuck on nothing.
+	function switchMethod(method) {
+		if (!method) return;
+		const target = availableMethods.find(
+			(m) => m.id.toLowerCase() === String(method).toLowerCase() && m.info.supported
+		);
+		if (!target) return;
+		selectedMethod = target.id;
+		trackEvent('method-switch-suggested', { from: 'run-outlook', method: target.id });
+	}
+
 	// Get method info helper
 	function getMethodInfo(key) {
 		return (
@@ -1289,22 +1318,18 @@
 					</div>
 				{/if}
 
-				<!-- MEME pre-screen gate - advisory, sits above the timing estimate -->
+				<!-- What we can say before the run: runtime, plus the MEME outcome estimate.
+				     One panel, near the execution-mode choice it depends on. -->
 				<div class="mt-3">
-					<PreScreenGate
-						method={selectedMethod}
-						alignment={$fileMetricsStore?.canonicalFasta || ''}
-						tree={$treeStore?.usertree || $treeStore?.nj || ''}
-					/>
-				</div>
-
-				<!-- Timing Estimate - positioned near execution mode -->
-				<div class="mt-3">
-					<AnalysisTimingEstimate
+					<RunOutlook
 						method={selectedMethod}
 						methodOptions={methodOptions[selectedMethod] || {}}
 						{geneticCode}
 						executionMode={executionMode === 'local' ? 'wasm' : 'backend'}
+						alignment={$fileMetricsStore?.canonicalFasta || ''}
+						tree={outlookTree.newick}
+						treeSource={outlookTree.source}
+						on:selectMethod={(e) => switchMethod(e.detail.method)}
 					/>
 				</div>
 			</div>

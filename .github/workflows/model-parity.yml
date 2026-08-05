@@ -1,0 +1,70 @@
+name: Model Parity
+
+# DM3 evaluates the MEME hit-likelihood model in pure JS (treeEnsemble.js over a ~37 KB coefficient
+# table) rather than shipping onnxruntime-web's 13.5 MB of WASM to every user who selects MEME.
+# That is only defensible while the coefficients provably correspond to the .onnx the ML and QC
+# teams validated. This job is that proof. If it fails, the numbers a researcher sees in the
+# browser are not the numbers that were signed off — treat it as a release blocker, not a flake.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/lib/services/prescreen/**'
+      - 'scripts/prescreen/**'
+      - '.github/workflows/model-parity.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/lib/services/prescreen/**'
+      - 'scripts/prescreen/**'
+      - '.github/workflows/model-parity.yml'
+  workflow_dispatch:
+
+jobs:
+  parity:
+    name: JS evaluator matches the validated .onnx
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No npm ci: treeEnsemble.js imports nothing, so the scorer runs on a bare Node.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: scripts/prescreen/requirements.txt
+
+      - name: Install verification-only dependencies
+        run: pip install -r scripts/prescreen/requirements.txt
+
+      - name: Verify ONNX/JS scoring parity
+        run: python3 scripts/prescreen/verify_parity.py --vectors 20000
+
+      - name: Verify the coefficient table regenerates from the .onnx
+        # Guards the other half: that onnx_to_ensemble.py still reproduces exactly what is
+        # committed, so a retrain is a reproducible command rather than a manual step someone
+        # has to reconstruct.
+        run: |
+          python3 scripts/prescreen/onnx_to_ensemble.py --out /tmp/regenerated.json
+          python3 - <<'PY'
+          import json, sys, numpy as np
+          a = json.load(open('src/lib/services/prescreen/meme_hit_likelihood.ensemble.json'))
+          b = json.load(open('/tmp/regenerated.json'))
+          for k in ('format', 'post_transform', 'features', 'n_trees', 'n_nodes', 'n_leaves',
+                    'branch_split_counts', 'base_score', 'source_sha256'):
+              if a.get(k) != b.get(k):
+                  sys.exit(f"FAIL: {k} differs — committed={a.get(k)!r} regenerated={b.get(k)!r}")
+          if len(a['trees']) != len(b['trees']):
+              sys.exit("FAIL: tree count differs")
+          worst = max(float(np.abs(np.float32(x) - np.float32(y)).max())
+                      for x, y in zip((np.array(t, float) for t in a['trees']),
+                                      (np.array(t, float) for t in b['trees'])))
+          if worst != 0.0:
+              sys.exit(f"FAIL: coefficient tables differ, max |delta| = {worst:.3e}")
+          print("OK: the committed table regenerates exactly from the .onnx")
+          PY
