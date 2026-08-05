@@ -359,30 +359,27 @@ describe('recommendation routing', () => {
 		expect(r.caveat).toBe(HIT_LIKELIHOOD_CAVEAT);
 	});
 
-	it('offers BUSTED on a borderline alignment', () => {
+	it('has no action to offer on a borderline alignment', () => {
+		// Scope discipline: this model was trained on one label — did MEME report a site. It has no
+		// evidence about BUSTED, aBSREL or FUBAR, so it must not claim what they would find.
 		const r = recommendFor(res('uncertain', 50, 200, 0.02));
-		expect(r.action).toMatchObject({ kind: 'switch-method', method: 'busted', name: 'BUSTED' });
+		expect(r.action).toBeNull();
+		expect(r.message).toMatch(/MEME/);
 	});
 
-	it('refuses to suggest any method when the alignment is too thin for all of them', () => {
-		// The demo-fixture shape: 10 taxa, 17 codons. Routing this to BUSTED would recommend a run
-		// that also cannot work.
+	it('says what about the DATA would change the answer when the alignment is too thin', () => {
+		// The demo-fixture shape: 10 taxa, 17 codons.
 		const r = recommendFor(res('unlikely', 10, 17, 0.03));
 		expect(r.action).toBeNull();
-		expect(r.secondary).toEqual([]);
-		expect(r.message).toContain('more divergent sequences will help');
+		expect(r.message).toMatch(/more divergent/i);
 		expect(r.budget.total).toBeLessThan(ROUTING.totalSubsFloor);
 	});
 
-	it('routes few-taxa/long-branch data to aBSREL', () => {
-		const r = recommendFor(res('unlikely', 8, 400, 0.3));
-		expect(r.action).toMatchObject({ method: 'absrel', name: 'aBSREL' });
-	});
-
-	it('routes thin-per-site data to BUSTED, with FUBAR as a secondary on long alignments', () => {
-		const r = recommendFor(res('unlikely', 40, 500, 0.05));
-		expect(r.action).toMatchObject({ method: 'busted' });
-		expect(r.secondary.map((s) => s.action.method)).toContain('fubar');
+	it('distinguishes a thin total from thin-per-site', () => {
+		const thinTotal = recommendFor(res('unlikely', 10, 17, 0.03));
+		const thinPerSite = recommendFor(res('unlikely', 40, 500, 0.05));
+		expect(thinTotal.message).not.toBe(thinPerSite.message);
+		expect(thinPerSite.budget.total).toBeGreaterThanOrEqual(ROUTING.totalSubsFloor);
 	});
 
 	it('only names the Resample control when the caller says it is on screen', () => {
@@ -395,20 +392,23 @@ describe('recommendation routing', () => {
 		).toBe(true);
 	});
 
-	it('every switch-method action names a key MethodSelector can select', () => {
-		// MethodSelector.SUPPORTED_METHODS keys, lowercase — a display name here is a silent no-op.
-		const keys = ['busted', 'absrel', 'fubar'];
+	it('never names another analysis method, at any level', () => {
+		// The regression guard for this whole scope decision. If someone reintroduces routing, this
+		// fails before it reaches a researcher.
+		const others = /\b(BUSTED|aBSREL|FUBAR|FEL|SLAC|PRIME|RELAX|GARD|BGM|FADE)\b/i;
 		const all = [
+			recommendFor(res('likely', 100, 300, 0.05)),
 			recommendFor(res('uncertain', 50, 200, 0.02)),
+			recommendFor(res('unlikely', 10, 17, 0.03)),
 			recommendFor(res('unlikely', 8, 400, 0.3)),
-			recommendFor(res('unlikely', 40, 500, 0.05))
+			recommendFor(res('unlikely', 40, 500, 0.05), { resampleAvailable: true })
 		];
 		for (const r of all) {
-			const actions = [r.action, ...r.secondary.map((s) => s.action)].filter(
-				(a) => a && a.kind === 'switch-method'
+			const text = [r.message, r.caveat, ...r.secondary.map((s) => s.message)].join(' ');
+			expect(text).not.toMatch(others);
+			expect([r.action, ...r.secondary.map((s) => s.action)].filter(Boolean)).not.toContainEqual(
+				expect.objectContaining({ kind: 'switch-method' })
 			);
-			expect(actions.length).toBeGreaterThan(0);
-			for (const a of actions) expect(keys).toContain(a.method);
 		}
 	});
 });

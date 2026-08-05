@@ -19,7 +19,6 @@
   hasHitLikelihood(method), and the ~37 KB coefficient chunk is fetched on first score.
 -->
 <script>
-	import { createEventDispatcher } from 'svelte';
 	import { browser } from '$app/environment';
 	// Barrel import, like every other component here. The deep-subpath form
 	// (lucide-svelte/icons/signal) was the only one in the codebase, and because this component is
@@ -46,8 +45,6 @@
 	export let tree = '';
 	/** 'user' | 'nj' | 'unknown' — decides which branch-length caveat applies. */
 	export let treeSource = 'unknown';
-
-	const dispatch = createEventDispatcher();
 
 	let result = null; // an estimate object (never a bare null once we have run), see hitLikelihood.js
 	let computing = false;
@@ -123,10 +120,6 @@
 		return parts.join(' · ');
 	}
 
-	function act(action) {
-		if (!action) return;
-		if (action.kind === 'switch-method') dispatch('selectMethod', { method: action.method });
-	}
 </script>
 
 {#if applicable}
@@ -165,30 +158,16 @@
 			{/if}
 
 			{#if shown && shown.recommendation}
-				<p class="hit-detail">{shown.recommendation.message}</p>
-				{#if shown.recommendation.action}
-					<button
-						type="button"
-						class="hit-action"
-						data-testid="hit-likelihood-action"
-						on:click={() => act(shown.recommendation.action)}
-					>
-						{shown.recommendation.action.label}
-					</button>
-				{/if}
+				<!-- Text only. The guidance is about this alignment and MEME, so there is nothing here
+				     for the UI to act on: the fix is collecting different data, not clicking a
+				     control. The one action recommendFor can still emit (set MEME's resample) is
+				     gated behind an option the MEME panel does not expose yet, so wiring a button
+				     for it now would be plumbing for something that cannot fire. -->
+				<p class="hit-detail" data-testid="hit-likelihood-guidance">
+					{shown.recommendation.message}
+				</p>
 				{#each shown.recommendation.secondary || [] as alt}
-					<p class="hit-detail hit-secondary">
-						{alt.message}
-						{#if alt.action && alt.action.kind === 'switch-method'}
-							<button
-								type="button"
-								class="hit-action hit-action-inline"
-								on:click={() => act(alt.action)}
-							>
-								{alt.action.label}
-							</button>
-						{/if}
-					</p>
+					<p class="hit-detail hit-secondary">{alt.message}</p>
 				{/each}
 			{/if}
 

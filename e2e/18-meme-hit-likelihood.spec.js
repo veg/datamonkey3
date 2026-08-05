@@ -125,7 +125,7 @@ test.describe('MEME hit-likelihood', () => {
 		await expect(panel.locator('.timing-estimate')).toHaveCount(1);
 	});
 
-	test('a discouraging estimate offers a way forward, not just a grade', async ({ page }) => {
+	test('a discouraging estimate says what about the data would change it', async ({ page }) => {
 		await selectMethod(page, 'MEME');
 		const row = page.locator('[data-testid="meme-hit-likelihood"]');
 		await expect(row).toHaveAttribute('data-status', /^(ok|cannot-assess|error)$/, {
@@ -133,15 +133,18 @@ test.describe('MEME hit-likelihood', () => {
 		});
 
 		const level = await row.getAttribute('data-level');
-		test.skip(level !== 'unlikely', `demo file scored "${level}"; routing copy is for 'unlikely'`);
+		test.skip(level !== 'unlikely', `demo file scored "${level}"; this copy is for 'unlikely'`);
 
-		// Either a concrete alternative method, or an explicit statement that no method swap helps.
-		const action = row.locator('[data-testid="hit-likelihood-action"]');
-		if (await action.count()) {
-			await expect(action).toContainText(/Switch to/);
-		} else {
-			await expect(row).toContainText(/a different method will not/);
-		}
+		// Guidance is about the alignment, not about swapping methods. The model was trained on one
+		// label — did MEME report a site — so it has nothing to say about any other method.
+		const guidance = row.locator('[data-testid="hit-likelihood-guidance"]');
+		await expect(guidance).toBeVisible();
+		await expect(guidance).toContainText(/more divergent|more sequences/i);
+
+		// The regression guard for that scope decision, asserted on what a user can actually read.
+		const text = await row.innerText();
+		expect(text).not.toMatch(/\b(BUSTED|aBSREL|FUBAR|FEL|SLAC|PRIME|RELAX|GARD|BGM|FADE)\b/i);
+		await expect(row.locator('[data-testid="hit-likelihood-action"]')).toHaveCount(0);
 	});
 
 	test('a non-MEME method (FEL) downloads none of the estimator payload', async ({ page }) => {
@@ -193,35 +196,31 @@ test.describe('MEME hit-likelihood routing', () => {
 	// on datareader plus NJ inference before it can even select a method.
 	test.setTimeout(180000);
 
-	test('the suggested method is a control, not a sentence', async ({ page }) => {
+	test('thin-per-site data still gets MEME-only guidance', async ({ page }) => {
 		await freshStart(page);
-		// 20 taxa x 800 codons at low divergence: enough substitutions in total for a gene-wide
-		// test, not enough at any one site for MEME. That is the case the routing exists for.
+		// 20 taxa x 800 codons at low divergence: plenty of substitutions in total, not enough at any
+		// one site for MEME. This is the shape that used to be routed to BUSTED.
 		await page.locator('input[type="file"]').setInputFiles({
 			name: 'synthetic-low-divergence.fna',
 			mimeType: 'text/plain',
 			buffer: Buffer.from(syntheticAlignment(20, 800, 0.015))
 		});
-		await page.waitForTimeout(8000); // datareader + NJ inference
-		await goToAnalyzeTab(page);
-		await expect(page.locator('[data-testid="method-dropdown"]')).toBeVisible({ timeout: 30000 });
+		await expect(page.locator('[data-testid="sequence-info"]')).toBeVisible({ timeout: 60000 });
+		await expect(async () => {
+			await goToAnalyzeTab(page);
+			await expect(page.locator('[data-testid="method-dropdown"]')).toBeVisible({ timeout: 5000 });
+		}).toPass({ timeout: 60000 });
 		await selectMethod(page, 'MEME');
 
 		const row = page.locator('[data-testid="meme-hit-likelihood"]');
-		await expect(row).toHaveAttribute('data-status', 'ok', { timeout: 30000 });
+		await expect(row).toHaveAttribute('data-status', 'ok', { timeout: 60000 });
 
-		const action = row.locator('[data-testid="hit-likelihood-action"]').first();
-		await expect(action).toBeVisible();
-		const label = await action.innerText();
-		expect(label).toMatch(/^Switch to (BUSTED|aBSREL|FUBAR)$/);
-
-		// Clicking it actually moves the method selector — the recommendation was previously
-		// computed and thrown away, and a suggestion nobody can act on is just a grade.
-		await action.click();
-		await expect(page.locator('[data-testid="method-dropdown"]')).toHaveValue(
-			new RegExp(`^${label.replace('Switch to ', '')}$`, 'i')
-		);
-		// And the estimate stops applying to the new method, rather than following it there.
+		const text = await row.innerText();
+		expect(text).toMatch(/MEME/);
+		expect(text).not.toMatch(/\b(BUSTED|aBSREL|FUBAR|FEL|SLAC|PRIME|RELAX|GARD|BGM|FADE)\b/i);
+		await expect(row.locator('[data-testid="hit-likelihood-action"]')).toHaveCount(0);
+		// The estimate still applies only to MEME: switching away removes it entirely.
+		await selectMethod(page, 'FEL');
 		await expect(page.locator('[data-testid="meme-hit-likelihood"]')).toHaveCount(0);
 	});
 });

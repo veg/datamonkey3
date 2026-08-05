@@ -11,7 +11,6 @@
   (AnalysisTimingEstimate variant="row").
 -->
 <script>
-	import { createEventDispatcher } from 'svelte';
 	import AnalysisTimingEstimate from './AnalysisTimingEstimate.svelte';
 	import { hasHitLikelihood } from './services/prescreen/scope.js';
 
@@ -25,7 +24,6 @@
 	/** 'user' | 'nj' | 'unknown' — an inferred tree's branch lengths carry a caveat. */
 	export let treeSource = 'unknown';
 
-	const dispatch = createEventDispatcher();
 
 	// The hit-likelihood row is mounted ONLY for the method it is calibrated for, and imported
 	// dynamically so the estimator's modules and its ~37 KB of coefficients are fetched only when
@@ -51,7 +49,6 @@
 						{alignment}
 						{tree}
 						{treeSource}
-						on:selectMethod={(e) => dispatch('selectMethod', e.detail)}
 					/>
 				</div>
 			{/await}

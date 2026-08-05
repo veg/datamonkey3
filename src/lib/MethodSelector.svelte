@@ -1100,19 +1100,6 @@
 		return { newick: user || nj, source: user ? 'user' : nj ? 'nj' : 'unknown' };
 	}
 
-	// Act on a method suggestion from RunOutlook. Only ever moves the dropdown — the user still
-	// chooses the options and presses Run — and only to a method this build actually offers, so a
-	// stale suggestion is a no-op rather than a selector stuck on nothing.
-	function switchMethod(method) {
-		if (!method) return;
-		const target = availableMethods.find(
-			(m) => m.id.toLowerCase() === String(method).toLowerCase() && m.info.supported
-		);
-		if (!target) return;
-		selectedMethod = target.id;
-		trackEvent('method-switch-suggested', { from: 'run-outlook', method: target.id });
-	}
-
 	// Get method info helper
 	function getMethodInfo(key) {
 		return (
@@ -1329,7 +1316,6 @@
 						alignment={$fileMetricsStore?.canonicalFasta || ''}
 						tree={outlookTree.newick}
 						treeSource={outlookTree.source}
-						on:selectMethod={(e) => switchMethod(e.detail.method)}
 					/>
 				</div>
 			</div>
