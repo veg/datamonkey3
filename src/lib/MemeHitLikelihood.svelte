@@ -21,10 +21,13 @@
 <script>
 	import { createEventDispatcher } from 'svelte';
 	import { browser } from '$app/environment';
-	import Signal from 'lucide-svelte/icons/signal';
-	import HelpCircle from 'lucide-svelte/icons/help-circle';
-	import AlertTriangle from 'lucide-svelte/icons/alert-triangle';
-	import Loader2 from 'lucide-svelte/icons/loader-2';
+	// Barrel import, like every other component here. The deep-subpath form
+	// (lucide-svelte/icons/signal) was the only one in the codebase, and because this component is
+	// dynamically imported those four subpaths were node_modules deps the dev server never saw at
+	// startup. Touching them mid-session triggered a Vite dependency re-optimization and a full page
+	// reload, which dropped the selected file and left this row unmountable. The barrel is already
+	// in the eager graph, so nothing new is discovered here; production output is tree-shaken either way.
+	import { Signal, HelpCircle, AlertTriangle, Loader2 } from 'lucide-svelte';
 	import {
 		hasHitLikelihood,
 		loadHitLikelihoodModel,
