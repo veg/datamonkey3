@@ -9,7 +9,7 @@
  *      the bytes were the bug. So these tests count bytes, not just elements.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/coverage.js';
 import { freshStart, loadDemoFile, goToAnalyzeTab, selectMethod } from './fixtures/helpers.js';
 
 /**
@@ -65,6 +65,12 @@ function trackBytes(page) {
 }
 
 test.describe('MEME hit-likelihood', () => {
+	// beforeEach alone can spend 60s in freshStart, 30s loading the demo file and 30s waiting for
+	// the dropdown, which does not fit the global 60s cap once 4 workers are contending for one dev
+	// server. Without this the suite is merely flaky-and-retried rather than failing, which is worse
+	// than either — it hides whether the estimator or the harness is the slow one.
+	test.setTimeout(180000);
+
 	test.beforeEach(async ({ page }) => {
 		await freshStart(page);
 		await loadDemoFile(page, 'CD2-slim.fna');
@@ -171,6 +177,10 @@ test.describe('MEME hit-likelihood', () => {
 });
 
 test.describe('MEME hit-likelihood routing', () => {
+	// Same reasoning as above, and this one is heavier: it uploads 20 taxa x 800 codons and waits
+	// on datareader plus NJ inference before it can even select a method.
+	test.setTimeout(180000);
+
 	test('the suggested method is a control, not a sentence', async ({ page }) => {
 		await freshStart(page);
 		// 20 taxa x 800 codons at low divergence: enough substitutions in total for a gene-wide

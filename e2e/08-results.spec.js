@@ -2,7 +2,7 @@
  * E2E tests for Results tab (using seeded data)
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/coverage.js';
 import { freshStart, seedCompletedAnalysis, MOCK_FEL_RESULT } from './fixtures/helpers.js';
 
 test.describe('Results Tab', () => {

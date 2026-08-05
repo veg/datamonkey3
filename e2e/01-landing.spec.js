@@ -2,7 +2,7 @@
  * E2E tests for initial page state (landing page)
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/coverage.js';
 import { freshStart } from './fixtures/helpers.js';
 
 test.describe('Landing Page', () => {

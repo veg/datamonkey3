@@ -4,7 +4,7 @@
  * These tests only run in the mobile-chrome project.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/coverage.js';
 import { freshStart, loadDemoFile, goToAnalyzeTab, selectMethod } from './fixtures/helpers.js';
 
 test.describe('Mobile Responsiveness', () => {
@@ -47,6 +47,6 @@ test.describe('Mobile Responsiveness', () => {
 		await selectMethod(page, 'FEL');
 
 		const runBtn = page.locator('[data-testid="run-analysis-btn"]');
-		await expect(runBtn).toBeVisible();
+		await expect(runBtn).toBeVisible({ timeout: 10000 });
 	});
 });

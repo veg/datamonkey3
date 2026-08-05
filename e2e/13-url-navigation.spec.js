@@ -2,7 +2,7 @@
  * E2E tests for URL deep linking and navigation
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/coverage.js';
 import { freshStart, loadDemoFile, seedCompletedAnalysis, MOCK_FEL_RESULT } from './fixtures/helpers.js';
 
 test.describe('URL Deep Linking', () => {

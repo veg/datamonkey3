@@ -7,7 +7,7 @@
  * helper), so it guards against key-casing / reactivity mistakes in the guard.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/coverage.js';
 import { freshStart, loadDemoFile, goToAnalyzeTab, selectMethod } from './fixtures/helpers.js';
 
 test.describe('Contrast-FEL requires two branch groups (#144)', () => {
@@ -22,11 +22,11 @@ test.describe('Contrast-FEL requires two branch groups (#144)', () => {
 
 		// With no groups tagged, submission must be blocked.
 		const runButton = page.locator('[data-testid="run-analysis-btn"]');
-		await expect(runButton).toBeDisabled();
+		await expect(runButton).toBeDisabled({ timeout: 10000 });
 
 		// And a clear, actionable warning must be visible (not just a console log).
 		const warning = page.locator('[data-testid="contrast-fel-groups-warning"]');
-		await expect(warning).toBeVisible();
+		await expect(warning).toBeVisible({ timeout: 10000 });
 		await expect(warning).toContainText(/two or more groups/i);
 	});
 

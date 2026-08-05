@@ -63,3 +63,5 @@ coverage
 
 # Telegram bot token (secret — never commit)
 .telegram-bot-token
+
+coverage-e2e

@@ -2,7 +2,7 @@
  * E2E tests for demo file loading
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/coverage.js';
 import { freshStart, loadDemoFile } from './fixtures/helpers.js';
 
 test.describe('Demo File Loading', () => {
