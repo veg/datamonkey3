@@ -84,7 +84,13 @@ test.describe('MEME hit-likelihood', () => {
 		await selectMethod(page, 'MEME');
 
 		const row = page.locator('[data-testid="meme-hit-likelihood"]');
-		await expect(row).toBeVisible({ timeout: 30000 });
+		// Longer than the other waits on purpose. This is the first assertion in the whole suite
+		// that forces the row to mount, and mounting it makes the dev server transform
+		// MemeHitLikelihood.svelte plus hitLikelihood/hitLikelihoodModel/recommendation/treeEnsemble
+		// for the first time. That cold cost lands entirely on this one assertion; every later wait
+		// hits a warm module graph. At 30s it failed on a cold CI runner and passed on retry, which
+		// reads as an unstable feature when it is really a one-off compile.
+		await expect(row).toBeVisible({ timeout: 60000 });
 
 		// It resolves to one of the four statuses — never to blank space.
 		await expect(row).toHaveAttribute('data-status', /^(ok|cannot-assess|error)$/, {
