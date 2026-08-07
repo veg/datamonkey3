@@ -1,9 +1,17 @@
-# Verification-only dependencies for the MEME hit-likelihood model.
+# Verification-only dependencies for the MEME hit-likelihood gate.
 #
-# These are NOT application dependencies and must never become one. DM3 ships no ONNX runtime to
-# the browser — the point of treeEnsemble.js is that the 13.5 MB of WASM stays out of the bundle.
-# These packages exist so CI can prove the ~37 KB coefficient table still matches the .onnx the
-# ML/QC teams validated. Nothing here reaches a user.
-onnx>=1.16
-onnxruntime>=1.17
+# These are NOT application dependencies and must never become one. DM3 ships no ML runtime at all:
+# the browser walks XGBoost's own save_model() JSON in about 40 lines of plain JS (xgbEnsemble.js
+# over meme_gate.json), with no converter and no intermediate format between the file the ML team
+# exports and the bytes the browser parses.
+#
+# xgboost is here for exactly one reason: to be an INDEPENDENT SECOND IMPLEMENTATION of that walk,
+# reading the same bytes, so CI can prove the shipped JS reproduces the library's own scoring
+# (scripts/prescreen/verify_parity.py). It must stay on this side of the fence. Nothing here reaches
+# a user, and if it ever appears in package.json something has gone badly wrong.
+#
+# Keep this version in step with whatever the ML team exports from: the walker treats base_score as
+# a PROBABILITY, which is the XGBoost >= 2 semantics, and a same-major change to that convention
+# would be caught only by the parity run.
+xgboost>=3.0
 numpy>=1.26

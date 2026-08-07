@@ -25,7 +25,6 @@
 import {
 	runHitLikelihood,
 	createHitLikelihoodScorer,
-	createHitLikelihoodSession,
 	checkFeatureDomain,
 	extractHitLikelihoodFeatures,
 	STATUS,
@@ -49,7 +48,7 @@ export { STATUS, HIT_LIKELIHOOD_CAVEAT, LIKELY_MIN, UNLIKELY_MAX, FEATURE_DOMAIN
  * a falsifiable claim, so the thing making it should be nameable.
  */
 export const MODEL_BASIS =
-	'Gradient-boosted trees over three alignment-geometry features (sequences, codons, median branch length), trained on whether MEME reported at least one selected site.';
+	'Gradient-boosted trees over three alignment-geometry features (sequences, codons, median branch length), trained on whether MEME reported at least one site at p <= 0.1, and checked against every MEME run on Datamonkey.';
 
 // Both live in an import-free leaf module so a caller can ask "is there an estimate for this
 // method?" and "is this tree usable?" without loading the estimator — see scope.js.
@@ -57,11 +56,14 @@ export { hasHitLikelihood, treeHasBranchLengths };
 
 /**
  * Normalise where the tree came from. NJ branch lengths are NUCLEOTIDE distances — roughly 3x the
- * codon-model lengths MEME actually fits — and median_pos_dist is one of the model's three live
- * features, so the difference is not cosmetic: at 5 seqs x 300 codons, d=0.05 scores 0.32
- * ('unlikely') while d=0.15 scores 0.66 ('uncertain'). We do NOT rescale (an unvalidated fudge
- * factor is worse science than a disclosure); we label the estimate optimistic and let the UI say
- * so.
+ * codon-model lengths MEME actually fits — and median_pos_dist is one of the model's three
+ * features, so the difference is not cosmetic, and it biases in one direction: the model is
+ * monotone in branch length BY CONSTRUCTION, so an inflated median can only push the estimate UP.
+ * Worked example at 10 seqs x 300 codons, re-measured on the shipped model: an NJ median of 0.005
+ * scores 0.844 ('likely'), while the ~0.0017 codon-model length it stands for scores 0.693
+ * ('uncertain'). Still a band change, and still in the optimistic direction. We do NOT rescale (an
+ * unvalidated fudge factor is worse science than a disclosure); we label the estimate optimistic
+ * and let the UI say so.
  */
 export function normalizeTreeSource(treeSource) {
 	const s = typeof treeSource === 'string' ? treeSource.toLowerCase() : '';
@@ -83,41 +85,32 @@ let _modelPromise = null;
 /**
  * Load the scorer (once per page).
  *
- * THE ONLY SHIPPED BACKEND IS PURE JS. The model is one TreeEnsembleClassifier — 150 trees, ~2200
- * numbers — so treeEnsemble.js walks it directly for ~37 KB (~11 KB gzipped) instead of pulling
- * 13.2 MB of ONNX Runtime WASM to evaluate a tree walk and an addition. Verified against the .onnx
- * through onnxruntime-node: max |Δ| 8.5e-8 over 2016 vectors, zero level disagreements, and 12/12
- * golden fixtures inside 7.4e-9. It also means the estimate fetches nothing from the network, has
- * no native binary anywhere in its test path, and runs on any CPU architecture.
+ * THERE IS ONE BACKEND AND NO ML RUNTIME. The estimator is XGBoost's own `save_model()` JSON —
+ * 500 trees, ~735 KB (~169 KB gzipped) — walked directly by xgbEnsemble.js in about 40 lines. No
+ * converter, no intermediate format, no WASM: the bytes the ML team exports are the bytes parsed
+ * here. Verified against xgboost's own scoring of the same file at max |Δ| 4.4e-07 with ZERO band
+ * disagreements over 5,532 vectors, 3,000 of them real production jobs.
  *
- * The ONNX runtime is NOT a dependency of this app any more. Re-validating the JS evaluator against
- * the real runtime is still possible — pass an injected `ort` module plus the .onnx bytes (see
- * meme_hit_likelihood.onnx next to this file) — but nothing in the shipped bundle imports one.
+ * Be honest about the trade this made: the payload went from ~4 KB gzipped to ~169 KB gzipped, 40x
+ * more, for a better-calibrated and structurally-monotone model. It is still three orders of
+ * magnitude below the 13.5 MB an ML runtime would have cost, it is still fetched from our own
+ * origin with a content hash and nothing else, and — the part that actually matters — it is
+ * exactly ZERO bytes for every method that is not MEME, because the import lives behind
+ * hasHitLikelihood() and a dynamic import().
  *
- * @param {object} [deps] - { ort, model }. Both required together for the injected ONNX form.
- * @returns {Promise<{backend: string, score: Function|null, session?: object, Tensor?: Function}>}
+ * "ZERO" is meant literally, and it took a fix to become true. A dynamic import() keeps the JS
+ * lazy but NOT the CSS: SvelteKit lists a dynamically-imported component's stylesheet in the
+ * route's own stylesheet array so the component cannot flash unstyled, which made
+ * MemeHitLikelihood's <style> block a render-blocking <link> on every page load, for every method,
+ * in the production build only. The row's CSS now travels as a string inside the lazy chunk (see
+ * MemeHitLikelihood.css). e2e/18 asserts the whole invariant by classifying response BODIES rather
+ * than URLs, so it means the same thing against a production build as against the dev server.
+ *
+ * @returns {Promise<{backend: string, score: Function, meta: object}>}
  */
-export async function loadHitLikelihoodModel(deps = {}) {
-	const injected = !!deps.ort;
-	if (_modelPromise && !injected) return _modelPromise;
-
-	const build = async () => {
-		if (!injected) return createHitLikelihoodScorer();
-		if (!deps.model) {
-			throw new Error('loadHitLikelihoodModel: the injected ONNX form needs { ort, model }');
-		}
-		const session = await createHitLikelihoodSession(deps.ort, deps.model);
-		return {
-			backend: 'onnx',
-			session,
-			Tensor: deps.ort.Tensor,
-			score: null // scoreHitLikelihood takes the (session, Tensor) form for this backend
-		};
-	};
-
-	const p = build();
-	if (!injected) _modelPromise = p; // cache only the real (non-injected) model
-	return p;
+export async function loadHitLikelihoodModel() {
+	_modelPromise ??= createHitLikelihoodScorer();
+	return _modelPromise;
 }
 
 /** Reset the cached model — test hook. */
@@ -134,14 +127,12 @@ function shell(status, extra = {}) {
 		level: null,
 		hit_probability: null,
 		recommend_run: null,
-		note: null,
 		caveat: HIT_LIKELIHOOD_CAVEAT,
 		basis: MODEL_BASIS,
 		recommendation: null,
 		num_seqs: null,
 		num_sites: null,
 		median_pos_dist: null,
-		frac_p_defined: null,
 		domain: null,
 		budget: null,
 		tree_source: 'unknown',
@@ -171,9 +162,7 @@ export function hitLikelihoodError(detail = 'The hit-likelihood estimate could n
  * @param {string} args.alignment - FASTA/NEXUS alignment string
  * @param {string} args.tree - newick tree string (needs branch lengths)
  * @param {string} [args.treeSource] - 'user' | 'nj' | 'unknown'; see normalizeTreeSource
- * @param {object} [args.model] - from loadHitLikelihoodModel (preferred)
- * @param {object} [args.session] - ONNX InferenceSession (legacy/ONNX form)
- * @param {Function} [args.Tensor] - the ORT Tensor constructor (legacy/ONNX form)
+ * @param {object} [args.model] - from loadHitLikelihoodModel
  * @param {{likelyMin?: number, unlikelyMax?: number, resampleAvailable?: boolean}} [args.opts]
  * @returns {Promise<object>} see shell() for the full field list
  */
@@ -183,8 +172,6 @@ export async function estimateHitLikelihood({
 	tree,
 	treeSource,
 	model,
-	session,
-	Tensor,
 	opts = {}
 }) {
 	const source = normalizeTreeSource(treeSource);
@@ -213,12 +200,9 @@ export async function estimateHitLikelihood({
 		});
 	}
 
-	const backend = model && model.score ? model : (model && model.session) || session;
-	const tensorCtor = Tensor || (model && model.Tensor);
-
 	let res;
 	try {
-		res = await runHitLikelihood(alignment, tree, backend, tensorCtor, opts);
+		res = await runHitLikelihood(alignment, tree, model, opts);
 	} catch (e) {
 		// The estimate is non-essential, but "it broke" must not look like "nothing to report".
 		console.error('MEME hit-likelihood estimate failed:', e);
@@ -234,14 +218,15 @@ export async function estimateHitLikelihood({
 	const features = {
 		num_seqs: res.num_seqs,
 		num_sites: res.num_sites,
-		median_pos_dist: res.median_pos_dist,
-		frac_p_defined: res.frac_p_defined
+		median_pos_dist: res.median_pos_dist
 	};
 	const budget = substitutionBudget(res);
 
 	if (res.status === STATUS.CANNOT_ASSESS) {
-		// An alignment below the model's range is, by construction, an alignment nobody should be
-		// running MEME on — so we can still give the honest advice, just without a number.
+		// 'below-min' now means fewer than 3 sequences or no codons at all — so we can still give the
+		// honest advice, just without a number. Rare by construction: 0 of the 3,000 production jobs
+		// sampled hit it, and the other refusal (a median branch length above 10) is a units problem,
+		// not a thin alignment, so it must NOT get the "too thin" copy.
 		const allTooSmall =
 			res.domain.reasons.length > 0 && res.domain.reasons.every((r) => r.code === 'below-min');
 		return shell(STATUS.CANNOT_ASSESS, {
@@ -260,7 +245,6 @@ export async function estimateHitLikelihood({
 		level: res.level,
 		hit_probability: res.hit_probability,
 		recommend_run: res.recommend_run,
-		note: noteForLevel(res.level),
 		recommendation: recommendFor(res, opts),
 		domain: res.domain,
 		budget,
@@ -278,7 +262,6 @@ function safeFeatures(alignment, tree) {
 			num_seqs: f[0],
 			num_sites: f[1],
 			median_pos_dist: f[2],
-			frac_p_defined: f[3],
 			domain: checkFeatureDomain(f)
 		};
 	} catch {
@@ -286,23 +269,21 @@ function safeFeatures(alignment, tree) {
 	}
 }
 
-/**
- * One-line, honest guidance per level. Says what the estimate is about (a MEME run) rather than
- * grading the data, and avoids a power claim the model cannot support — it predicts whether MEME
- * will REPORT anything, which is not the same as whether the alignment has power.
+/*
+ * THERE IS NO noteForLevel() HERE ANY MORE, AND THAT IS DELIBERATE.
+ *
+ * This module used to carry a second set of per-level rate sentences ("about nine in ten did" /
+ * "about half" / "about 1 in 20"), returned as `result.note`. Nothing rendered them: the panel
+ * draws LEVEL[...].lead from MemeHitLikelihood.svelte instead. So the copy whose accuracy this
+ * whole feature is judged on existed in two places, only one of which a user could ever read, with
+ * no test tying them together — and the unit suite's rate-phrase anchors were pointed at the
+ * unrendered copy. Two sets of numbers that can drift apart silently is exactly the failure this
+ * feature already shipped once.
+ *
+ * The band sentences now live in one place, next to the band they describe, and the tests anchor on
+ * that one. If a caller ever needs the rate as data rather than as prose, derive it from the band
+ * rather than re-adding a parallel string table.
  */
-export function noteForLevel(level) {
-	switch (level) {
-		case 'likely':
-			return 'A MEME run on this alignment would probably report at least one site.';
-		case 'uncertain':
-			return 'A MEME run here could go either way.';
-		case 'unlikely':
-			return 'A MEME run on this alignment would probably report nothing.';
-		default:
-			return '';
-	}
-}
 
 /** Feature names the score actually depends on — re-exported so the UI can disclose them. */
 export { LIVE_FEATURES };

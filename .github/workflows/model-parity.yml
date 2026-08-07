@@ -1,10 +1,13 @@
 name: Model Parity
 
-# DM3 evaluates the MEME hit-likelihood model in pure JS (treeEnsemble.js over a ~37 KB coefficient
-# table) rather than shipping onnxruntime-web's 13.5 MB of WASM to every user who selects MEME.
-# That is only defensible while the coefficients provably correspond to the .onnx the ML and QC
-# teams validated. This job is that proof. If it fails, the numbers a researcher sees in the
-# browser are not the numbers that were signed off — treat it as a release blocker, not a flake.
+# DM3 ships no ML runtime. The MEME hit-likelihood estimate is XGBoost's own save_model() JSON,
+# walked in ~40 lines of plain JS (xgbEnsemble.js over meme_gate.json) — no converter, no
+# intermediate format, so the bytes the ML team exports are the bytes the browser parses.
+#
+# The risk that buys is a walker that silently mis-reads a model it does not understand: unlike a
+# converter, a walker never fails at build time, it just returns a confident wrong number. This job
+# is the proof that it does not. If it fails, the numbers a researcher sees in the browser are not
+# the numbers that were validated — treat it as a release blocker, not a flake.
 
 on:
   pull_request:
@@ -12,23 +15,27 @@ on:
     paths:
       - 'src/lib/services/prescreen/**'
       - 'scripts/prescreen/**'
+      - 'src/test/meme-hit-likelihood.test.js'
       - '.github/workflows/model-parity.yml'
   push:
     branches: [main]
     paths:
       - 'src/lib/services/prescreen/**'
       - 'scripts/prescreen/**'
+      - 'src/test/meme-hit-likelihood.test.js'
       - '.github/workflows/model-parity.yml'
   workflow_dispatch:
 
 jobs:
   parity:
-    name: JS evaluator matches the validated .onnx
+    name: The shipped JS walker reproduces XGBoost's own scoring of meme_gate.json
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # No npm ci: treeEnsemble.js imports nothing, so the scorer runs on a bare Node.
+      # No npm ci: xgbEnsemble.js imports nothing, so the walker runs on a bare Node. Keeping this
+      # job dependency-free is deliberate — it means a broken lockfile cannot take the model gate
+      # down with it. The unit-test job below is the one that needs node_modules.
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -42,29 +49,50 @@ jobs:
       - name: Install verification-only dependencies
         run: pip install -r scripts/prescreen/requirements.txt
 
-      - name: Verify ONNX/JS scoring parity
-        run: python3 scripts/prescreen/verify_parity.py --vectors 20000
+      # ORDER MATTERS. Both sides of the parity check read the same meme_gate.json, so corrupting
+      # that file would leave them agreeing and the gate green — a parity run is not self-evidently
+      # capable of failing. This step corrupts the JS side ONLY (score_gate.mjs takes an optional
+      # model path for exactly this reason) and requires the comparison to report FAILED. It also
+      # feeds the walker twelve real malformed models — DART weights, multi-class, categorical
+      # splits, a 4-feature retrain, a cyclic child index — and requires a throw on every one.
+      #
+      # This runs FIRST because it is the reason to believe the step after it.
+      - name: Prove the parity check can fail
+        run: python3 scripts/prescreen/verify_parity.py --self-test
 
-      - name: Verify the coefficient table regenerates from the .onnx
-        # Guards the other half: that onnx_to_ensemble.py still reproduces exactly what is
-        # committed, so a retrain is a reproducible command rather than a manual step someone
-        # has to reconstruct.
-        run: |
-          python3 scripts/prescreen/onnx_to_ensemble.py --out /tmp/regenerated.json
-          python3 - <<'PY'
-          import json, sys, numpy as np
-          a = json.load(open('src/lib/services/prescreen/meme_hit_likelihood.ensemble.json'))
-          b = json.load(open('/tmp/regenerated.json'))
-          for k in ('format', 'post_transform', 'features', 'n_trees', 'n_nodes', 'n_leaves',
-                    'branch_split_counts', 'base_score', 'source_sha256'):
-              if a.get(k) != b.get(k):
-                  sys.exit(f"FAIL: {k} differs — committed={a.get(k)!r} regenerated={b.get(k)!r}")
-          if len(a['trees']) != len(b['trees']):
-              sys.exit("FAIL: tree count differs")
-          worst = max(float(np.abs(np.float32(x) - np.float32(y)).max())
-                      for x, y in zip((np.array(t, float) for t in a['trees']),
-                                      (np.array(t, float) for t in b['trees'])))
-          if worst != 0.0:
-              sys.exit(f"FAIL: coefficient tables differ, max |delta| = {worst:.3e}")
-          print("OK: the committed table regenerates exactly from the .onnx")
-          PY
+      # THE binding step: contract, pin, monotonicity, and the walker against xgboost's own scoring
+      # of the same bytes.
+      - name: JS walker vs XGBoost on the shipped model
+        run: python3 scripts/prescreen/verify_parity.py
+
+      # The one input class that can tell `<` from `<=`: values sitting exactly on the model's own
+      # split thresholds. Everywhere else the two operators route identically, so this bug survives
+      # any amount of random or grid testing. Also asserts the rows are SENSITIVE (flipping the
+      # operator has to change something) so the check cannot pass for free.
+      - name: Walker uses XGBoost's comparison operator on split boundaries
+        run: python3 scripts/prescreen/verify_parity.py --boundary
+
+      # NOTE ON WHAT THIS DOES AND DOES NOT GUARD. It compares golden.fixtures.json against
+      # xgboost's scoring of meme_gate.json. It does NOT run the JS walker, so a walker bug exits 0
+      # here — verified by flipping `<` to `<=`, which this step passes and the two steps above
+      # fail. What it catches is a stale or hand-edited fixture file, and a model swapped without
+      # regenerating the fixtures. Walker-vs-fixture coverage lives in the `unit` job below, which
+      # is also required.
+      - name: Golden fixtures still match XGBoost (does not exercise the JS walker)
+        run: python3 scripts/prescreen/verify_parity.py --emit-golden --check
+
+  unit:
+    # Split from `parity` so that job can stay dependency-free. This half exists because the
+    # MEME-only scope guards ("the estimate never names another analysis method") are unit tests,
+    # and until now nothing in CI ran `npm test` at all — the e2e half of that guard ran in
+    # e2e.yml, the unit half ran only on someone's laptop.
+    name: MEME hit-likelihood unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test -- --run src/test/meme-hit-likelihood.test.js

@@ -1,121 +1,276 @@
 {
+  "generated_from": "xgboost:meme_gate.json",
+  "generator": "scripts/prescreen/verify_parity.py --emit-golden",
+  "xgboost_version": "3.4.0",
+  "model_sha256": "11c6eb47c106897adc3285eae8ef3a00a783e768ef94ab8bb7049af2f7b4e64f",
   "features": [
     "num_seqs",
     "num_sites",
-    "median_pos_dist",
-    "frac_p_defined"
+    "median_pos_dist"
   ],
-  "green_thresh": 0.7,
-  "red_thresh": 0.35,
-  "onnx_output_name": "probabilities",
+  "likely_min": 0.7,
+  "unlikely_max": 0.1,
   "vectors": [
     {
       "input": [
-        100,
-        300,
-        0.05,
-        1.0
+        100.0,
+        300.0,
+        0.05
       ],
-      "expected_prob": 0.9143878911544384
+      "expected_prob": 0.9834843277931213,
+      "expected_level": "likely"
     },
     {
       "input": [
-        5,
-        100,
-        0.005,
-        1.0
+        5.0,
+        100.0,
+        0.005
       ],
-      "expected_prob": 0.02846126197570735
+      "expected_prob": 0.13360869884490967,
+      "expected_level": "uncertain"
     },
     {
       "input": [
-        50,
-        200,
-        0.02,
-        1.0
+        50.0,
+        200.0,
+        0.02
       ],
-      "expected_prob": 0.7121323724556566
+      "expected_prob": 0.9550960659980774,
+      "expected_level": "likely"
     },
     {
       "input": [
-        10,
-        50,
-        0.01,
-        1.0
+        10.0,
+        50.0,
+        0.01
       ],
-      "expected_prob": 0.11400600387439554
+      "expected_prob": 0.590072751045227,
+      "expected_level": "uncertain"
     },
     {
       "input": [
-        318,
-        600,
-        0.12,
-        1.0
+        318.0,
+        600.0,
+        0.12
       ],
-      "expected_prob": 0.9877843506558485
+      "expected_prob": 0.9992693066596985,
+      "expected_level": "likely"
     },
     {
       "input": [
-        58,
-        150,
-        0.008,
-        1.0
+        58.0,
+        150.0,
+        0.008
       ],
-      "expected_prob": 0.42623481861595824
+      "expected_prob": 0.9564955234527588,
+      "expected_level": "likely"
     },
     {
       "input": [
-        20,
-        80,
-        0.03,
-        1.0
+        20.0,
+        80.0,
+        0.03
       ],
-      "expected_prob": 0.17809959203403325
+      "expected_prob": 0.9170787930488586,
+      "expected_level": "likely"
     },
     {
       "input": [
-        200,
-        400,
-        0.09,
-        1.0
+        200.0,
+        400.0,
+        0.09
       ],
-      "expected_prob": 0.94681708442047
+      "expected_prob": 0.9969168901443481,
+      "expected_level": "likely"
     },
     {
       "input": [
-        8,
-        30,
-        0.002,
-        1.0
+        8.0,
+        30.0,
+        0.002
       ],
-      "expected_prob": 0.05990543544200372
+      "expected_prob": 0.0210258848965168,
+      "expected_level": "unlikely"
     },
     {
       "input": [
-        500,
-        1000,
-        0.2,
-        1.0
+        500.0,
+        1000.0,
+        0.2
       ],
-      "expected_prob": 0.9943791521580824
+      "expected_prob": 0.9998893737792969,
+      "expected_level": "likely"
     },
     {
       "input": [
-        3,
-        10,
-        0.0,
-        1.0
+        3.0,
+        10.0,
+        0.001
       ],
-      "expected_prob": 0.009278648526612362
+      "expected_prob": 3.01391446555499e-05,
+      "expected_level": "unlikely"
     },
     {
       "input": [
-        75,
-        250,
-        0.045,
-        1.0
+        75.0,
+        250.0,
+        0.045
       ],
-      "expected_prob": 0.8565372401976453
+      "expected_prob": 0.9792155623435974,
+      "expected_level": "likely"
+    },
+    {
+      "input": [
+        4.0,
+        120.0,
+        0.0021
+      ],
+      "expected_prob": 0.004943433217704296,
+      "expected_level": "unlikely"
+    },
+    {
+      "input": [
+        3.0,
+        138.0,
+        0.0015
+      ],
+      "expected_prob": 0.0017378854099661112,
+      "expected_level": "unlikely"
+    },
+    {
+      "input": [
+        5.0,
+        60.0,
+        0.0012
+      ],
+      "expected_prob": 0.0029240045696496964,
+      "expected_level": "unlikely"
+    },
+    {
+      "input": [
+        4.0,
+        250.0,
+        0.005385
+      ],
+      "expected_prob": 0.09981539845466614,
+      "expected_level": "unlikely"
+    },
+    {
+      "input": [
+        4.0,
+        200.0,
+        0.005872
+      ],
+      "expected_prob": 0.10017985105514526,
+      "expected_level": "uncertain"
+    },
+    {
+      "input": [
+        5.0,
+        150.0,
+        0.185128
+      ],
+      "expected_prob": 0.699552595615387,
+      "expected_level": "uncertain"
+    },
+    {
+      "input": [
+        11.0,
+        250.0,
+        0.002949
+      ],
+      "expected_prob": 0.7001510858535767,
+      "expected_level": "likely"
+    },
+    {
+      "input": [
+        4.0,
+        20.0,
+        0.0010292699
+      ],
+      "expected_prob": 0.000274267396889627,
+      "expected_level": "unlikely"
+    },
+    {
+      "input": [
+        5.0,
+        20.0,
+        0.001597865
+      ],
+      "expected_prob": 0.005151723511517048,
+      "expected_level": "unlikely"
+    },
+    {
+      "input": [
+        10.0,
+        304.0,
+        0.040265847
+      ],
+      "expected_prob": 0.9281129837036133,
+      "expected_level": "likely"
+    },
+    {
+      "input": [
+        223.0,
+        753.0,
+        0.19062318
+      ],
+      "expected_prob": 0.9998760223388672,
+      "expected_level": "likely"
+    },
+    {
+      "input": [
+        298.0,
+        3687.0,
+        0.4023226
+      ],
+      "expected_prob": 0.9999679327011108,
+      "expected_level": "likely"
+    },
+    {
+      "input": [
+        3.999999761581421,
+        19.999998092651367,
+        0.0010292697697877884
+      ],
+      "expected_prob": 3.01391446555499e-05,
+      "expected_level": "unlikely"
+    },
+    {
+      "input": [
+        4.999999523162842,
+        19.999998092651367,
+        0.0015978649025782943
+      ],
+      "expected_prob": 0.00010778960859170184,
+      "expected_level": "unlikely"
+    },
+    {
+      "input": [
+        9.999999046325684,
+        303.9999694824219,
+        0.04026584327220917
+      ],
+      "expected_prob": 0.8745245933532715,
+      "expected_level": "likely"
+    },
+    {
+      "input": [
+        222.99998474121094,
+        752.9999389648438,
+        0.19062316417694092
+      ],
+      "expected_prob": 0.9987938404083252,
+      "expected_level": "likely"
+    },
+    {
+      "input": [
+        297.9999694824219,
+        3686.999755859375,
+        0.40232256054878235
+      ],
+      "expected_prob": 0.999920129776001,
+      "expected_level": "likely"
     }
   ]
 }

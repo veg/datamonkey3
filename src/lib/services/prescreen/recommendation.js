@@ -28,6 +28,19 @@ export const HIT_LIKELIHOOD_CAVEAT =
 /**
  * Thresholds in expected substitutions. Approximate by construction — they separate regimes that
  * differ by orders of magnitude, so nothing here is sensitive to the exact cut.
+ *
+ * Re-measured against 3,000 real MEME jobs under the CURRENT model and the current 0.10 cut: EVERY
+ * alignment the model calls 'unlikely' has under 5 expected substitutions in the whole file (95th
+ * percentile 3.5, median 1.7), so tooThin is the branch that fires, 65 times out of 65. This had to
+ * be re-derived rather than carried over — the previous model at the previous 0.30 cut put 69 jobs
+ * in the band, and a routing justification measured on a different band selecting a different
+ * population would have been fiction dressed as a measurement.
+ *
+ * The other two branches are not dead code — they exist for the short-but-deep shape, e.g. 110
+ * sequences x 8 codons at a median of 10 subs/site, which carries thousands of substitutions and
+ * still scores 'unlikely' because 8 codons is too few to report on — but nothing in production hit
+ * them. Left at these values deliberately: no cut inside the 'unlikely' band separates that
+ * population, so moving them would be fitting to nothing.
  */
 export const ROUTING = {
 	/** Below this many expected substitutions in the whole alignment, there is nothing to fit. */
@@ -50,17 +63,33 @@ export function substitutionBudget({ num_seqs, num_sites, median_pos_dist }) {
 	return { branches, per_site: perSite, total: num_sites * perSite };
 }
 
-/** Copy is fixed text on purpose: each line is a claim someone can check, and all of it is about MEME. */
+/**
+ * Copy is fixed text on purpose: each line is a claim someone can check, and all of it is about
+ * MEME.
+ *
+ * Every rate below is an observed historical frequency over the 5,982 production MEME jobs the
+ * model never trained on — 5.4% / 51.9% / 92.6% against an 84.8% base rate — phrased as a statement
+ * about alignments that scored similarly, never as a probability about the user's alignment.
+ *
+ * The band names are doing less work than they look like they are, in BOTH directions, and the copy
+ * has to absorb that:
+ *   - 'unlikely' is 1 in 20, not 0. The upper end of its 95% CI is 1 in 9. So the line says
+ *     "rarely", gives the frequency, and points at what would change it. It must never say "will
+ *     find nothing" or "not worth running" — these are cheap runs and the honest advice is caution,
+ *     not a stop.
+ *   - 'likely' is 92.6% against a base rate of 84.8%, i.e. about 8 points of lift. It is the quiet
+ *     default on 83% of jobs, so the line must read as "typical", never as a discovery.
+ */
 const COPY = {
 	tooThin:
-		'There are too few substitutions in this alignment for MEME to fit its site-level tests. More sequences, or more divergent ones, is what would change that.',
+		'Too few substitutions for MEME to fit its site-level tests. More sequences, or more divergent ones, is what would change that.',
 	perSiteThin:
-		'Not enough substitutions at a typical site for MEME to pin selection to a single codon, even though the alignment has a reasonable amount overall. Deeper branches or more taxa would give each site-level test more to work with.',
+		'Not enough substitutions at a typical site to pin selection to one codon, though the alignment has a reasonable amount overall. Deeper branches or more taxa would help.',
 	unlikely:
-		'MEME looks unlikely to report a site on this alignment. More sequences, or more divergent ones, would give its site-level tests more to fit.',
+		"More sequences, or more divergent ones, would give MEME's site-level tests more to fit.",
 	uncertain:
-		'Borderline for MEME on this alignment — it may or may not reach significance at any individual site.',
-	likely: "This alignment has enough branch-level signal for MEME's site-level tests.",
+		"More sequences or greater divergence would move this into MEME's informative range.",
+	likely: "Enough branch-level signal here for MEME's site-level tests.",
 	resample:
 		'Running MEME anyway? Set Resample to 50 or more — the asymptotic p-values are unreliable on alignments this small, though it will not create signal.'
 };
@@ -123,7 +152,7 @@ export function recommendFor(result, opts = {}) {
 	if (level === 'uncertain') return wrap(COPY.uncertain, null, secondary);
 
 	// level === 'unlikely'. Which axis is thin decides which sentence is true, not which method to
-	// send them to.
+	// send them to. In production this is always the first branch — see ROUTING.
 	if (budget.total < ROUTING.totalSubsFloor) {
 		return { ...tooThinRecommendation(budget), secondary };
 	}

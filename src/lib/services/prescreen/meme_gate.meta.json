@@ -1,0 +1,29 @@
+{
+  "features": [
+    "num_seqs",
+    "num_sites",
+    "median_pos_dist"
+  ],
+  "label": "MEME reports >=1 site at p<=0.1",
+  "bl_floor": 0.001,
+  "bl_cap": 10.0,
+  "objective": "binary:logistic (raw output -> sigmoid)",
+  "test_auc": 0.8929,
+  "base_rate": 0.852,
+  "hyperparams": {
+    "max_depth": 6,
+    "n_estimators": 500,
+    "learning_rate": 0.05,
+    "min_child_weight": 1,
+    "monotone_constraints": [
+      1,
+      1,
+      1
+    ],
+    "subsample": 0.9,
+    "eval_metric": "auc",
+    "random_state": 0,
+    "verbosity": 0
+  },
+  "note": "XGBoost native JSON; browser reads meme_gate.json directly"
+}
