@@ -131,6 +131,57 @@
 		});
 
 		try {
+			// AxoMEME is dispatched BEFORE the backend/WASM split, because it belongs to neither. It is
+			// not a HyPhy analysis: no hyphy.wasm invocation, no server job, no HyPhy JSON. It runs an
+			// ONNX graph in this tab and returns in seconds. The executionMode toggle does not apply —
+			// there is no server-side AxoMEME yet — so it is deliberately ignored rather than silently
+			// routing a browser-only method through a socket that has no handler for it.
+			if (method.toLowerCase() === 'axomeme') {
+				if (!$currentFile || !$currentFile.id) {
+					throw new Error('No file selected for analysis');
+				}
+
+				// Same source-of-truth order the other two branches use: prefer the canonical FASTA
+				// datareader.bf emits on upload, which has already collapsed PHYLIP / MEGA / CLUSTAL /
+				// NEXUS / FASTA to one shape, and only strip embedded trees from a raw user blob.
+				// AxoMEME cares about this more than most: a trailing newick line left in the FASTA
+				// would be appended to the last sequence and quietly corrupt that taxon's codons.
+				let alignment = $fileMetricsStore?.canonicalFasta;
+				if (!alignment) {
+					const fullFileData = await persistentFileStore.getFile($currentFile.id);
+					if (!fullFileData) {
+						throw new Error('Unable to load file data');
+					}
+					alignment = await fullFileData.text();
+					if (!alignment || !alignment.trim()) {
+						throw new Error('No sequence data available in selected file');
+					}
+					alignment = stripEmbeddedTrees(alignment);
+				}
+
+				// A tree with BRANCH LENGTHS is not optional here, unlike for some HyPhy methods. The
+				// model reads a patristic distance matrix; a topology-only tree yields all-zero
+				// distances and an all-zero embedding, and the model would return confident numbers
+				// computed from nothing.
+				const tree = getSelectedTreeData();
+				if (!tree) {
+					throw new Error(
+						'AxoMEME needs a phylogenetic tree. Infer one or upload your own before running it.'
+					);
+				}
+
+				const { axomemeAnalysisRunner } = await import('./services/AxomemeAnalysisRunner.js');
+				const result = await axomemeAnalysisRunner.runAnalysis(
+					method,
+					config,
+					alignment,
+					tree,
+					$currentFile.id
+				);
+				toastStore.success('AxoMEME prediction complete', { duration: 3000 });
+				return result;
+			}
+
 			if (config.executionMode === 'backend') {
 				// Backend execution
 				if (!$backendConnectivity.isConnected) {
@@ -389,7 +440,9 @@
 					</button>
 				{/if}
 				<ChevronDown
-					class="h-6 w-6 text-brand-royal transition-transform duration-premium {analysisSectionExpanded ? 'rotate-180' : ''}"
+					class="h-6 w-6 text-brand-royal transition-transform duration-premium {analysisSectionExpanded
+						? 'rotate-180'
+						: ''}"
 				/>
 			</div>
 		</div>

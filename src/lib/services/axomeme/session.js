@@ -68,7 +68,29 @@ export function loadSession(options = {}) {
 		const doFetch = options.fetchImpl ?? globalThis.fetch;
 
 		// The dynamic import is the whole point — see the header. Do not hoist it.
-		const ort = options.ort ?? (await import('onnxruntime-web'));
+		//
+		// NOTE THE SUBPATH: 'onnxruntime-web/wasm', not 'onnxruntime-web'. The default entry is the
+		// full build, which resolves its binary to the JSEP variant — the WebGPU-enabled one, a 26.8 MB
+		// wasm this feature has no use for. Importing the CPU-only build makes it load the plain
+		// SIMD+threads binary (12.9 MB) that scripts/copy-ort-wasm.mjs vendors. Found the hard way:
+		// with the default entry the runtime asks for ort-wasm-simd-threaded.jsep.mjs and aborts with
+		// "no available backend found", which reads like a broken model rather than a wrong build.
+		const ort = options.ort ?? (await import('onnxruntime-web/wasm'));
+
+		// SERVE THE RUNTIME OURSELVES. onnxruntime-web does not bundle its WASM binary; it fetches it
+		// at run time, and with no wasmPaths set it resolves to a jsDelivr CDN. That violates this
+		// project's core constraint — the site must be servable with no other domains involved — and
+		// it also simply fails, with "no available backend found", which reads like a broken model
+		// rather than a missing asset. scripts/copy-ort-wasm.mjs puts the binary in static/ort/ at
+		// build time, pinned by package.json rather than committed.
+		//
+		// numThreads 1 because multi-threading needs SharedArrayBuffer, which needs COOP/COEP headers
+		// this app does not set. Asking for threads without them makes the runtime fall back anyway,
+		// and the fallback path is slower than starting single-threaded.
+		if (ort.env?.wasm) {
+			ort.env.wasm.wasmPaths = options.wasmPaths ?? '/ort/';
+			ort.env.wasm.numThreads = 1;
+		}
 
 		const response = await doFetch(url);
 		if (!response.ok) {

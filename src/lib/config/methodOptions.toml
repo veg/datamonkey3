@@ -907,3 +907,38 @@ takes_value = true
 type = "string"
 default = ""
 choices = []
+
+# AxoMEME is not a HyPhy method and has no CLI. This section exists because the method registry
+# reads it, not because there are command-line options to describe: the model is a fixed set of
+# weights evaluated in the browser, and the only genuine choice is a threshold applied after
+# inference. Notably absent, and absent on purpose:
+#   - no `code` option. The genetic code is baked into the model's tokenizer as the universal table.
+#     Offering a choice that cannot reach the model would be worse than offering none.
+#   - no branch selection. AxoMEME consumes the whole tree as a distance matrix; there is no
+#     foreground set to tag.
+[axomeme]
+description = "AxoMEME 2.0 predicts MEME's per-site selection statistics from a codon alignment and tree using a neural model, in seconds instead of hours. It is a surrogate for MEME, not a replacement."
+
+[[axomeme.options]]
+name = "alignment"
+description = "An in-frame codon alignment in one of the formats supported by DataMonkey"
+takes_value = true
+type = "string"
+default = ""
+choices = []
+
+[[axomeme.options]]
+name = "tree"
+description = "A phylogenetic tree with branch lengths. Branch lengths are required: they become the patristic distance matrix the model reads."
+takes_value = true
+type = "string"
+default = ""
+choices = []
+
+[[axomeme.options]]
+name = "call-mode"
+description = "How to call sites. 'pvalue' uses fixed LRT gates; 'zscore' and 'percentile' rank sites within this alignment and therefore always return some hits."
+takes_value = true
+type = "string"
+default = "pvalue"
+choices = ["pvalue", "zscore", "percentile"]

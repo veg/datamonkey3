@@ -9,7 +9,12 @@
 		persistentFileStore,
 		currentFile
 	} from '../stores/fileInfo';
-	import { analysisStore, currentAnalysis, activeAnalysisProgress, activeAnalyses } from '../stores/analyses';
+	import {
+		analysisStore,
+		currentAnalysis,
+		activeAnalysisProgress,
+		activeAnalyses
+	} from '../stores/analyses';
 	import { backendAnalysisRunner } from '../lib/services/BackendAnalysisRunner.js';
 	import { treeStore, addTree, updateTaggedTree } from '../stores/tree';
 	import { trackEvent } from '../lib/utils/analytics.js';
@@ -65,6 +70,19 @@
 
 	// Consolidating methods and hyphyCommands with descriptions
 	const methodConfig = {
+		// AxoMEME is NOT a HyPhy method, and the fields below are shaped for one. It has no hyphy
+		// command and writes no HyPhy JSON, so `command` and `outputSuffix` are null rather than
+		// invented — anything that dispatches on them will fail loudly instead of running the wrong
+		// binary. It is served by AxomemeAnalysisRunner, which evaluates an ONNX graph in the browser.
+		AxoMEME: {
+			command: null,
+			outputSuffix: null,
+			url: 'axomeme',
+			args: [],
+			runner: 'axomeme',
+			description:
+				'Predicts what MEME would report for each site, in seconds rather than hours. A neural surrogate, not a substitute for the full analysis.'
+		},
 		aBSREL: {
 			command: 'absrel',
 			outputSuffix: 'ABSREL.json',
@@ -754,23 +772,23 @@
 			// Extract meaningful error from HyPhy stdout for better error reporting
 			let hyphyError = null;
 			if (hyphyOut) {
-				const lines = hyphyOut.split('\n').filter(l => l.trim());
+				const lines = hyphyOut.split('\n').filter((l) => l.trim());
 				const errorPatterns = [
 					/Expected \d+ sites?, but found \d+/,
 					/stop codons? found/i,
 					/not a valid/i,
 					/divisible by 3/i,
 					/at least 3 unique sequences/i,
-					/too large/i,
+					/too large/i
 				];
 				for (const line of lines) {
-					if (errorPatterns.some(p => p.test(line))) {
+					if (errorPatterns.some((p) => p.test(line))) {
 						hyphyError = line.trim();
 						break;
 					}
 				}
 				if (!hyphyError) {
-					const errorLine = lines.find(l => /^Error:/i.test(l.trim()));
+					const errorLine = lines.find((l) => /^Error:/i.test(l.trim()));
 					if (errorLine) {
 						hyphyError = errorLine.trim().replace(/^Error:\s*/i, '');
 					}
@@ -778,7 +796,8 @@
 			}
 
 			// Check for tree-related messages in datareader output (not an error, just informational)
-			const hasTreeParsingMessage = hyphyOut.includes('Illegal right hand side in call to Topology') ||
+			const hasTreeParsingMessage =
+				hyphyOut.includes('Illegal right hand side in call to Topology') ||
 				hyphyOut.includes('tree string is invalid') ||
 				hyphyOut.includes('Newick tree spec');
 
@@ -788,9 +807,9 @@
 
 			// Log any error-like messages for debugging (but don't fail)
 			if (hyphyOut.includes('Error') || hyphyOut.includes('error')) {
-				const errorLines = hyphyOut.split('\n').filter(line =>
-					line.toLowerCase().includes('error')
-				);
+				const errorLines = hyphyOut
+					.split('\n')
+					.filter((line) => line.toLowerCase().includes('error'));
 				if (errorLines.length > 0) {
 					console.warn('HyPhy datareader messages:', errorLines);
 				}
@@ -810,7 +829,10 @@
 				jsonBlob = await cliObj.download('/shared/data/results.json');
 			} catch (downloadError) {
 				console.error('Failed to download results.json:', downloadError);
-				throw new Error(hyphyError || 'File analysis failed. The file may be in an unsupported format or contain invalid data.');
+				throw new Error(
+					hyphyError ||
+						'File analysis failed. The file may be in an unsupported format or contain invalid data.'
+				);
 			}
 			const response = await fetch(jsonBlob);
 			const blob = await response.blob();
@@ -819,15 +841,26 @@
 			// Validate that we got JSON, not an error page
 			if (jsonOut.trim().startsWith('<!') || jsonOut.trim().startsWith('<html')) {
 				console.error('Received HTML instead of JSON:', jsonOut.substring(0, 200));
-				throw new Error(hyphyError || 'File analysis failed. Please check that your file is a valid FASTA or NEXUS alignment.');
+				throw new Error(
+					hyphyError ||
+						'File analysis failed. Please check that your file is a valid FASTA or NEXUS alignment.'
+				);
 			}
 
 			try {
 				currentStage = 'parse';
 				fileMetricsJSON = JSON.parse(jsonOut);
 			} catch (parseError) {
-				console.error('Failed to parse results JSON:', parseError, 'Content:', jsonOut.substring(0, 500));
-				throw new Error(hyphyError || 'File analysis produced invalid results. Please ensure your file is a valid sequence alignment.');
+				console.error(
+					'Failed to parse results JSON:',
+					parseError,
+					'Content:',
+					jsonOut.substring(0, 500)
+				);
+				throw new Error(
+					hyphyError ||
+						'File analysis produced invalid results. Please ensure your file is a valid sequence alignment.'
+				);
 			}
 
 			// If datareader returned an error in JSON, surface it
@@ -865,7 +898,12 @@
 			alignmentFileStore.set(file);
 
 			trackEvent('file-validation-success', {
-				format: fileMetricsJSON.FILE_INFO?.gencodeid >= 0 ? 'codon' : fileMetricsJSON.FILE_INFO?.gencodeid === -1 ? 'nucleotide' : 'protein',
+				format:
+					fileMetricsJSON.FILE_INFO?.gencodeid >= 0
+						? 'codon'
+						: fileMetricsJSON.FILE_INFO?.gencodeid === -1
+							? 'nucleotide'
+							: 'protein',
 				sequenceCount: fileMetricsJSON.FILE_INFO?.sequences || 0,
 				siteCount: fileMetricsJSON.FILE_INFO?.sites || 0
 			});
@@ -936,15 +974,25 @@
 			const errorMsg = error.message || '';
 			const isTreeError = /Tree|tree|Topology|Newick/.test(errorMsg);
 
-			const errorType = isTreeError ? 'invalid-tree'
-				: errorMsg.includes('divisible by 3') ? 'not-codon-aligned'
-				: errorMsg.includes('stop codon') ? 'stop-codons'
-				: /nucleotide alignment|protein alignment|character states/.test(errorMsg) ? 'wrong-alphabet'
-				: /too large|must include prebuilt/.test(errorMsg) ? 'dataset-too-large'
-				: /at least \d+ unique sequences|No sequences found|No MATRIX block/.test(errorMsg) ? 'insufficient-sequences'
-				: /Aioli|not a valid value for parameter|Invalid parameter choice/.test(errorMsg) ? 'runtime-error'
-				: /format|valid alignment|valid FASTA|valid NEXUS|valid sequence|FASTA data is empty|partition specification|Sequence data found before header|File is empty/i.test(errorMsg) ? 'invalid-format'
-				: 'unknown';
+			const errorType = isTreeError
+				? 'invalid-tree'
+				: errorMsg.includes('divisible by 3')
+					? 'not-codon-aligned'
+					: errorMsg.includes('stop codon')
+						? 'stop-codons'
+						: /nucleotide alignment|protein alignment|character states/.test(errorMsg)
+							? 'wrong-alphabet'
+							: /too large|must include prebuilt/.test(errorMsg)
+								? 'dataset-too-large'
+								: /at least \d+ unique sequences|No sequences found|No MATRIX block/.test(errorMsg)
+									? 'insufficient-sequences'
+									: /Aioli|not a valid value for parameter|Invalid parameter choice/.test(errorMsg)
+										? 'runtime-error'
+										: /format|valid alignment|valid FASTA|valid NEXUS|valid sequence|FASTA data is empty|partition specification|Sequence data found before header|File is empty/i.test(
+													errorMsg
+											  )
+											? 'invalid-format'
+											: 'unknown';
 			const eventPayload = { errorType, stage: currentStage, source };
 			if (errorType === 'unknown' || errorType === 'invalid-format') {
 				// Defensive fallback: 338/342 unknown events had no message field in
@@ -1145,7 +1193,7 @@
 				<div class="prime-card">
 					<button
 						class="prime-card-close"
-						onclick={() => primeCardDismissed = true}
+						onclick={() => (primeCardDismissed = true)}
 						aria-label="Dismiss"
 					>
 						<X size={14} />
@@ -1155,14 +1203,12 @@
 							<FlaskConical size={24} />
 						</div>
 						<div class="prime-card-content">
-							<h3 class="prime-card-title">
-								Introducing PRIME
-							</h3>
-							<p class="prime-card-subtitle">
-								Property-Informed Models of Evolution
-							</p>
+							<h3 class="prime-card-title">Introducing PRIME</h3>
+							<p class="prime-card-subtitle">Property-Informed Models of Evolution</p>
 							<p class="prime-card-desc">
-								Characterize physicochemical selection in protein evolution. PRIME incorporates amino acid properties like molecular volume, hydropathy, and structural propensities to resolve the biophysical basis of selective constraint.
+								Characterize physicochemical selection in protein evolution. PRIME incorporates
+								amino acid properties like molecular volume, hydropathy, and structural propensities
+								to resolve the biophysical basis of selective constraint.
 							</p>
 							<div class="prime-card-actions">
 								<a
@@ -1173,17 +1219,14 @@
 								>
 									Read the preprint <ExternalLink size={13} />
 								</a>
-								</div>
+							</div>
 						</div>
 					</div>
 				</div>
 			{/if}
 
 			<!-- Main Tabbed Interface with Smart Navigation -->
-			<SmartTabNavigation
-				{activeTab}
-				onChange={changeTab}
-			/>
+			<SmartTabNavigation {activeTab} onChange={changeTab} />
 
 			<!-- Tab Content with Progressive Enhancement -->
 			{#if activeTab === 'data'}

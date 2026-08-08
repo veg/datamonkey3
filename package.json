@@ -9,8 +9,8 @@
 	},
 	"scripts": {
 		"dev": "vite dev",
-		"prebuild": "svelte-kit sync",
-		"build": "svelte-kit sync && vite build",
+		"prebuild": "node scripts/copy-ort-wasm.mjs && svelte-kit sync",
+		"build": "node scripts/copy-ort-wasm.mjs && svelte-kit sync && vite build",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
@@ -49,7 +49,9 @@
 		"deploy:cloudflare": "npx wrangler pages deploy .svelte-kit/cloudflare",
 		"deploy:cloudflare:storybook": "npm run build-storybook && npx wrangler pages deploy storybook-static --project-name datamonkey3-storybook",
 		"deploy:cloudflare:all": "./scripts/deploy-with-storybook.sh",
-		"dev:cloudflare": "npx wrangler pages dev .svelte-kit/cloudflare"
+		"dev:cloudflare": "npx wrangler pages dev .svelte-kit/cloudflare",
+		"ort:wasm": "node scripts/copy-ort-wasm.mjs",
+		"predev": "node scripts/copy-ort-wasm.mjs"
 	},
 	"devDependencies": {
 		"@chromatic-com/storybook": "^4.1.1",

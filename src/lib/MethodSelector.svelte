@@ -9,10 +9,7 @@
 	import { treeHasBranchLengths } from './services/prescreen/scope.js';
 	import { AlertTriangle, Play, Loader2 } from 'lucide-svelte';
 	import { trackEvent } from './utils/analytics.js';
-	import {
-		countBranchGroups,
-		contrastFelHasEnoughGroups
-	} from './utils/branchGroupValidation.js';
+	import { countBranchGroups, contrastFelHasEnoughGroups } from './utils/branchGroupValidation.js';
 
 	export let methodConfig;
 	export let runMethod = null;
@@ -22,6 +19,7 @@
 
 	// Supported methods - easy to update when methods are implemented
 	const SUPPORTED_METHODS = [
+		'axomeme',
 		'b-still',
 		'fel',
 		'slac',
@@ -40,10 +38,19 @@
 
 	// Method info with simplified descriptions and runtime estimates
 	const METHOD_INFO = {
+		axomeme: {
+			name: 'AxoMEME',
+			fullName: 'AxoMEME 2.0 — neural surrogate for MEME',
+			// Deliberately says PREDICTS. This is a fitted model estimating what MEME would report,
+			// not MEME, and the dropdown is the first place a user forms that expectation.
+			shortDescription: 'Predict MEME per-site selection in seconds, in your browser',
+			supported: true
+		},
 		'b-still': {
 			name: 'B-STILL',
 			fullName: 'Bayesian Significance Test of Invariant Low Likelihoods',
-			shortDescription: 'Detect invariant sites via posterior probabilities and Empirical Bayes Factors',
+			shortDescription:
+				'Detect invariant sites via posterior probabilities and Empirical Bayes Factors',
 			supported: true
 		},
 		fel: {
@@ -161,6 +168,22 @@
 
 	// Method-specific advanced options configurations
 	const METHOD_ADVANCED_OPTIONS = {
+		// AxoMEME exposes almost nothing on purpose. It is a fitted model with one set of weights:
+		// there are no branch sets to select (it consumes the whole tree as a distance matrix), no
+		// rate-variation switch, and no genetic code choice — the code table is baked into the
+		// model's tokenizer as the universal one. Offering knobs that do not reach the model would be
+		// worse than offering none. Calling mode is the one real choice, because it is a threshold
+		// applied AFTER inference and genuinely changes what gets reported.
+		axomeme: {
+			callMode: {
+				type: 'select',
+				label: 'How to call sites',
+				default: 'pvalue',
+				options: ['pvalue', 'zscore', 'percentile'],
+				description:
+					'pvalue uses fixed LRT gates (4.45 / 3.12). zscore and percentile rank sites within this alignment, so they always return some hits.'
+			}
+		},
 		fel: {
 			// Branch selection options
 			branchesToTest: {
@@ -815,7 +838,8 @@
 				label: 'Amino Acid Property Set',
 				default: '5PROP',
 				options: ['5PROP', '4PROP', '3PROP', '2PROP', 'Atchley', 'LCAP'],
-				description: 'Set of amino acid properties to model (5PROP: hydrophobicity, polarity, volume, charge, iso-electric point)'
+				description:
+					'Set of amino acid properties to model (5PROP: hydrophobicity, polarity, volume, charge, iso-electric point)'
 			},
 			// P-value threshold
 			pValueThreshold: {
@@ -978,9 +1002,11 @@
 	}
 
 	// Auto-detect data type from uploaded file for GARD
-	$: if ($fileMetricsStore?.FILE_INFO?.gencodeid !== undefined &&
+	$: if (
+		$fileMetricsStore?.FILE_INFO?.gencodeid !== undefined &&
 		selectedMethod?.toLowerCase() === 'gard' &&
-		methodOptions[selectedMethod]) {
+		methodOptions[selectedMethod]
+	) {
 		const gencodeid = $fileMetricsStore.FILE_INFO.gencodeid;
 		const detectedType = gencodeid === -2 ? 'protein' : gencodeid === -1 ? 'nucleotide' : 'codon';
 		if (methodOptions[selectedMethod].datatype !== detectedType) {
@@ -1002,30 +1028,30 @@
 	}
 
 	// Pre-computed renderable options array (excludes interactive-tree)
-	$: renderableAdvancedOptions = (selectedMethod && methodOptions[selectedMethod])
-		? Object.entries(currentMethodOptions)
-			.filter(([_, c]) => c.type !== 'interactive-tree')
-			.map(([key, config]) => {
-				const isEnabled = !config.dependsOn ||
-					(methodOptions[selectedMethod] &&
-						config.enabledWhen &&
-						config.enabledWhen.includes(
-							methodOptions[selectedMethod][config.dependsOn]
-						));
+	$: renderableAdvancedOptions =
+		selectedMethod && methodOptions[selectedMethod]
+			? Object.entries(currentMethodOptions)
+					.filter(([_, c]) => c.type !== 'interactive-tree')
+					.map(([key, config]) => {
+						const isEnabled =
+							!config.dependsOn ||
+							(methodOptions[selectedMethod] &&
+								config.enabledWhen &&
+								config.enabledWhen.includes(methodOptions[selectedMethod][config.dependsOn]));
 
-				// Resolve filtered options for selects constrained by another option
-				let effectiveConfig = config;
-				if (config.filteredOptionsBy && config.filteredOptions) {
-					const controllerValue = methodOptions[selectedMethod][config.filteredOptionsBy];
-					const filtered = config.filteredOptions[controllerValue];
-					if (filtered) {
-						effectiveConfig = { ...config, options: filtered };
-					}
-				}
+						// Resolve filtered options for selects constrained by another option
+						let effectiveConfig = config;
+						if (config.filteredOptionsBy && config.filteredOptions) {
+							const controllerValue = methodOptions[selectedMethod][config.filteredOptionsBy];
+							const filtered = config.filteredOptions[controllerValue];
+							if (filtered) {
+								effectiveConfig = { ...config, options: filtered };
+							}
+						}
 
-				return { key, config: effectiveConfig, isEnabled };
-			})
-		: [];
+						return { key, config: effectiveConfig, isEnabled };
+					})
+			: [];
 
 	// Update genetic code ID when name changes
 	$: {
@@ -1047,12 +1073,15 @@
 	}
 
 	// RELAX branch validation - requires TEST and REFERENCE branches to be tagged
-	$: relaxHasTestBranches = selectedMethod?.toLowerCase() === 'relax' &&
+	$: relaxHasTestBranches =
+		selectedMethod?.toLowerCase() === 'relax' &&
 		methodOptions?.relax?.interactiveTree?.includes('{TEST}');
-	$: relaxHasReferenceBranches = selectedMethod?.toLowerCase() === 'relax' &&
+	$: relaxHasReferenceBranches =
+		selectedMethod?.toLowerCase() === 'relax' &&
 		(methodOptions?.relax?.interactiveTree?.includes('{REFERENCE}') ||
-		 methodOptions?.relax?.referenceBranches === 'All');
-	$: relaxBranchesValid = selectedMethod?.toLowerCase() !== 'relax' ||
+			methodOptions?.relax?.referenceBranches === 'All');
+	$: relaxBranchesValid =
+		selectedMethod?.toLowerCase() !== 'relax' ||
 		(relaxHasTestBranches && relaxHasReferenceBranches);
 
 	// Contrast-FEL branch validation - compares two or more groups, so at least two
@@ -1361,7 +1390,7 @@
 											<input
 												type="number"
 												value={methodOptions[selectedMethod]?.[opt.key]}
-												on:input={e => updateMethodOption(opt.key, +e.target.value)}
+												on:input={(e) => updateMethodOption(opt.key, +e.target.value)}
 												min={opt.config.min || 0}
 												max={opt.config.max || 1000}
 												step={opt.config.step || 1}
@@ -1374,7 +1403,7 @@
 											<input
 												type="checkbox"
 												checked={methodOptions[selectedMethod]?.[opt.key]}
-												on:change={e => updateMethodOption(opt.key, e.target.checked)}
+												on:change={(e) => updateMethodOption(opt.key, e.target.checked)}
 												disabled={!opt.isEnabled}
 											/>
 											{opt.config.label}
@@ -1384,13 +1413,15 @@
 											{opt.config.label}:
 											<select
 												value={methodOptions[selectedMethod]?.[opt.key]}
-												on:change={e => updateMethodOption(opt.key, e.target.value)}
+												on:change={(e) => updateMethodOption(opt.key, e.target.value)}
 												class="option-select"
 												disabled={!opt.isEnabled}
 											>
 												{#each opt.config.options as option}
 													{#if typeof option === 'object'}
-														<option value={option.value} disabled={option.disabled}>{option.label || option.value}</option>
+														<option value={option.value} disabled={option.disabled}
+															>{option.label || option.value}</option
+														>
 													{:else}
 														<option value={option}>{option}</option>
 													{/if}
@@ -1403,7 +1434,7 @@
 											<input
 												type="text"
 												value={methodOptions[selectedMethod]?.[opt.key]}
-												on:input={e => updateMethodOption(opt.key, e.target.value)}
+												on:input={(e) => updateMethodOption(opt.key, e.target.value)}
 												placeholder={opt.config.placeholder || ''}
 												class="option-input"
 												disabled={!opt.isEnabled}
@@ -1526,11 +1557,10 @@
 					<AlertTriangle class="warning-icon" />
 					<span>
 						{#if methodOptions?.[selectedMethod]?.branchesToTest === 'Custom'}
-							Contrast-FEL compares two or more groups — please define at least two branch
-							sets.
+							Contrast-FEL compares two or more groups — please define at least two branch sets.
 						{:else}
-							Contrast-FEL compares two or more groups — please tag at least two branch
-							groups on the tree.
+							Contrast-FEL compares two or more groups — please tag at least two branch groups on
+							the tree.
 						{/if}
 					</span>
 				</div>
