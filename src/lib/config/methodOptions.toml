@@ -917,7 +917,7 @@ choices = []
 #   - no branch selection. AxoMEME consumes the whole tree as a distance matrix; there is no
 #     foreground set to tag.
 [axomeme]
-description = "AxoMEME 2.0 predicts MEME's per-site selection statistics from a codon alignment and tree using a neural model, in seconds instead of hours. It is a surrogate for MEME, not a replacement."
+description = "AxoMEME 2.0 ranks the sites of a codon alignment by how MEME-like their selection signal looks, using a neural model, in seconds instead of hours. It orders sites within an alignment; it does not produce calibrated significance, and it is not a replacement for MEME."
 
 [[axomeme.options]]
 name = "alignment"
@@ -937,8 +937,8 @@ choices = []
 
 [[axomeme.options]]
 name = "call-mode"
-description = "How to call sites. 'pvalue' uses fixed LRT gates; 'zscore' and 'percentile' rank sites within this alignment and therefore always return some hits."
+description = "How to rank sites. 'percentile' and 'zscore' order sites within this alignment, which is what the model does well — its authors report Spearman rank correlation, not calibration. 'pvalue' compares the predicted LRT against fixed chi-square gates (4.45 / 3.12) that the model's scores rarely reach, so it will usually report nothing."
 takes_value = true
 type = "string"
-default = "pvalue"
-choices = ["pvalue", "zscore", "percentile"]
+default = "percentile"
+choices = ["percentile", "zscore", "pvalue"]

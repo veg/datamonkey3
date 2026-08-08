@@ -133,12 +133,17 @@ test.describe('AxoMEME', () => {
 		await expect(page.getByText(/AxoMEME predictions/i)).toBeVisible({ timeout: 30000 });
 
 		// The framing is not decoration. A researcher reading a per-site table is one step from
-		// writing it up, so the page must say MEME was not run.
+		// writing it up, so the page must say MEME was not run AND that the number is not a p-value.
 		const body = await page.locator('body').innerText();
 		expect(body).toMatch(/MEME was not run/i);
+		expect(body).toMatch(/not a p-value/i);
 
-		// The per-site table, with the columns that carry the actual claim.
-		await expect(page.getByRole('columnheader', { name: 'LRT' })).toBeVisible();
+		// The table leads with RANK, and the model's output is labelled Score rather than LRT.
+		// Measured across 12 real submissions, its predicted LRT clears the chi-square gates once in
+		// 662 sites, so presenting it as an LRT invites a comparison it cannot support.
+		await expect(page.getByRole('columnheader', { name: 'Rank' })).toBeVisible();
+		await expect(page.getByRole('columnheader', { name: 'Score' })).toBeVisible();
+		await expect(page.getByRole('columnheader', { name: 'LRT' })).toHaveCount(0);
 		await expect(page.getByRole('columnheader', { name: /dN/ })).toBeVisible();
 	});
 

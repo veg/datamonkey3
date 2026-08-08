@@ -177,11 +177,15 @@
 		axomeme: {
 			callMode: {
 				type: 'select',
-				label: 'How to call sites',
-				default: 'pvalue',
-				options: ['pvalue', 'zscore', 'percentile'],
+				label: 'How to rank sites',
+				// percentile, not the reference driver's pvalue default. The model's predicted LRT does
+				// not reach the chi-square gates pvalue compares against — measured across 12 real
+				// submissions, one site in 662 cleared 3.12 and none cleared 4.45 — so pvalue makes the
+				// method silent. See CALL_DEFAULTS in postprocess.js.
+				default: 'percentile',
+				options: ['percentile', 'zscore', 'pvalue'],
 				description:
-					'pvalue uses fixed LRT gates (4.45 / 3.12). zscore and percentile rank sites within this alignment, so they always return some hits.'
+					'percentile and zscore rank sites within this alignment, which is what the model is built to do. pvalue compares against fixed LRT gates (4.45 / 3.12) that its scores rarely reach — it will usually report nothing.'
 			}
 		},
 		fel: {

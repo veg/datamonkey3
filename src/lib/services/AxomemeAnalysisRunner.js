@@ -30,9 +30,15 @@ import { BaseAnalysisRunner } from './BaseAnalysisRunner.js';
 import { parseAlignment } from '../utils/fastaValidation.js';
 import { prepareAlignment, batchSizeFor } from './axomeme/assemble.js';
 import { loadSession, runSites, isSessionLoaded } from './axomeme/session.js';
-import { buildPredictions, siteVariability } from './axomeme/postprocess.js';
+import { buildPredictions, siteVariability, CALL_DEFAULTS } from './axomeme/postprocess.js';
 import { validateInputBundle, VERIFIED_MODEL_SHA256 } from './axomeme/modelContract.js';
 import { inspectBranchLengths } from '../utils/treeSanitation.js';
+
+/**
+ * Below this magnitude a negative branch length is float noise from NJ's unclamped subtraction, not a
+ * broken tree. Matches the threshold the results page uses for the distance-clamping notice.
+ */
+const NOISY_NEGATIVE = -0.001;
 
 /** Let the browser paint between phases; the heavy stages are synchronous. */
 const yieldToBrowser = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -125,7 +131,14 @@ export class AxomemeAnalysisRunner extends BaseAnalysisRunner {
 			const refCodons = Array.from({ length: prepared.totalCodons }, (_, i) =>
 				refSeq.slice(i * 3, i * 3 + 3)
 			);
-			const sites = buildPredictions(accumulated, { refCodons, variable }, config?.calling);
+			const sites = buildPredictions(
+				accumulated,
+				{ refCodons, variable },
+				{
+					...(config?.calling ?? {}),
+					...(config?.callMode ? { mode: config.callMode } : {})
+				}
+			);
 
 			const result = {
 				method: 'AxoMEME',
@@ -142,6 +155,9 @@ export class AxomemeAnalysisRunner extends BaseAnalysisRunner {
 					speciesUsed: prepared.speciesCount,
 					speciesInAlignment: names.length,
 					referenceSequence: prepared.referenceName,
+					// Named in the footer: it changes what a "call" means, and the default is not the
+					// reference driver's.
+					callMode: config?.calling?.mode ?? config?.callMode ?? CALL_DEFAULTS.mode,
 					matchedFromTree: prepared.matchedFromTree,
 					duplicateSelections: prepared.duplicateSelections,
 					// Reported, not hidden. Clamping matches the model's training pipeline, so it is not
@@ -149,7 +165,18 @@ export class AxomemeAnalysisRunner extends BaseAnalysisRunner {
 					// situation from one carrying float noise, and only the magnitude distinguishes them.
 					clampedDistances: prepared.clampedDistances,
 					mostNegativeDistance: prepared.mostNegativeDistance,
-					treeWarnings: treeReport && !treeReport.ok ? treeReport.reasons : []
+					// Only surface tree problems worth acting on. inspectBranchLengths reports ANY negative
+					// branch, and DM3's NJ routinely emits float noise around -1e-5 — the bundled
+					// large.nex demo has two. Those are clamped (matching the model's training pipeline)
+					// and warning about them trains users to ignore the warning box, which is worse than
+					// not having one. A meaningfully negative tree still gets through, via this filter and
+					// via the mostNegativeDistance line the results page renders.
+					treeWarnings:
+						treeReport && !treeReport.ok
+							? treeReport.reasons.filter(
+									(r) => !/negative/.test(r) || (treeReport.min ?? 0) <= NOISY_NEGATIVE
+								)
+							: []
 				}
 			};
 

@@ -24,9 +24,27 @@
 
 import { GENETIC_CODE, aaToken } from './tokenizer.js';
 
-/** Default tier gates, from the driver's argparse (lines 984-991). */
+/**
+ * Default tier gates.
+ *
+ * THE DEFAULT MODE IS `percentile`, WHICH IS NOT THE REFERENCE'S DEFAULT, and the reason is measured
+ * rather than preferential. The reference defaults to `pvalue`, which compares the predicted LRT
+ * against 4.45 and 3.12 — chi-square thresholds for a GENUINE likelihood ratio. The model's output
+ * does not live on that scale. Across 12 real DataMonkey submissions and 662 variable sites, the
+ * highest predicted LRT anywhere was 3.902; exactly one site cleared 3.12 and none cleared 4.45.
+ * On an alignment where MEME itself reports 17 sites at p <= 0.05, the model's maximum was 2.484.
+ *
+ * So under `pvalue` this feature ships reporting nothing on real data. That is not a threshold worth
+ * tuning — it reflects what the model is: a RANKER. The metric its authors report is Spearman rank
+ * correlation, not calibration, and rank correlation can be good while absolute scale is off.
+ * `percentile` asks the question the model can answer — which sites in THIS alignment look most
+ * interesting — instead of one it cannot.
+ *
+ * The gates themselves are unchanged from the driver's argparse (lines 984-991), so switching modes
+ * reproduces the reference exactly.
+ */
 export const CALL_DEFAULTS = Object.freeze({
-	mode: 'pvalue',
+	mode: 'percentile',
 	tier1LrtGate: 4.45, // p <= 0.05
 	tier2LrtGate: 3.12, // p <= 0.10
 	tier1Zscore: 2.5,
@@ -166,6 +184,16 @@ export function buildPredictions(outputs, sites, callOptions = {}) {
 		rows[rowIdx].percentile = pct[k];
 	});
 
+	const tierLabels =
+		cfg.mode === 'zscore'
+			? { tier1: `Z \u2265 ${cfg.tier1Zscore}`, tier2: `Z \u2265 ${cfg.tier2Zscore}` }
+			: cfg.mode === 'pvalue'
+				? { tier1: `LRT \u2265 ${cfg.tier1LrtGate}`, tier2: `LRT \u2265 ${cfg.tier2LrtGate}` }
+				: {
+						tier1: `Top ${(100 - cfg.tier1Percentile).toFixed(0)}%`,
+						tier2: `Top ${(100 - cfg.tier2Percentile).toFixed(0)}%`
+					};
+
 	for (const i of varIdx) {
 		const r = rows[i];
 		let t1 = false;
@@ -180,8 +208,11 @@ export function buildPredictions(outputs, sites, callOptions = {}) {
 			t1 = r.lrt >= cfg.tier1LrtGate;
 			t2 = !t1 && r.lrt >= cfg.tier2LrtGate;
 		}
-		if (t1) r.call = 'Tier 1 (High)';
-		else if (t2) r.call = 'Tier 2 (Medium)';
+		// Labels say what the tier MEANS rather than how confident it sounds. "High" and "Medium"
+		// imply a calibrated confidence the model does not have; "Top 2%" is exactly what percentile
+		// mode computed, and a reader can tell at a glance that it is relative to this alignment.
+		if (t1) r.call = tierLabels.tier1;
+		else if (t2) r.call = tierLabels.tier2;
 	}
 
 	return rows;

@@ -52,8 +52,9 @@
 				<h3 class="text-lg font-bold">AxoMEME predictions</h3>
 			</div>
 			<p class="text-sm text-slate-600">
-				Estimates of what MEME would report for each site, from a neural model. MEME was not run.
-				Treat these as a fast preview and confirm anything you rely on with the full analysis.
+				A neural model RANKS the sites of this alignment by how MEME-like their signal looks. MEME
+				was not run, and the score is not a p-value — it orders sites within this alignment and says
+				nothing about significance. Use it to decide where to look, then run MEME to find out.
 			</p>
 		</header>
 
@@ -97,19 +98,27 @@
 		<div class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
 			<div class="rounded bg-slate-50 p-3">
 				<div class="text-2xl font-bold">{called.length}</div>
-				<div class="text-xs text-slate-600">sites predicted under selection</div>
+				<div class="text-xs text-slate-600">
+					top-ranked {called.length === 1 ? 'site' : 'sites'}
+				</div>
 			</div>
 			<div class="rounded bg-slate-50 p-3">
 				<div class="text-2xl font-bold">{summary.variableSites ?? 0}</div>
-				<div class="text-xs text-slate-600">variable sites scored</div>
+				<div class="text-xs text-slate-600">
+					variable {summary.variableSites === 1 ? 'site' : 'sites'} scored
+				</div>
 			</div>
 			<div class="rounded bg-slate-50 p-3">
 				<div class="text-2xl font-bold">{summary.totalSites ?? sites.length}</div>
-				<div class="text-xs text-slate-600">codon sites</div>
+				<div class="text-xs text-slate-600">
+					codon {(summary.totalSites ?? sites.length) === 1 ? 'site' : 'sites'}
+				</div>
 			</div>
 			<div class="rounded bg-slate-50 p-3">
 				<div class="text-2xl font-bold">{summary.speciesUsed ?? '—'}</div>
-				<div class="text-xs text-slate-600">sequences used</div>
+				<div class="text-xs text-slate-600">
+					{summary.speciesUsed === 1 ? 'sequence' : 'sequences'} used
+				</div>
 			</div>
 		</div>
 
@@ -119,8 +128,8 @@
 			>
 				<Info class="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
 				<span>
-					No site cleared the calling threshold. That is a prediction of what MEME would find, not a
-					result from MEME — a real run can still report sites here.
+					Nothing to rank — no site in this alignment has amino-acid variation, so the model has
+					nothing to score. A MEME run would have the same problem.
 				</span>
 			</div>
 		{/if}
@@ -128,7 +137,7 @@
 		<div class="mb-2 flex items-center justify-between gap-3">
 			<label class="flex items-center gap-2 text-sm">
 				<input type="checkbox" bind:checked={onlyCalled} disabled={called.length === 0} />
-				Show only predicted sites
+				Show only top-ranked sites
 			</label>
 			<span class="text-xs text-slate-500">
 				showing {shown.length} of {total}
@@ -142,7 +151,15 @@
 						<th class="px-2 py-2">Site</th>
 						<th class="px-2 py-2">Codon</th>
 						<th class="px-2 py-2">AA</th>
-						<th class="px-2 py-2 text-right">LRT</th>
+						<th class="px-2 py-2 text-right" title="Rank within this alignment's variable sites">
+							Rank
+						</th>
+						<th
+							class="px-2 py-2 text-right"
+							title="The model's predicted MEME LRT. Not calibrated to MEME's scale — use the ranking."
+						>
+							Score
+						</th>
 						<th class="px-2 py-2 text-right">dN⁺</th>
 						<th class="px-2 py-2 text-right">dS</th>
 						<th class="px-2 py-2 text-right">p⁺</th>
@@ -156,6 +173,9 @@
 							<td class="px-2 py-1 font-mono">{row.refCodon}</td>
 							<td class="px-2 py-1 font-mono">{row.refAa}</td>
 							{#if row.isVariable}
+								<td class="px-2 py-1 text-right font-mono text-slate-500">
+									{row.percentile.toFixed(0)}%
+								</td>
 								<td class="px-2 py-1 text-right font-mono">{fmt(row.lrt)}</td>
 								<td class="px-2 py-1 text-right font-mono">{fmt(row.betaPosDn)}</td>
 								<td class="px-2 py-1 text-right font-mono">{fmt(row.alphaDs)}</td>
@@ -163,7 +183,7 @@
 							{:else}
 								<!-- Invariant sites are zeroed before the model is consulted. Printing 0.000 here
 								     would read as "no selection" when it means "not applicable". -->
-								<td class="px-2 py-1 text-right text-slate-400" colspan="4">
+								<td class="px-2 py-1 text-right text-slate-400" colspan="5">
 									not scored — no amino-acid variation
 								</td>
 							{/if}
@@ -186,7 +206,7 @@
 		{/if}
 
 		<footer class="mt-4 border-t border-slate-200 pt-3 text-xs text-slate-500">
-			AxoMEME {data.modelVersion}
+			AxoMEME {data.modelVersion} · ranked by {summary.callMode ?? 'percentile'}
 			{#if summary.referenceSequence}
 				· reference sequence <span class="font-mono">{summary.referenceSequence}</span>
 			{/if}

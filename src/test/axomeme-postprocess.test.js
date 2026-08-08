@@ -163,17 +163,65 @@ describe('buildPredictions', () => {
 		expect(rows[3].percentile).toBeCloseTo(100, 6);
 	});
 
-	it('calls tiers off the LRT gates by default', () => {
-		expect(CALL_DEFAULTS.mode).toBe('pvalue');
+	it("DEFAULTS TO percentile, not the reference driver's pvalue", () => {
+		// Measured, not preferential. Across 12 real DataMonkey submissions and 662 variable sites the
+		// highest predicted LRT anywhere was 3.902; one site cleared the 3.12 gate and none cleared
+		// 4.45 — including an alignment where MEME itself reports 17 sites at p <= 0.05. Under pvalue
+		// this feature reports nothing on real data.
+		expect(CALL_DEFAULTS.mode).toBe('percentile');
+		// The gates themselves are unchanged, so switching modes still reproduces the reference.
 		expect(CALL_DEFAULTS.tier1LrtGate).toBe(4.45);
 		expect(CALL_DEFAULTS.tier2LrtGate).toBe(3.12);
+		expect(CALL_DEFAULTS.tier1Percentile).toBe(98.0);
+		expect(CALL_DEFAULTS.tier2Percentile).toBe(95.0);
+	});
+
+	it('returns top-ranked sites by default even when no score approaches an LRT gate', () => {
+		// The whole reason for the default. These scores are realistic for the model — nothing near
+		// 3.12 — and pvalue mode calls nothing on them while percentile surfaces the top of the range.
+		const lrt = new Float32Array(100);
+		for (let i = 0; i < 100; i++) lrt[i] = (i / 99) * 2.5;
+		const ranked = buildPredictions(outputs(100, { lrt }), sites(100));
+		expect(ranked.filter((r) => r.call !== NEUTRAL_CALL).length).toBeGreaterThan(0);
+		const gated = buildPredictions(outputs(100, { lrt }), sites(100), { mode: 'pvalue' });
+		expect(gated.filter((r) => r.call !== NEUTRAL_CALL)).toEqual([]);
+	});
+
+	it('labels tiers by what they MEAN, not by a confidence word', () => {
+		// "High"/"Medium" imply a calibrated confidence the model does not have. Each label states the
+		// rule that produced it, so a reader can see it is relative to this alignment.
+		const lrt = new Float32Array(100);
+		for (let i = 0; i < 100; i++) lrt[i] = i;
+		const pct = buildPredictions(outputs(100, { lrt }), sites(100));
+		expect(pct.map((r) => r.call)).toContain('Top 2%');
+		expect(pct.map((r) => r.call)).toContain('Top 5%');
+
+		// A uniform spread cannot reach z = 2.5 — its maximum z is about 1.73 regardless of n — so this
+		// needs a genuine outlier. Same bound as the short-alignment case pinned further down.
+		const spike = new Float32Array(100).fill(1);
+		spike[42] = 100;
+		const z = buildPredictions(outputs(100, { lrt: spike }), sites(100), { mode: 'zscore' });
+		expect(z[42].call).toBe('Z ≥ 2.5');
+
+		const p = buildPredictions(
+			outputs(4, { lrt: new Float32Array([5.0, 3.5, 3.13, 1.0]) }),
+			sites(4),
+			{ mode: 'pvalue' }
+		);
+		expect(p[0].call).toBe('LRT ≥ 4.45');
+		expect(p[1].call).toBe('LRT ≥ 3.12');
+		expect(p[3].call).toBe(NEUTRAL_CALL);
+	});
+
+	it('still reproduces the reference exactly when pvalue mode is chosen', () => {
 		const rows = buildPredictions(
 			outputs(4, { lrt: new Float32Array([5.0, 3.5, 3.13, 1.0]) }),
-			sites(4)
+			sites(4),
+			{ mode: 'pvalue' }
 		);
-		expect(rows[0].call).toMatch(/Tier 1/);
-		expect(rows[1].call).toMatch(/Tier 2/);
-		expect(rows[2].call).toMatch(/Tier 2/);
+		expect(rows[0].call).toMatch(/4\.45/);
+		expect(rows[1].call).toMatch(/3\.12/);
+		expect(rows[2].call).toMatch(/3\.12/);
 		expect(rows[3].call).toBe(NEUTRAL_CALL);
 	});
 
@@ -185,7 +233,7 @@ describe('buildPredictions', () => {
 		// sitting exactly on a gate falls to the lower tier.
 		const exact = new Float32Array([3.12]);
 		expect(exact[0]).toBeLessThan(3.12);
-		const rows = buildPredictions(outputs(1, { lrt: exact }), sites(1));
+		const rows = buildPredictions(outputs(1, { lrt: exact }), sites(1), { mode: 'pvalue' });
 		expect(rows[0].call).toBe(NEUTRAL_CALL);
 	});
 
@@ -195,7 +243,7 @@ describe('buildPredictions', () => {
 		// possible z is 1.732, below even the Tier 2 threshold of 2.0. Ten sites clears it.
 		const lrt = new Float32Array([1, 1, 1, 1, 1, 1, 1, 1, 1, 100]);
 		const z = buildPredictions(outputs(10, { lrt }), sites(10), { mode: 'zscore' });
-		expect(z[9].call).toMatch(/Tier/); // the outlier
+		expect(z[9].call).toMatch(/^Z ≥ /); // the outlier
 		expect(z[0].call).toBe(NEUTRAL_CALL);
 
 		const p = buildPredictions(outputs(10, { lrt }), sites(10), {
@@ -203,7 +251,7 @@ describe('buildPredictions', () => {
 			tier1Percentile: 90,
 			tier2Percentile: 70
 		});
-		expect(p[9].call).toMatch(/Tier 1/);
+		expect(p[9].call).toBe('Top 10%');
 		expect(p[0].call).toBe(NEUTRAL_CALL);
 	});
 
