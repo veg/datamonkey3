@@ -114,6 +114,55 @@ test.describe('AxoMEME', () => {
 		// The analysis must reach a terminal state, and it must be success. An error toast here is the
 		// signal that the runtime or the model failed to load.
 		await expect(page.getByText(/AxoMEME prediction complete/i)).toBeVisible({ timeout: 120000 });
+
+		// And the results must actually render. A completed analysis with nothing to show is the
+		// failure mode this test exists to catch.
+		await page
+			.getByRole('button', { name: /results/i })
+			.first()
+			.click();
+		// The Results tab lists every analysis and defaults the detail pane to the FIRST one, which is
+		// the datareader job every upload creates. Selecting the AxoMEME run explicitly is required;
+		// without it this test passes or fails on whatever happens to be first.
+		await page
+			.locator('.analysis-card')
+			.filter({ hasText: /AXOMEME Analysis/i })
+			.getByRole('button', { name: 'View' })
+			.first()
+			.click();
+		await expect(page.getByText(/AxoMEME predictions/i)).toBeVisible({ timeout: 30000 });
+
+		// The framing is not decoration. A researcher reading a per-site table is one step from
+		// writing it up, so the page must say MEME was not run.
+		const body = await page.locator('body').innerText();
+		expect(body).toMatch(/MEME was not run/i);
+
+		// The per-site table, with the columns that carry the actual claim.
+		await expect(page.getByRole('columnheader', { name: 'LRT' })).toBeVisible();
+		await expect(page.getByRole('columnheader', { name: /dN/ })).toBeVisible();
+	});
+
+	test('suppresses controls that cannot reach the model', async ({ page }) => {
+		// Both were live at first and both imply a capability AxoMEME does not have: there is no
+		// server-side AxoMEME, and the model's tokenizer bakes in the universal genetic code.
+		await freshStart(page);
+		await loadDemoFile(page, 'CD2-slim.fna');
+		await expect(async () => {
+			await goToAnalyzeTab(page);
+			await expect(page.locator('[data-testid="method-dropdown"]')).toBeVisible({ timeout: 5000 });
+		}).toPass({ timeout: 60000 });
+
+		await selectMethod(page, 'AxoMEME');
+		const body = await page.locator('body').innerText();
+		expect(body).not.toMatch(/Backend Server/i);
+		expect(body).toMatch(/Runs in your browser/i);
+		expect(body).toMatch(/cannot be changed for this method/i);
+
+		// And the controls must come back for a method that does have them.
+		await selectMethod(page, 'FEL');
+		const felBody = await page.locator('body').innerText();
+		expect(felBody).toMatch(/Backend Server/i);
+		expect(felBody).toMatch(/Genetic Code/i);
 	});
 });
 

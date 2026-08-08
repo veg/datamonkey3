@@ -80,6 +80,10 @@
 			url: 'axomeme',
 			args: [],
 			runner: 'axomeme',
+			// Drives the UI: no execution-mode toggle (there is no server-side AxoMEME) and no genetic
+			// code selector (the model's tokenizer bakes in the universal table). A control that cannot
+			// reach the model is worse than no control, because it implies a capability.
+			browserOnly: true,
 			description:
 				'Predicts what MEME would report for each site, in seconds rather than hours. A neural surrogate, not a substitute for the full analysis.'
 		},

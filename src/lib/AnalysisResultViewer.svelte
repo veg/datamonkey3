@@ -4,6 +4,7 @@
 	import { persistentFileStore } from '../stores/fileInfo';
 	import ExportPanel from './ExportPanel.svelte';
 	import FelVisualization from './FelVisualization.svelte';
+	import AxomemeResults from './AxomemeResults.svelte';
 	import AnalysisProgress from './AnalysisProgress.svelte';
 	import { FINAL_HYPHY_EYE_URL } from './config/env';
 	import {
@@ -119,6 +120,11 @@
 			case 'fel':
 			case 'contrast-fel':
 				return HyphyScopeFel;
+			case 'axomeme':
+				// Not a hyphy-scope visualiser — AxoMEME emits per-site predictions rather than a HyPhy
+				// results document — but it renders through the same slot, which takes any component
+				// accepting `data`.
+				return AxomemeResults;
 			case 'meme':
 				return MemeVisualization;
 			case 'absrel':
@@ -184,7 +190,9 @@
 			<p>Loading analysis results...</p>
 		</div>
 	{:else if error}
-		<div class="error-container flex flex-col items-center rounded-2xl bg-gradient-to-b from-red-50 to-white p-8 text-center">
+		<div
+			class="error-container flex flex-col items-center rounded-2xl bg-gradient-to-b from-red-50 to-white p-8 text-center"
+		>
 			<div class="mb-5 overflow-hidden rounded-xl shadow-sm">
 				<img
 					src="/img/mascot-error.png"
@@ -257,7 +265,8 @@
 									<div class="mb-4 text-xs text-text-silver">
 										<details>
 											<summary>Debug: aBSREL Data Structure</summary>
-											<pre class="max-h-40 overflow-auto bg-surface-raised p-2 text-xs">{JSON.stringify(
+											<pre
+												class="max-h-40 overflow-auto bg-surface-raised p-2 text-xs">{JSON.stringify(
 													resultData,
 													null,
 													2
@@ -377,13 +386,19 @@
 							{/if}
 
 							{#if !resultData.tested && !resultData.fits}
-								<pre class="bg-surface-sunken p-2 text-sm">{JSON.stringify(resultData, null, 2)}</pre>
+								<pre class="bg-surface-sunken p-2 text-sm">{JSON.stringify(
+										resultData,
+										null,
+										2
+									)}</pre>
 							{/if}
 
 							<!-- HyPhy-eye integration with localStorage sharing -->
 							{#if isMethodSupported(analysis.method)}
 								<div class="mb-4 mt-4 rounded-lg bg-status-info-bg p-4 text-center shadow-sm">
-									<p class="mb-2 text-status-info-text">View results with automatic data sharing:</p>
+									<p class="mb-2 text-status-info-text">
+										View results with automatic data sharing:
+									</p>
 									<button
 										on:click={() => shareWithHyphyEye(resultData, analysis.method)}
 										class="inline-flex items-center rounded-md bg-brand-royal px-4 py-2 text-white transition-colors hover:bg-brand-deep"

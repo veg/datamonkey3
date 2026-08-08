@@ -984,6 +984,22 @@
 	// Get current method details
 	$: currentMethod = selectedMethod ? availableMethods.find((m) => m.id === selectedMethod) : null;
 
+	/**
+	 * A method that runs only in this tab, with no HyPhy binary and no server job behind it.
+	 *
+	 * Two controls are suppressed for these, and in both cases the reason is the same: the control
+	 * would imply a capability the method does not have.
+	 *   - EXECUTION MODE. There is no server-side AxoMEME. Offering "Backend Server" would either be
+	 *     silently ignored or would route to a socket with no handler.
+	 *   - GENETIC CODE. The model's tokenizer bakes in the universal table (its GENETIC_CODE is a
+	 *     hard-coded literal), so a user's choice cannot reach it. It currently defaults to Universal,
+	 *     which is right, so the control looks harmless -- but changing it would do nothing and say
+	 *     nothing, which is the worst of the three options.
+	 */
+	$: browserOnly = Boolean(currentMethod?.config?.browserOnly);
+	// Keep the reported mode honest for analytics and for the run-started toast.
+	$: if (browserOnly && executionMode !== 'local') executionMode = 'local';
+
 	// Get current method's advanced options
 	$: currentMethodOptions = selectedMethod
 		? METHOD_ADVANCED_OPTIONS[selectedMethod.toLowerCase()] || {}
@@ -1291,7 +1307,15 @@
 		{/if}
 
 		<!-- Execution Mode Selection -->
-		{#if selectedMethod && currentMethod?.info.supported}
+		{#if selectedMethod && currentMethod?.info.supported && browserOnly}
+			<div class="execution-mode-section">
+				<h4 class="execution-mode-title">Execution Mode</h4>
+				<p class="browser-only-note">
+					Runs in your browser. There is no server-side version of this method, so there is nothing
+					to choose.
+				</p>
+			</div>
+		{:else if selectedMethod && currentMethod?.info.supported}
 			<div class="execution-mode-section">
 				<h4 class="execution-mode-title">Execution Mode</h4>
 				<div class="execution-mode-options">
@@ -1359,16 +1383,22 @@
 						<span class="options-label">Essential</span>
 					</div>
 
-					<div class="option-group">
-						<label class="option-label">
-							Genetic Code:
-							<select bind:value={geneticCode} class="option-select">
-								{#each GENETIC_CODES as code}
-									<option value={code.name}>{code.label}</option>
-								{/each}
-							</select>
-						</label>
-					</div>
+					{#if browserOnly}
+						<p class="browser-only-note">
+							This model reads the standard genetic code. It cannot be changed for this method.
+						</p>
+					{:else}
+						<div class="option-group">
+							<label class="option-label">
+								Genetic Code:
+								<select bind:value={geneticCode} class="option-select">
+									{#each GENETIC_CODES as code}
+										<option value={code.name}>{code.label}</option>
+									{/each}
+								</select>
+							</label>
+						</div>
+					{/if}
 				</div>
 
 				<!-- Divider -->
@@ -1630,6 +1660,13 @@
 		align-items: center;
 		gap: 16px;
 		margin-bottom: 12px;
+	}
+
+	.browser-only-note {
+		margin: 0;
+		font-size: 0.8125rem;
+		line-height: 1.4;
+		color: #475569;
 	}
 
 	.method-dropdown {
