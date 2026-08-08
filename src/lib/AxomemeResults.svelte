@@ -74,6 +74,13 @@
 								: ''}.
 						</li>
 					{/if}
+					{#if summary.mostNegativeDistance < -0.001}
+						<li>
+							The tree contains negative branch lengths — the most negative pairwise distance was
+							{summary.mostNegativeDistance.toFixed(4)}. Those distances were treated as zero, which
+							is what the model was trained on, but a tree this far negative is worth checking.
+						</li>
+					{/if}
 					{#if summary.duplicateSelections > 0}
 						<li>
 							{summary.duplicateSelections} taxon slots repeated the same sequence, which happens when

@@ -165,7 +165,26 @@ export function prepareAlignment(input) {
 	const n = selected.length;
 
 	// --- distances, at the REAL species count ----------------------------------------------------
+	//
+	// NEGATIVE DISTANCES ARE CLAMPED TO ZERO, and this is the one place in the port that deliberately
+	// alters a value rather than passing it through. The reasoning matters:
+	//
+	//   - DM3's own NJ inference emits negative branch lengths. `NJ.bf:214-220` computes the
+	//     three-taxon closed form (d01 + d02 - d12)/2 with no Max(0, ...), so any triangle-inequality
+	//     violation yields one. Most are float noise -- the demo alignment produces a patristic sum of
+	//     -1.04e-5, which is zero with rounding error on it.
+	//   - THE MODEL WAS TRAINED ON CLAMPED DISTANCES. The handoff README is explicit: "This build's
+	//     training pipeline clamps distances >= 0." So clamping here matches what the weights were
+	//     fitted against. It is the reference's INFERENCE path that omits the clamp, and that omission
+	//     is exactly why it throws on 4.6% of real DM3 trees (findings log §2).
+	//
+	// So refusing a -1e-5 distance would reject an ordinary tree for a rounding artifact, while
+	// passing it through unclamped would feed the model something training never showed it. Clamping
+	// does neither. What is NOT acceptable is doing it silently, so the magnitude is recorded and a
+	// meaningfully negative tree still reaches the user.
 	const dist = new Float32Array(n * n);
+	let clampedDistances = 0;
+	let mostNegativeDistance = 0;
 	if (tree) {
 		const { index } = leafIndex(tree);
 		const nodes = selected.map((i) => index.get(normalizeTaxonName(names[i])));
@@ -173,7 +192,16 @@ export function prepareAlignment(input) {
 			const full = patristicMatrix(tree, nodes);
 			// float32 because that is what dist_tensor is, and MDS is sensitive to the rounding — see
 			// mds.js. Doing it here rather than there keeps a single source of the rounded values.
-			for (let k = 0; k < n * n; k++) dist[k] = full[k];
+			for (let k = 0; k < n * n; k++) {
+				const v = full[k];
+				if (v < 0) {
+					clampedDistances++;
+					if (v < mostNegativeDistance) mostNegativeDistance = v;
+					dist[k] = 0;
+				} else {
+					dist[k] = v;
+				}
+			}
 		}
 	}
 	// No tree, or names that do not resolve: the reference falls back to an all-zero matrix rather
@@ -229,6 +257,8 @@ export function prepareAlignment(input) {
 		selectedNames: selected.map((i) => names[i]),
 		matchedFromTree,
 		duplicateSelections: duplicates,
+		clampedDistances,
+		mostNegativeDistance,
 		dist,
 		mds,
 		paddingMask,

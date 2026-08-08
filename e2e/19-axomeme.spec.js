@@ -166,6 +166,30 @@ test.describe('AxoMEME', () => {
 	});
 });
 
+test.describe('AxoMEME on the bundled demos', () => {
+	test.setTimeout(300000);
+
+	// large.nex is the regression that prompted this block. Its tree carries negative branch lengths
+	// from DM3's own NJ inference — a patristic sum of -1.04e-5, which is zero with rounding error on
+	// it — and the input check rejected the whole run for it. Every bundled demo now runs, so a
+	// tightened validator cannot quietly break the ones a user is most likely to click.
+	for (const demo of ['small.nex', 'medium.nex', 'large.nex']) {
+		test(`runs on ${demo}`, async ({ page }) => {
+			await freshStart(page);
+			await loadDemoFile(page, demo);
+			await expect(async () => {
+				await goToAnalyzeTab(page);
+				await expect(page.locator('[data-testid="method-dropdown"]')).toBeVisible({
+					timeout: 5000
+				});
+			}).toPass({ timeout: 60000 });
+			await selectMethod(page, 'AxoMEME');
+			expect(await clickRunAnalysis(page), 'run button was not clickable').toBe(true);
+			await expect(page.getByText(/AxoMEME prediction complete/i)).toBeVisible({ timeout: 180000 });
+		});
+	}
+});
+
 test.describe('AxoMEME cost', () => {
 	test.setTimeout(180000);
 

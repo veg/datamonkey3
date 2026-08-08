@@ -183,6 +183,45 @@ describe('prepareAlignment', () => {
 		expect(p.selectedNames[1]).toBe('far'); // farthest from it
 	});
 
+	it('clamps a negative distance to zero and REPORTS the magnitude', () => {
+		// DM3's own NJ emits negative branch lengths; the large.nex demo produces a patristic sum of
+		// -1.04e-5, which is zero with rounding error on it. The model was trained on clamped
+		// distances (the handoff README says so), so clamping matches training — but doing it silently
+		// would hide a genuinely broken tree, which is why the magnitude comes back out.
+		const p = prepareAlignment({
+			names: ['a', 'b', 'c'],
+			sequences: ['ATG', 'ATG', 'ATG'],
+			treeText: '((a:-0.5,b:0.2):0.05,c:0.3);',
+			maxSpecies: 8
+		});
+		expect(Array.from(p.dist).every((v) => v >= 0)).toBe(true);
+		expect(p.clampedDistances).toBeGreaterThan(0);
+		expect(p.mostNegativeDistance).toBeCloseTo(-0.3, 5); // a-b: -0.5 + 0.2
+	});
+
+	it('reports nothing clamped for a clean tree', () => {
+		const p = prep();
+		expect(p.clampedDistances).toBe(0);
+		expect(p.mostNegativeDistance).toBe(0);
+	});
+
+	it('produces a contract-valid bundle from a tree with negative branch lengths', () => {
+		// The large.nex regression: the bundle used to be REJECTED by validateInputBundle because a
+		// patristic sum came out at -1e-5. Clamping is what makes an ordinary NJ tree usable.
+		const p = prepareAlignment({
+			names: ['a', 'b', 'c', 'd'],
+			sequences: ['ATGTTA', 'ATGCTA', 'ATGGGG', 'ATGAAA'],
+			treeText: '((a:-0.00001,b:0.2):0.05,(c:0.3,d:0.1):0.02);',
+			maxSpecies: 8
+		});
+		const v = validateInputBundle(p.batch(0), {
+			batch: p.totalCodons,
+			numSpecies: p.speciesCount,
+			windowSize: p.windowSize
+		});
+		expect(v.errors).toEqual([]);
+	});
+
 	it('falls back to an all-zero distance matrix without a tree', () => {
 		const p = prepareAlignment({ names: NAMES, sequences: SEQS, maxSpecies: 8 });
 		expect(Array.from(p.dist).every((v) => v === 0)).toBe(true);

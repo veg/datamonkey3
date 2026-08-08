@@ -144,6 +144,11 @@ export class AxomemeAnalysisRunner extends BaseAnalysisRunner {
 					referenceSequence: prepared.referenceName,
 					matchedFromTree: prepared.matchedFromTree,
 					duplicateSelections: prepared.duplicateSelections,
+					// Reported, not hidden. Clamping matches the model's training pipeline, so it is not
+					// an error — but a tree whose distances are meaningfully negative is a different
+					// situation from one carrying float noise, and only the magnitude distinguishes them.
+					clampedDistances: prepared.clampedDistances,
+					mostNegativeDistance: prepared.mostNegativeDistance,
 					treeWarnings: treeReport && !treeReport.ok ? treeReport.reasons : []
 				}
 			};
