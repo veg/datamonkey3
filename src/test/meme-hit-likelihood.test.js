@@ -406,7 +406,11 @@ describe('the walker refuses a malformed model', () => {
 	const REFUSALS = [
 		// --- multi-class: the walker sums ONE tree group; K groups produce a plausible number with
 		// --- no meaning at all.
-		['multi-class (declared)', patch(modelDoc, [...LMP, 'num_class'], '3'), /num_class=3|multi-class/i],
+		[
+			'multi-class (declared)',
+			patch(modelDoc, [...LMP, 'num_class'], '3'),
+			/num_class=3|multi-class/i
+		],
 		[
 			'multi-class (structural, via tree_info)',
 			patch(
@@ -429,10 +433,18 @@ describe('the walker refuses a malformed model', () => {
 			),
 			/categorical/i
 		],
-		['categorical split (categories_nodes)', patch(modelDoc, [...TREE0, 'categories_nodes'], [0]), /categorical/i],
+		[
+			'categorical split (categories_nodes)',
+			patch(modelDoc, [...TREE0, 'categories_nodes'], [0]),
+			/categorical/i
+		],
 		[
 			'categorical encoding table (cats.enc)',
-			patch(modelDoc, [...GBM, 'cats'], { enc: [{ values: [1, 2, 3] }], feature_segments: [], sorted_idx: [] }),
+			patch(modelDoc, [...GBM, 'cats'], {
+				enc: [{ values: [1, 2, 3] }],
+				feature_segments: [],
+				sorted_idx: []
+			}),
 			/categorical/i
 		],
 
@@ -480,7 +492,11 @@ describe('the walker refuses a malformed model', () => {
 			patch(modelDoc, [...GBM, 'gbtree_model_param', 'num_parallel_tree'], '4'),
 			/num_parallel_tree|forest/i
 		],
-		['vector leaves', patch(modelDoc, [...TREE0, 'tree_param', 'size_leaf_vector'], '2'), /size_leaf_vector|vector leaves/i],
+		[
+			'vector leaves',
+			patch(modelDoc, [...TREE0, 'tree_param', 'size_leaf_vector'], '2'),
+			/size_leaf_vector|vector leaves/i
+		],
 
 		// --- topology: a child index past the end reads `undefined` and compares false forever; a
 		// --- child index of 0 is a cycle back to the root, which would hang the browser.
@@ -489,7 +505,9 @@ describe('the walker refuses a malformed model', () => {
 			patch(
 				modelDoc,
 				[...TREE0, 'right_children'],
-				modelDoc.learner.gradient_booster.model.trees[0].right_children.map((r, i) => (i === 0 ? 999999 : r))
+				modelDoc.learner.gradient_booster.model.trees[0].right_children.map((r, i) =>
+					i === 0 ? 999999 : r
+				)
 			),
 			/out of range/i
 		],
@@ -498,7 +516,9 @@ describe('the walker refuses a malformed model', () => {
 			patch(
 				modelDoc,
 				[...TREE0, 'left_children'],
-				modelDoc.learner.gradient_booster.model.trees[0].left_children.map((l, i) => (i === 0 ? 0 : l))
+				modelDoc.learner.gradient_booster.model.trees[0].left_children.map((l, i) =>
+					i === 0 ? 0 : l
+				)
 			),
 			/out of range/i
 		],
@@ -507,7 +527,9 @@ describe('the walker refuses a malformed model', () => {
 			patch(
 				modelDoc,
 				[...TREE0, 'right_children'],
-				modelDoc.learner.gradient_booster.model.trees[0].right_children.map((r, i) => (i === 0 ? -1 : r))
+				modelDoc.learner.gradient_booster.model.trees[0].right_children.map((r, i) =>
+					i === 0 ? -1 : r
+				)
 			),
 			/one child set to -1/i
 		],
@@ -528,7 +550,11 @@ describe('the walker refuses a malformed model', () => {
 			/written by XGBoost 1\.7\.6/
 		],
 		['no version array at all', patch(modelDoc, ['version'], undefined), /version/i],
-		['a base_score the walker will not guess at', patch(modelDoc, [...LMP, 'base_score'], '[0.3,0.3,0.4]'), /components/i]
+		[
+			'a base_score the walker will not guess at',
+			patch(modelDoc, [...LMP, 'base_score'], '[0.3,0.3,0.4]'),
+			/components/i
+		]
 	];
 
 	for (const [name, doc, pattern] of REFUSALS) {
@@ -1187,7 +1213,10 @@ describe('the copy states a rate, and states the same rate everywhere', () => {
 		expect(stated, `the uncertain band no longer quotes an interval: ${sentence}`).not.toBeNull();
 		const p = hit / n;
 		const half = 1.96 * Math.sqrt((p * (1 - p)) / n);
-		for (const [i, want] of [Math.round(100 * (p - half)), Math.round(100 * (p + half))].entries()) {
+		for (const [i, want] of [
+			Math.round(100 * (p - half)),
+			Math.round(100 * (p + half))
+		].entries()) {
 			expect(
 				Number(stated[i + 1]),
 				`the copy quotes [${stated[1]}%, ${stated[2]}%]; ${hit}/${n} gives ` +
@@ -1480,7 +1509,11 @@ describe('scope: the estimate only ever talks about MEME', () => {
 		];
 		const levelsSeen = new Set();
 		for (const [name, args] of states) {
-			const res = await estimateHitLikelihood({ ...args, model, opts: { resampleAvailable: true } });
+			const res = await estimateHitLikelihood({
+				...args,
+				model,
+				opts: { resampleAvailable: true }
+			});
 			if (res.level) levelsSeen.add(res.level);
 			const text = visibleText(res);
 			expect(text, `state "${name}" named another method: ${text}`).not.toMatch(OTHER_METHODS);
@@ -1533,20 +1566,84 @@ describe('scope: the estimate only ever talks about MEME', () => {
 		expect(MODEL_BASIS).toMatch(/MEME/);
 	});
 
-	it('ships no ML runtime, in package.json or anywhere the estimator can reach', () => {
-		// A tombstone. This feature's first version downloaded 13.5 MB of ONNX Runtime WASM for
-		// every method, including the ~14 that render no estimate. The whole conversion pipeline is
-		// gone — the browser parses XGBoost's own save_model() output — and these two assertions are
-		// what stop a runtime coming back with a future model.
+	it('reaches no ML runtime from anywhere in the gate', () => {
+		// A tombstone, RESCOPED — read this before you touch it.
+		//
+		// This assertion was written as "DM3 ships no ML runtime, anywhere", and for as long as the
+		// gate was the only model in the repository those two statements were the same statement.
+		// They are not any more. AxoMEME 2.0 is a 3.78 MB transformer that genuinely needs
+		// onnxruntime-web: its graph is a real neural network, not 500 trees of three features, and
+		// no 40-line walker is going to execute it. So the repo-wide ban would now fail for a
+		// legitimate reason, and the fix someone reaches for when a guard fails legitimately is
+		// deleting the guard.
+		//
+		// What was actually being defended was never "no runtime exists". It was: THE GATE COSTS
+		// ALMOST NOTHING AND IS REACHABLE FROM EVERY METHOD, SO IT MUST NOT DRAG A RUNTIME BEHIND
+		// IT. The gate renders for one method out of fifteen; the first version of this feature
+		// downloaded 13.5 MB of ONNX Runtime WASM for all fifteen and then rendered nothing for
+		// fourteen of them. That failure mode gets MORE available once a runtime is a legitimate
+		// dependency, not less, because now a stray import resolves instead of erroring.
+		//
+		// So the guard is now about REACHABILITY, which is the property that was always load-bearing:
+		// walk the gate's own import closure and prove no ML runtime is in it. That is strictly
+		// stronger than the per-file grep it replaces — the old version listed four files by hand and
+		// would not have noticed a fifth.
+		const RUNTIME = /^(onnxruntime|@tensorflow\/|@xenova\/|onnx|torch|tflite)/i;
+		// THREE forms, because the first version of this test had only the first and therefore did
+		// not fire when `import 'onnxruntime-web';` was injected into a reachable module to prove it
+		// could. A side-effect import has no `from` clause, and it is the exact shape a runtime
+		// arrives in — you import it for the WASM registration, not for a binding.
+		const SPECIFIER_FORMS = [
+			/\bfrom\s*['"]([^'"]+)['"]/g, // import … from 'x' / export … from 'x'
+			/\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g, // dynamic import('x')
+			/^\s*import\s+['"]([^'"]+)['"]/gm // side-effect import 'x'
+		];
+
+		const seen = new Set();
+		const offenders = [];
+		const visit = (absPath) => {
+			if (seen.has(absPath) || !existsSync(absPath)) return;
+			seen.add(absPath);
+			// Strip comments before matching. hitLikelihoodModel.js documents its own usage with a
+			// literal `import … from './hitLikelihood.js'` inside a doc block, and a commented-out
+			// runtime import must not be reported as a live edge in either direction.
+			const src = readFileSync(absPath, 'utf8')
+				.replace(/\/\*[\s\S]*?\*\//g, '')
+				.replace(/^\s*\/\/.*$/gm, '');
+			for (const re of SPECIFIER_FORMS) {
+				re.lastIndex = 0;
+				let m;
+				while ((m = re.exec(src)) !== null) {
+					const spec = m[1];
+					if (!spec) continue;
+					if (RUNTIME.test(spec)) {
+						offenders.push(`${absPath.replace(REPO, '')} imports ${spec}`);
+						continue;
+					}
+					// Follow relative edges only. A bare specifier that is not a runtime is somebody
+					// else's package and cannot pull one in without appearing in package.json, which
+					// is checked separately below.
+					if (spec.startsWith('.')) visit(join(dirname(absPath), spec));
+				}
+			}
+		};
+		// Every entry point a caller can reach the gate through.
+		for (const f of ['scope.js', 'hitLikelihood.js', 'hitLikelihoodModel.js', 'xgbEnsemble.js']) {
+			visit(join(PRESCREEN, f));
+		}
+		expect(offenders, 'an ML runtime is reachable from the gate').toEqual([]);
+		// The walk has to have actually walked. Without this the test passes trivially if the entry
+		// filenames are ever renamed out from under it.
+		expect(seen.size).toBeGreaterThanOrEqual(4);
+
+		// package.json is still checked, but as an ALLOWLIST rather than a ban. onnxruntime-web is
+		// permitted because AxoMEME needs it; anything else in this family is not, and adding one is
+		// now a deliberate edit to this line rather than something that slips in with a lockfile.
+		const ALLOWED = new Set(['onnxruntime-web']);
 		const pkg = JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8'));
 		const deps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies });
-		expect(deps.filter((d) => /onnx|tensorflow|tfjs|torch|tflite/i.test(d))).toEqual([]);
-		for (const f of ['xgbEnsemble.js', 'hitLikelihoodModel.js', 'hitLikelihood.js', 'scope.js']) {
-			const src = readFileSync(join(PRESCREEN, f), 'utf8');
-			expect(src, `${f} references an ML runtime`).not.toMatch(
-				/\bonnx|onnxruntime|ort-wasm|tensorflow|tfjs\b/i
-			);
-		}
+		const unexpected = deps.filter((d) => RUNTIME.test(d) && !ALLOWED.has(d));
+		expect(unexpected, 'unexpected ML runtime in package.json').toEqual([]);
 	});
 });
 
@@ -1633,7 +1730,10 @@ describe.skipIf(!oos)('out-of-sample calibration (the rates the copy quotes)', (
 		console.log(
 			`[meme-hit-likelihood] OUT-OF-SAMPLE on ${oos.length} unseen jobs: ` +
 				['unlikely', 'uncertain', 'likely']
-					.map((b) => `${b} ${band[b].hit}/${band[b].n} = ${(100 * band[b].hit / band[b].n).toFixed(1)}%`)
+					.map(
+						(b) =>
+							`${b} ${band[b].hit}/${band[b].n} = ${((100 * band[b].hit) / band[b].n).toFixed(1)}%`
+					)
 					.join(' | ')
 		);
 	});
@@ -1678,8 +1778,10 @@ describe.skipIf(!oos)('out-of-sample calibration (the rates the copy quotes)', (
 			const level = byValue[value];
 			if (!level) continue; // the base-rate claim is checked below
 			const rate = band[level].hit / band[level].n;
-			expect(Math.abs(rate - value), `panel's ${what} (${value}) vs measured ${rate.toFixed(3)}`)
-				.toBeLessThan(0.06);
+			expect(
+				Math.abs(rate - value),
+				`panel's ${what} (${value}) vs measured ${rate.toFixed(3)}`
+			).toBeLessThan(0.06);
 		}
 	});
 
@@ -1688,4 +1790,3 @@ describe.skipIf(!oos)('out-of-sample calibration (the rates the copy quotes)', (
 		expect(Math.abs(hits / oos.length - 0.85)).toBeLessThan(0.03);
 	});
 });
-
