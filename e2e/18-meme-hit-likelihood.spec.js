@@ -362,6 +362,46 @@ test.describe('MEME hit-likelihood', () => {
  * less methods pay for it again), was fetched before the listener existed and was therefore
  * invisible. Each test below owns its whole page lifecycle, with the recorder attached first.
  */
+test.describe('MEME hit-likelihood layout', () => {
+	test.setTimeout(180000);
+
+	test('the Run button does not move when the estimate resolves', async ({ page }) => {
+		// The panel sits directly above the Run button, so if the pending placeholder is not exactly as
+		// tall as the mounted row, the button shifts under a pointer already travelling towards it.
+		// That reserve used to be two hand-measured pixel constants in RunOutlook, duplicated from
+		// MemeHitLikelihood.css with a comment telling the next person to re-measure — and the comment
+		// recorded that they were already 5.5px stale. They are now derived with calc() from tokens
+		// declared once in app.css, and this asserts the property those numbers existed to protect.
+		await freshStart(page);
+		await loadDemoFile(page, 'CD2-slim.fna');
+		await expect(async () => {
+			await goToAnalyzeTab(page);
+			await expect(page.locator('[data-testid="method-dropdown"]')).toBeVisible({ timeout: 5000 });
+		}).toPass({ timeout: 60000 });
+
+		// The tokens must resolve from the always-loaded stylesheet, not the lazy chunk — the
+		// placeholder is drawn before that chunk exists.
+		const reserve = await page.evaluate(() =>
+			getComputedStyle(document.documentElement).getPropertyValue('--hit-body-reserve').trim()
+		);
+		expect(reserve, '--hit-body-reserve is not defined in the always-loaded stylesheet').toMatch(
+			/\d/
+		);
+
+		await selectMethod(page, 'MEME');
+		const runButton = page.locator('[data-testid="run-analysis-btn"]');
+		await runButton.waitFor({ timeout: 30000 });
+		const before = (await runButton.boundingBox())?.y ?? 0;
+		// Long enough for the estimator chunk, the model fetch and the score to all land.
+		await page.waitForTimeout(9000);
+		const after = (await runButton.boundingBox())?.y ?? 0;
+		expect(
+			Math.abs(after - before),
+			'the Run button moved when the estimate resolved'
+		).toBeLessThan(2);
+	});
+});
+
 test.describe('MEME hit-likelihood cost', () => {
 	test.setTimeout(180000);
 

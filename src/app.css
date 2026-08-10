@@ -50,3 +50,29 @@
 	border: revert;
 	border-radius: revert;
 }
+
+/* ---------------------------------------------------------------------------------------------
+   Layout reserve for the MEME hit-likelihood row.
+
+   These live here, in the ALWAYS-loaded stylesheet, rather than in MemeHitLikelihood.css, because
+   two components need them and one of them needs them BEFORE the other exists. RunOutlook draws a
+   pending placeholder that must be exactly as tall as the row it is standing in for: the panel sits
+   directly above the Run button, so if the reserve is wrong the button moves under a pointer already
+   travelling towards it. MemeHitLikelihood.css ships in a lazily-loaded chunk, so anything defined
+   there is unavailable at precisely the moment the placeholder is drawn.
+
+   They used to be duplicated as hand-measured pixel constants in RunOutlook, with a comment
+   instructing the next person to re-measure by hand whenever the copy changed. The comment recorded
+   that the value was already 5.5px stale. Now the reserve is stated once and the placeholder is
+   derived from it with calc().
+   --------------------------------------------------------------------------------------------- */
+:root {
+	--hit-body-reserve: 97.5px;
+	--hit-header-line: 23.5px;
+}
+
+@media (min-width: 1024px) {
+	:root {
+		--hit-body-reserve: 80px;
+	}
+}

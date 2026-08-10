@@ -187,12 +187,17 @@
 	}
 
 	$: applicable = hasHitLikelihood(method);
-	$: shown = result && result.status !== STATUS.NOT_APPLICABLE ? result : null;
+	// `!computing` is load-bearing. `seq` stops a superseded RESPONSE overwriting a newer one, but it
+	// does not clear what is on screen while the new one is in flight — so selecting a second
+	// alignment kept rendering the first one's band, and its "about 93%" sentence, against data that
+	// had nothing to do with it. `computing` was assigned in three places and read in none; this is
+	// where it earns its keep, by letting the pending branch fire.
+	$: shown = result && !computing && result.status !== STATUS.NOT_APPLICABLE ? result : null;
 	// MEME is selected but there is nothing to score yet. Split out from `shown` because it is not a
 	// failure and must not be drawn as one — and split out from the pending state because it is not
 	// transient. It is reachable: a rejected upload leaves the method dropdown on screen with no
 	// alignment behind it, and this row then spun "estimating…" for as long as the page was open.
-	$: idle = result && result.status === STATUS.NOT_APPLICABLE ? result : null;
+	$: idle = result && !computing && result.status === STATUS.NOT_APPLICABLE ? result : null;
 	$: style = shown && shown.level ? LEVEL[shown.level] : null;
 	$: detailText = shown && shown.status !== STATUS.OK ? joinDetail(shown) : null;
 	$: featureLine = shown && shown.num_seqs !== null ? describeFeatures(shown) : null;
@@ -366,8 +371,8 @@
 						</p>
 						<p>
 							<span class="hit-basis-key">How it behaves</span> the score moves one way only: adding
-							sequences, adding codons, or deeper branches can raise it and never lower it. That holds
-							at every input the model can score, not just on average. It is still coarse — it
+							sequences, adding codons, or deeper branches can raise it and never lower it. That
+							holds at every input the model can score, not just on average. It is still coarse — it
 							reads {LIVE_FEATURES.length} numbers off your alignment and tree and nothing about the
 							sequences themselves — so read it as a rate over similar alignments rather than a property
 							of yours.

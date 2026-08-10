@@ -1157,7 +1157,9 @@
 	// alongside an inferred NJ tree that does have lengths, and depth is the whole point of the
 	// estimate. The source travels with it so the estimate can disclose that NJ lengths are
 	// nucleotide distances rather than the codon-model lengths MEME fits.
-	$: outlookTree = pickOutlookTree($treeStore);
+	// Only for a mounted RunOutlook. pickOutlookTree runs treeHasBranchLengths over the newick on every
+	// tree-store update, which is wasted work when the panel is suppressed.
+	$: outlookTree = browserOnly ? { newick: '', source: 'unknown' } : pickOutlookTree($treeStore);
 
 	function pickOutlookTree(store) {
 		const user = store?.usertree || '';
@@ -1344,7 +1346,9 @@
 				<h4 class="execution-mode-title">Execution Mode</h4>
 				<p class="browser-only-note">
 					Runs in your browser. There is no server-side version of this method, so there is nothing
-					to choose.
+					to choose. The first run downloads about 17 MB of model and runtime; after that scoring
+					takes a few seconds, and the page is briefly unresponsive while the tree embedding is
+					computed.
 				</p>
 			</div>
 		{:else if selectedMethod && currentMethod?.info.supported}
@@ -1389,20 +1393,27 @@
 						<span>Server temporarily unavailable. Please use Local mode.</span>
 					</div>
 				{/if}
+			</div>
+		{/if}
 
-				<!-- What we can say before the run: runtime, plus the MEME outcome estimate.
-				     One panel, near the execution-mode choice it depends on. -->
-				<div class="mt-3">
-					<RunOutlook
-						method={selectedMethod}
-						methodOptions={methodOptions[selectedMethod] || {}}
-						{geneticCode}
-						executionMode={executionMode === 'local' ? 'wasm' : 'backend'}
-						alignment={$fileMetricsStore?.canonicalFasta || ''}
-						tree={outlookTree.newick}
-						treeSource={outlookTree.source}
-					/>
-				</div>
+		<!-- What we can say before the run: runtime, plus the MEME outcome estimate.
+		     Its own condition rather than nested inside the execution-mode branch. It used to live in
+		     there, so making AxoMEME browser-only silently removed the whole panel as a side effect of
+		     which branch the div sat in. Browser-only methods are excluded DELIBERATELY: RunOutlook's
+		     runtime model is built for HyPhy analyses and has nothing to say about a fixed neural model,
+		     so it would render an empty "Runtime" row. Their cost is stated in the note above instead,
+		     where the actual numbers are known. -->
+		{#if selectedMethod && currentMethod?.info.supported && !browserOnly}
+			<div class="mt-3">
+				<RunOutlook
+					method={selectedMethod}
+					methodOptions={methodOptions[selectedMethod] || {}}
+					{geneticCode}
+					executionMode={executionMode === 'local' ? 'wasm' : 'backend'}
+					alignment={$fileMetricsStore?.canonicalFasta || ''}
+					tree={outlookTree.newick}
+					treeSource={outlookTree.source}
+				/>
 			</div>
 		{/if}
 

@@ -67,13 +67,10 @@
    all four together. */
 .hit-body {
 	padding-left: 22px; /* Align with text after icon, as in AnalysisTimingEstimate */
-	min-height: 97.5px;
-}
-
-@media (min-width: 1024px) {
-	.hit-body {
-		min-height: 80px;
-	}
+	/* Defined in app.css so RunOutlook's placeholder can derive its height from the same number.
+	   The fallback matters: this file ships in a lazily-loaded chunk and must still be correct if it
+	   is ever rendered somewhere the token is not in scope. */
+	min-height: var(--hit-body-reserve, 97.5px);
 }
 
 .hit-detail {

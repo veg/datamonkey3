@@ -89,20 +89,17 @@
 	/* Rows are separated by a rule rather than by their own borders, so the panel reads as one
 	   object with two lines instead of two objects. */
 	.outlook-row-pending {
-		/* Matches the mounted row rather than guessing at it: MemeHitLikelihood's 23.5px header line
-		   plus the body reserve it keeps for its copy, which is 97.5px below the layout's 1024px
-		   breakpoint and 80px above it. MEASURED in the running app — the previous value was 5.5px
-		   short of the real row, which is small but is exactly the kind of nudge that moves the Run
-		   button out from under a pointer already travelling towards it. The panel sits above that
-		   button, so neither the chunk arriving nor the estimate resolving a moment later may change
-		   this height. Change these whenever MemeHitLikelihood's .hit-body reserve changes. */
-		min-height: 121px;
-	}
+		/* The mounted row's height, DERIVED rather than re-measured: MemeHitLikelihood's header line
+		   plus the body reserve it keeps for its copy. Both are declared once in app.css, which is
+		   always loaded — this placeholder is drawn before the lazily-loaded MemeHitLikelihood chunk
+		   exists, so it cannot read them from that file.
 
-	@media (min-width: 1024px) {
-		.outlook-row-pending {
-			min-height: 103.5px;
-		}
+		   Getting this wrong is not cosmetic. The panel sits directly above the Run button, so neither
+		   the chunk arriving nor the estimate resolving a moment later may change this height, or the
+		   button moves out from under a pointer already travelling towards it. The previous version
+		   hard-coded 121px / 103.5px and carried an instruction to re-measure by hand; the media query
+		   is gone because the token already carries the breakpoint. */
+		min-height: calc(var(--hit-body-reserve, 97.5px) + var(--hit-header-line, 23.5px));
 	}
 
 	.outlook-row + .outlook-row {

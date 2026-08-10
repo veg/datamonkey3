@@ -185,15 +185,23 @@
 				}
 
 				const { axomemeAnalysisRunner } = await import('./services/AxomemeAnalysisRunner.js');
-				const result = await axomemeAnalysisRunner.runAnalysis(
-					method,
-					config,
-					alignment,
-					tree,
-					$currentFile.id
-				);
-				toastStore.success('AxoMEME prediction complete', { duration: 3000 });
-				return result;
+				// No toast here, and no rethrow. BaseAnalysisRunner.completeAnalysis already fires one on
+				// success (with a View Results action) and one on failure, so doing it again stacked two
+				// toasts on every run — and letting the runner's rethrow reach the outer catch stacked a
+				// second error toast on top of that. The other two branches do not rethrow on the normal
+				// path, which is why only AxoMEME double-reported.
+				try {
+					return await axomemeAnalysisRunner.runAnalysis(
+						method,
+						config,
+						alignment,
+						tree,
+						$currentFile.id
+					);
+				} catch (error) {
+					console.error('AxoMEME analysis failed:', error);
+					return null;
+				}
 			}
 
 			if (config.executionMode === 'backend') {

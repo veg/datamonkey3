@@ -45,6 +45,22 @@ const yieldToBrowser = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 export class AxomemeAnalysisRunner extends BaseAnalysisRunner {
 	/**
+	 * Analyses the user has cancelled.
+	 *
+	 * The base class cancels by walking `activeAnalyses`, which the other two runners populate with a
+	 * backend job id or a WASM handle. This runner has neither — its work is a plain loop on the main
+	 * thread — so without this a cancelled AxoMEME run kept scoring, kept calling updateProgress
+	 * (re-animating a row the user had cancelled), and finally wrote `completed` over the cancelled
+	 * record and popped a success toast.
+	 */
+	cancelledAnalyses = new Set();
+
+	async cancelAnalysis(analysisId) {
+		this.cancelledAnalyses.add(analysisId);
+		await super.cancelAnalysis(analysisId);
+	}
+
+	/**
 	 * @param {string} method ignored — this runner serves one method
 	 * @param {object} config
 	 * @param {string} fastaData
@@ -102,18 +118,26 @@ export class AxomemeAnalysisRunner extends BaseAnalysisRunner {
 			const ort = await import('onnxruntime-web/wasm');
 
 			const batch = batchSizeFor(prepared.speciesCount);
+			// dist_matrix, mds_coords and padding_mask are per-ALIGNMENT — batch() emits b memcpy'd
+			// copies of one array. Validating every batch rescanned up to the whole 64 MB budget three
+			// times over, on the main thread, to re-check the same N x N block b times. Validate in full
+			// once; after that the invariant tensors cannot have changed.
+			let fullyValidated = false;
 			const accumulated = { lrt: [], alpha: [], beta_neg: [], beta_pos: [], p_neg: [] };
 			for (let start = 0; start < prepared.totalCodons; start += batch) {
 				const bundle = prepared.batch(start, batch);
 				// The contract check is cheap next to inference and catches the whole class of errors
 				// that produce a well-formed tensor meaning something the model never saw.
-				const check = validateInputBundle(bundle, {
-					batch: bundle.msa_codons.dims[0],
-					numSpecies: prepared.speciesCount,
-					windowSize: prepared.windowSize
-				});
-				if (!check.ok) {
-					throw new Error(`AxoMEME input check failed: ${check.errors.slice(0, 3).join('; ')}`);
+				if (!fullyValidated) {
+					const check = validateInputBundle(bundle, {
+						batch: bundle.msa_codons.dims[0],
+						numSpecies: prepared.speciesCount,
+						windowSize: prepared.windowSize
+					});
+					if (!check.ok) {
+						throw new Error(`AxoMEME input check failed: ${check.errors.slice(0, 3).join('; ')}`);
+					}
+					fullyValidated = true;
 				}
 				const out = await runSites(session, bundle, ort);
 				// NOT `push(...out[key])`. batchSizeFor scales as 1/N^2, so a few-taxon alignment gets
@@ -123,6 +147,14 @@ export class AxomemeAnalysisRunner extends BaseAnalysisRunner {
 				for (const key of Object.keys(accumulated)) {
 					const src = out[key];
 					for (let i = 0; i < src.length; i++) accumulated[key].push(src[i]);
+				}
+
+				// Between batches is the only place this loop yields, so it is the only place a cancel can
+				// take effect. Returning without calling completeAnalysis leaves the cancelled record as
+				// the user left it.
+				if (this.cancelledAnalyses.has(analysisId)) {
+					this.cancelledAnalyses.delete(analysisId);
+					return { analysisId, cancelled: true };
 				}
 
 				const done = Math.min(start + batch, prepared.totalCodons);
@@ -197,9 +229,11 @@ export class AxomemeAnalysisRunner extends BaseAnalysisRunner {
 			};
 
 			await this.completeAnalysis(analysisId, true, result);
+			this.cancelledAnalyses.delete(analysisId);
 			return { analysisId, result };
 		} catch (error) {
 			await this.completeAnalysis(analysisId, false, null, error.message);
+			this.cancelledAnalyses.delete(analysisId);
 			throw error;
 		}
 	}
