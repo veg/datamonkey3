@@ -9,10 +9,7 @@
 	import { treeHasBranchLengths } from './services/prescreen/scope.js';
 	import { AlertTriangle, Play, Loader2 } from 'lucide-svelte';
 	import { trackEvent } from './utils/analytics.js';
-	import {
-		countBranchGroups,
-		contrastFelHasEnoughGroups
-	} from './utils/branchGroupValidation.js';
+	import { countBranchGroups, contrastFelHasEnoughGroups } from './utils/branchGroupValidation.js';
 
 	export let methodConfig;
 	export let runMethod = null;
@@ -22,6 +19,7 @@
 
 	// Supported methods - easy to update when methods are implemented
 	const SUPPORTED_METHODS = [
+		'axomeme',
 		'b-still',
 		'fel',
 		'slac',
@@ -40,10 +38,23 @@
 
 	// Method info with simplified descriptions and runtime estimates
 	const METHOD_INFO = {
+		axomeme: {
+			name: 'AxoMEME',
+			fullName: 'AxoMEME 2.0 — neural surrogate for MEME',
+			// The MODEL is still under active development, not the integration. That distinction is
+			// what the badge is for: a user should know the numbers may move between releases even
+			// though the code around them is settled.
+			beta: true,
+			// Deliberately says PREDICTS. This is a fitted model estimating what MEME would report,
+			// not MEME, and the dropdown is the first place a user forms that expectation.
+			shortDescription: 'Predict MEME per-site selection in seconds, in your browser',
+			supported: true
+		},
 		'b-still': {
 			name: 'B-STILL',
 			fullName: 'Bayesian Significance Test of Invariant Low Likelihoods',
-			shortDescription: 'Detect invariant sites via posterior probabilities and Empirical Bayes Factors',
+			shortDescription:
+				'Detect invariant sites via posterior probabilities and Empirical Bayes Factors',
 			supported: true
 		},
 		fel: {
@@ -161,6 +172,26 @@
 
 	// Method-specific advanced options configurations
 	const METHOD_ADVANCED_OPTIONS = {
+		// AxoMEME exposes almost nothing on purpose. It is a fitted model with one set of weights:
+		// there are no branch sets to select (it consumes the whole tree as a distance matrix), no
+		// rate-variation switch, and no genetic code choice — the code table is baked into the
+		// model's tokenizer as the universal one. Offering knobs that do not reach the model would be
+		// worse than offering none. Calling mode is the one real choice, because it is a threshold
+		// applied AFTER inference and genuinely changes what gets reported.
+		axomeme: {
+			callMode: {
+				type: 'select',
+				label: 'How to rank sites',
+				// percentile, not the reference driver's pvalue default. The model's predicted LRT does
+				// not reach the chi-square gates pvalue compares against — measured across 12 real
+				// submissions, one site in 662 cleared 3.12 and none cleared 4.45 — so pvalue makes the
+				// method silent. See CALL_DEFAULTS in postprocess.js.
+				default: 'percentile',
+				options: ['percentile', 'zscore', 'pvalue'],
+				description:
+					'percentile and zscore rank sites within this alignment, which is what the model is built to do. pvalue compares against fixed LRT gates (4.45 / 3.12) that its scores rarely reach — it will usually report nothing.'
+			}
+		},
 		fel: {
 			// Branch selection options
 			branchesToTest: {
@@ -815,7 +846,8 @@
 				label: 'Amino Acid Property Set',
 				default: '5PROP',
 				options: ['5PROP', '4PROP', '3PROP', '2PROP', 'Atchley', 'LCAP'],
-				description: 'Set of amino acid properties to model (5PROP: hydrophobicity, polarity, volume, charge, iso-electric point)'
+				description:
+					'Set of amino acid properties to model (5PROP: hydrophobicity, polarity, volume, charge, iso-electric point)'
 			},
 			// P-value threshold
 			pValueThreshold: {
@@ -960,6 +992,37 @@
 	// Get current method details
 	$: currentMethod = selectedMethod ? availableMethods.find((m) => m.id === selectedMethod) : null;
 
+	/**
+	 * A method that runs only in this tab, with no HyPhy binary and no server job behind it.
+	 *
+	 * Two controls are suppressed for these, and in both cases the reason is the same: the control
+	 * would imply a capability the method does not have.
+	 *   - EXECUTION MODE. There is no server-side AxoMEME. Offering "Backend Server" would either be
+	 *     silently ignored or would route to a socket with no handler.
+	 *   - GENETIC CODE. The model's tokenizer bakes in the universal table (its GENETIC_CODE is a
+	 *     hard-coded literal), so a user's choice cannot reach it. It currently defaults to Universal,
+	 *     which is right, so the control looks harmless -- but changing it would do nothing and say
+	 *     nothing, which is the worst of the three options.
+	 */
+	$: browserOnly = Boolean(currentMethod?.config?.browserOnly);
+	// Keep the reported mode honest for analytics and the run-started toast — but REMEMBER what the
+	// user chose and give it back.
+	//
+	// This used to assign `executionMode = 'local'` with no restore. Picking Backend Server for FEL,
+	// then browsing to AxoMEME, then returning to FEL left the radio on Local and silently ran the
+	// next analysis through WASM instead of the server — which for a large dataset is the whole reason
+	// the server exists. Nothing told the user their choice had been discarded.
+	let executionModeBeforeBrowserOnly = null;
+	$: if (browserOnly) {
+		if (executionMode !== 'local') {
+			executionModeBeforeBrowserOnly = executionMode;
+			executionMode = 'local';
+		}
+	} else if (executionModeBeforeBrowserOnly) {
+		executionMode = executionModeBeforeBrowserOnly;
+		executionModeBeforeBrowserOnly = null;
+	}
+
 	// Get current method's advanced options
 	$: currentMethodOptions = selectedMethod
 		? METHOD_ADVANCED_OPTIONS[selectedMethod.toLowerCase()] || {}
@@ -978,9 +1041,11 @@
 	}
 
 	// Auto-detect data type from uploaded file for GARD
-	$: if ($fileMetricsStore?.FILE_INFO?.gencodeid !== undefined &&
+	$: if (
+		$fileMetricsStore?.FILE_INFO?.gencodeid !== undefined &&
 		selectedMethod?.toLowerCase() === 'gard' &&
-		methodOptions[selectedMethod]) {
+		methodOptions[selectedMethod]
+	) {
 		const gencodeid = $fileMetricsStore.FILE_INFO.gencodeid;
 		const detectedType = gencodeid === -2 ? 'protein' : gencodeid === -1 ? 'nucleotide' : 'codon';
 		if (methodOptions[selectedMethod].datatype !== detectedType) {
@@ -1002,30 +1067,30 @@
 	}
 
 	// Pre-computed renderable options array (excludes interactive-tree)
-	$: renderableAdvancedOptions = (selectedMethod && methodOptions[selectedMethod])
-		? Object.entries(currentMethodOptions)
-			.filter(([_, c]) => c.type !== 'interactive-tree')
-			.map(([key, config]) => {
-				const isEnabled = !config.dependsOn ||
-					(methodOptions[selectedMethod] &&
-						config.enabledWhen &&
-						config.enabledWhen.includes(
-							methodOptions[selectedMethod][config.dependsOn]
-						));
+	$: renderableAdvancedOptions =
+		selectedMethod && methodOptions[selectedMethod]
+			? Object.entries(currentMethodOptions)
+					.filter(([_, c]) => c.type !== 'interactive-tree')
+					.map(([key, config]) => {
+						const isEnabled =
+							!config.dependsOn ||
+							(methodOptions[selectedMethod] &&
+								config.enabledWhen &&
+								config.enabledWhen.includes(methodOptions[selectedMethod][config.dependsOn]));
 
-				// Resolve filtered options for selects constrained by another option
-				let effectiveConfig = config;
-				if (config.filteredOptionsBy && config.filteredOptions) {
-					const controllerValue = methodOptions[selectedMethod][config.filteredOptionsBy];
-					const filtered = config.filteredOptions[controllerValue];
-					if (filtered) {
-						effectiveConfig = { ...config, options: filtered };
-					}
-				}
+						// Resolve filtered options for selects constrained by another option
+						let effectiveConfig = config;
+						if (config.filteredOptionsBy && config.filteredOptions) {
+							const controllerValue = methodOptions[selectedMethod][config.filteredOptionsBy];
+							const filtered = config.filteredOptions[controllerValue];
+							if (filtered) {
+								effectiveConfig = { ...config, options: filtered };
+							}
+						}
 
-				return { key, config: effectiveConfig, isEnabled };
-			})
-		: [];
+						return { key, config: effectiveConfig, isEnabled };
+					})
+			: [];
 
 	// Update genetic code ID when name changes
 	$: {
@@ -1047,12 +1112,15 @@
 	}
 
 	// RELAX branch validation - requires TEST and REFERENCE branches to be tagged
-	$: relaxHasTestBranches = selectedMethod?.toLowerCase() === 'relax' &&
+	$: relaxHasTestBranches =
+		selectedMethod?.toLowerCase() === 'relax' &&
 		methodOptions?.relax?.interactiveTree?.includes('{TEST}');
-	$: relaxHasReferenceBranches = selectedMethod?.toLowerCase() === 'relax' &&
+	$: relaxHasReferenceBranches =
+		selectedMethod?.toLowerCase() === 'relax' &&
 		(methodOptions?.relax?.interactiveTree?.includes('{REFERENCE}') ||
-		 methodOptions?.relax?.referenceBranches === 'All');
-	$: relaxBranchesValid = selectedMethod?.toLowerCase() !== 'relax' ||
+			methodOptions?.relax?.referenceBranches === 'All');
+	$: relaxBranchesValid =
+		selectedMethod?.toLowerCase() !== 'relax' ||
 		(relaxHasTestBranches && relaxHasReferenceBranches);
 
 	// Contrast-FEL branch validation - compares two or more groups, so at least two
@@ -1089,7 +1157,9 @@
 	// alongside an inferred NJ tree that does have lengths, and depth is the whole point of the
 	// estimate. The source travels with it so the estimate can disclose that NJ lengths are
 	// nucleotide distances rather than the codon-model lengths MEME fits.
-	$: outlookTree = pickOutlookTree($treeStore);
+	// Only for a mounted RunOutlook. pickOutlookTree runs treeHasBranchLengths over the newick on every
+	// tree-store update, which is wasted work when the panel is suppressed.
+	$: outlookTree = browserOnly ? { newick: '', source: 'unknown' } : pickOutlookTree($treeStore);
 
 	function pickOutlookTree(store) {
 		const user = store?.usertree || '';
@@ -1243,6 +1313,7 @@
 				{#each availableMethods as method}
 					<option value={method.id} disabled={!method.info.supported}>
 						{method.info.name} - {method.info.fullName}
+						{#if method.info.beta}(Beta){/if}
 						{#if !method.info.supported}(Coming Soon){/if}
 					</option>
 				{/each}
@@ -1253,6 +1324,14 @@
 		{#if currentMethod}
 			<div class="method-description">
 				{currentMethod.info.shortDescription}
+				{#if currentMethod.info.beta}
+					<div
+						class="beta-badge"
+						title="The underlying model is still under active development; results may change between releases."
+					>
+						<span class="badge-text">Beta</span>
+					</div>
+				{/if}
 				{#if !currentMethod.info.supported}
 					<div class="coming-soon-badge">
 						<span class="badge-text">Coming Soon</span>
@@ -1262,7 +1341,17 @@
 		{/if}
 
 		<!-- Execution Mode Selection -->
-		{#if selectedMethod && currentMethod?.info.supported}
+		{#if selectedMethod && currentMethod?.info.supported && browserOnly}
+			<div class="execution-mode-section">
+				<h4 class="execution-mode-title">Execution Mode</h4>
+				<p class="browser-only-note">
+					Runs in your browser. There is no server-side version of this method, so there is nothing
+					to choose. The first run downloads about 17 MB of model and runtime; after that scoring
+					takes a few seconds, and the page is briefly unresponsive while the tree embedding is
+					computed.
+				</p>
+			</div>
+		{:else if selectedMethod && currentMethod?.info.supported}
 			<div class="execution-mode-section">
 				<h4 class="execution-mode-title">Execution Mode</h4>
 				<div class="execution-mode-options">
@@ -1304,20 +1393,27 @@
 						<span>Server temporarily unavailable. Please use Local mode.</span>
 					</div>
 				{/if}
+			</div>
+		{/if}
 
-				<!-- What we can say before the run: runtime, plus the MEME outcome estimate.
-				     One panel, near the execution-mode choice it depends on. -->
-				<div class="mt-3">
-					<RunOutlook
-						method={selectedMethod}
-						methodOptions={methodOptions[selectedMethod] || {}}
-						{geneticCode}
-						executionMode={executionMode === 'local' ? 'wasm' : 'backend'}
-						alignment={$fileMetricsStore?.canonicalFasta || ''}
-						tree={outlookTree.newick}
-						treeSource={outlookTree.source}
-					/>
-				</div>
+		<!-- What we can say before the run: runtime, plus the MEME outcome estimate.
+		     Its own condition rather than nested inside the execution-mode branch. It used to live in
+		     there, so making AxoMEME browser-only silently removed the whole panel as a side effect of
+		     which branch the div sat in. Browser-only methods are excluded DELIBERATELY: RunOutlook's
+		     runtime model is built for HyPhy analyses and has nothing to say about a fixed neural model,
+		     so it would render an empty "Runtime" row. Their cost is stated in the note above instead,
+		     where the actual numbers are known. -->
+		{#if selectedMethod && currentMethod?.info.supported && !browserOnly}
+			<div class="mt-3">
+				<RunOutlook
+					method={selectedMethod}
+					methodOptions={methodOptions[selectedMethod] || {}}
+					{geneticCode}
+					executionMode={executionMode === 'local' ? 'wasm' : 'backend'}
+					alignment={$fileMetricsStore?.canonicalFasta || ''}
+					tree={outlookTree.newick}
+					treeSource={outlookTree.source}
+				/>
 			</div>
 		{/if}
 
@@ -1330,16 +1426,22 @@
 						<span class="options-label">Essential</span>
 					</div>
 
-					<div class="option-group">
-						<label class="option-label">
-							Genetic Code:
-							<select bind:value={geneticCode} class="option-select">
-								{#each GENETIC_CODES as code}
-									<option value={code.name}>{code.label}</option>
-								{/each}
-							</select>
-						</label>
-					</div>
+					{#if browserOnly}
+						<p class="browser-only-note">
+							This model reads the standard genetic code. It cannot be changed for this method.
+						</p>
+					{:else}
+						<div class="option-group">
+							<label class="option-label">
+								Genetic Code:
+								<select bind:value={geneticCode} class="option-select">
+									{#each GENETIC_CODES as code}
+										<option value={code.name}>{code.label}</option>
+									{/each}
+								</select>
+							</label>
+						</div>
+					{/if}
 				</div>
 
 				<!-- Divider -->
@@ -1361,7 +1463,7 @@
 											<input
 												type="number"
 												value={methodOptions[selectedMethod]?.[opt.key]}
-												on:input={e => updateMethodOption(opt.key, +e.target.value)}
+												on:input={(e) => updateMethodOption(opt.key, +e.target.value)}
 												min={opt.config.min || 0}
 												max={opt.config.max || 1000}
 												step={opt.config.step || 1}
@@ -1374,7 +1476,7 @@
 											<input
 												type="checkbox"
 												checked={methodOptions[selectedMethod]?.[opt.key]}
-												on:change={e => updateMethodOption(opt.key, e.target.checked)}
+												on:change={(e) => updateMethodOption(opt.key, e.target.checked)}
 												disabled={!opt.isEnabled}
 											/>
 											{opt.config.label}
@@ -1384,13 +1486,15 @@
 											{opt.config.label}:
 											<select
 												value={methodOptions[selectedMethod]?.[opt.key]}
-												on:change={e => updateMethodOption(opt.key, e.target.value)}
+												on:change={(e) => updateMethodOption(opt.key, e.target.value)}
 												class="option-select"
 												disabled={!opt.isEnabled}
 											>
 												{#each opt.config.options as option}
 													{#if typeof option === 'object'}
-														<option value={option.value} disabled={option.disabled}>{option.label || option.value}</option>
+														<option value={option.value} disabled={option.disabled}
+															>{option.label || option.value}</option
+														>
 													{:else}
 														<option value={option}>{option}</option>
 													{/if}
@@ -1403,7 +1507,7 @@
 											<input
 												type="text"
 												value={methodOptions[selectedMethod]?.[opt.key]}
-												on:input={e => updateMethodOption(opt.key, e.target.value)}
+												on:input={(e) => updateMethodOption(opt.key, e.target.value)}
 												placeholder={opt.config.placeholder || ''}
 												class="option-input"
 												disabled={!opt.isEnabled}
@@ -1526,11 +1630,10 @@
 					<AlertTriangle class="warning-icon" />
 					<span>
 						{#if methodOptions?.[selectedMethod]?.branchesToTest === 'Custom'}
-							Contrast-FEL compares two or more groups — please define at least two branch
-							sets.
+							Contrast-FEL compares two or more groups — please define at least two branch sets.
 						{:else}
-							Contrast-FEL compares two or more groups — please tag at least two branch
-							groups on the tree.
+							Contrast-FEL compares two or more groups — please tag at least two branch groups on
+							the tree.
 						{/if}
 					</span>
 				</div>
@@ -1602,6 +1705,13 @@
 		margin-bottom: 12px;
 	}
 
+	.browser-only-note {
+		margin: 0;
+		font-size: 0.8125rem;
+		line-height: 1.4;
+		color: #475569;
+	}
+
 	.method-dropdown {
 		flex: 1;
 		padding: 8px 12px;
@@ -1633,6 +1743,20 @@
 		display: flex;
 		align-items: center;
 		gap: 12px;
+	}
+
+	.beta-badge {
+		display: inline-flex;
+		align-items: center;
+		padding: 2px 8px;
+		background: #ede9fe;
+		border: 1px solid #8b5cf6;
+		border-radius: 12px;
+		font-size: 11px;
+		font-weight: 500;
+		color: #5b21b6;
+		text-transform: uppercase;
+		letter-spacing: 0.025em;
 	}
 
 	.coming-soon-badge {

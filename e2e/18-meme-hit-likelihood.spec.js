@@ -6,7 +6,9 @@
  *   2. WHAT IT COSTS. The original version of this feature downloaded 13.5 MB of ML-runtime WASM
  *      for every method, including the ~14 that have no estimate, and then rendered nothing. An
  *      "is the element absent?" assertion passed the whole time, because the element WAS absent —
- *      the bytes were the bug. So these tests count bytes, not just elements.
+ *      the bytes were the bug. So these tests count bytes, not just elements. DM3 now ships
+ *      onnxruntime-web for AxoMEME, which makes that regression cheap to reintroduce by accident;
+ *      see RUNTIME_TOMBSTONE for why these flows must still transfer none of it.
  *
  * WHAT MOVED SINCE THE LAST REVISION. The estimator is no longer a converted coefficient table; it
  * is XGBoost's own `save_model()` JSON, shipped verbatim and walked in ~40 lines of plain JS. That
@@ -159,12 +161,25 @@ const ESTIMATOR_MARKS = ['meme-hit-likelihood', 'hit-basis-toggle'];
 const SCOPE_LEAF = /prescreen\/scope\.js/;
 
 /** Dev-server source paths. Kept as a belt-and-braces net alongside the content markers. */
-const ESTIMATOR_ASSET = /prescreen|hit_likelihood|hitLikelihood|meme_gate|onnxruntime|ort-wasm|tfjs/i;
+const ESTIMATOR_ASSET =
+	/prescreen|hit_likelihood|hitLikelihood|meme_gate|onnxruntime|ort-wasm|tfjs/i;
 
 /**
- * A TOMBSTONE, not a live dependency. These names belong to the ML runtimes DM3 does not ship and
- * must never start shipping again; the first version of this feature pulled 13.5 MB of the first
- * one. Nothing else in the repository references them — that is the state this defends.
+ * A TOMBSTONE — and READ THIS BEFORE RELAXING IT, because the sentence that used to justify it is
+ * no longer true while the assertions themselves are unchanged and still exactly right.
+ *
+ * It used to say "nothing else in the repository references these names — that is the state this
+ * defends". DM3 now has a legitimate reason to depend on onnxruntime-web: AxoMEME 2.0 is a 3.78 MB
+ * transformer whose graph is a real neural network, and it cannot be walked in plain JS the way the
+ * gate's 500 three-feature trees can. So the runtime IS in package.json now.
+ *
+ * That does NOT weaken anything below, because these tests are scoped to two flows — select FEL,
+ * and select MEME — and neither one is AxoMEME. The invariant they defend was always per-flow, not
+ * per-repository: A METHOD MUST NOT PAY FOR A MODEL IT DOES NOT RENDER. The first version of this
+ * feature charged all fifteen methods 13.5 MB for an estimate fourteen of them never showed. Now
+ * that a runtime is a real dependency that resolves instead of erroring, an accidental static
+ * import would silently pull ~13 MB into the main graph and every one of these flows would pay it.
+ * The guard therefore matters MORE than it did when it was written, not less.
  *
  * Checked against EVERY response, and against response BODIES as well as URLs. Previously the byte
  * recorder discarded anything that did not already match ESTIMATOR_ASSET before the tombstone was
@@ -333,7 +348,6 @@ test.describe('MEME hit-likelihood', () => {
 		await expect(panel.locator('[data-testid="meme-hit-likelihood"]')).toHaveCount(1);
 		await expect(panel.locator('.timing-estimate')).toHaveCount(1);
 	});
-
 });
 
 /**
@@ -348,6 +362,46 @@ test.describe('MEME hit-likelihood', () => {
  * less methods pay for it again), was fetched before the listener existed and was therefore
  * invisible. Each test below owns its whole page lifecycle, with the recorder attached first.
  */
+test.describe('MEME hit-likelihood layout', () => {
+	test.setTimeout(180000);
+
+	test('the Run button does not move when the estimate resolves', async ({ page }) => {
+		// The panel sits directly above the Run button, so if the pending placeholder is not exactly as
+		// tall as the mounted row, the button shifts under a pointer already travelling towards it.
+		// That reserve used to be two hand-measured pixel constants in RunOutlook, duplicated from
+		// MemeHitLikelihood.css with a comment telling the next person to re-measure — and the comment
+		// recorded that they were already 5.5px stale. They are now derived with calc() from tokens
+		// declared once in app.css, and this asserts the property those numbers existed to protect.
+		await freshStart(page);
+		await loadDemoFile(page, 'CD2-slim.fna');
+		await expect(async () => {
+			await goToAnalyzeTab(page);
+			await expect(page.locator('[data-testid="method-dropdown"]')).toBeVisible({ timeout: 5000 });
+		}).toPass({ timeout: 60000 });
+
+		// The tokens must resolve from the always-loaded stylesheet, not the lazy chunk — the
+		// placeholder is drawn before that chunk exists.
+		const reserve = await page.evaluate(() =>
+			getComputedStyle(document.documentElement).getPropertyValue('--hit-body-reserve').trim()
+		);
+		expect(reserve, '--hit-body-reserve is not defined in the always-loaded stylesheet').toMatch(
+			/\d/
+		);
+
+		await selectMethod(page, 'MEME');
+		const runButton = page.locator('[data-testid="run-analysis-btn"]');
+		await runButton.waitFor({ timeout: 30000 });
+		const before = (await runButton.boundingBox())?.y ?? 0;
+		// Long enough for the estimator chunk, the model fetch and the score to all land.
+		await page.waitForTimeout(9000);
+		const after = (await runButton.boundingBox())?.y ?? 0;
+		expect(
+			Math.abs(after - before),
+			'the Run button moved when the estimate resolved'
+		).toBeLessThan(2);
+	});
+});
+
 test.describe('MEME hit-likelihood cost', () => {
 	test.setTimeout(180000);
 
@@ -455,8 +509,10 @@ test.describe('MEME hit-likelihood cost', () => {
 
 		// And the row really is driven by the estimator chunk, not by something inlined into the
 		// main bundle — otherwise "the model is fetched lazily" would be true and irrelevant.
-		expect(all.filter(isEstimatorCode).length, 'the estimator chunk was never fetched')
-			.toBeGreaterThan(0);
+		expect(
+			all.filter(isEstimatorCode).length,
+			'the estimator chunk was never fetched'
+		).toBeGreaterThan(0);
 
 		// No ML runtime, now or ever again — checked over every response in the session, by URL and
 		// by content.
@@ -506,11 +562,7 @@ test.describe('MEME hit-likelihood routing', () => {
 	test('a discouraging estimate says what about the data would change it', async ({ page }) => {
 		// 4 taxa x 200 codons, two substitutions each on disjoint sites: the thin-and-shallow shape
 		// that the low band is made of (its real population medians 4 sequences and ~140 codons).
-		await uploadAndAnalyze(
-			page,
-			'synthetic-thin.fna',
-			lowDivergenceAlignment(4, 200, 2)
-		);
+		await uploadAndAnalyze(page, 'synthetic-thin.fna', lowDivergenceAlignment(4, 200, 2));
 		await selectMethod(page, 'MEME');
 
 		const row = page.locator('[data-testid="meme-hit-likelihood"]');

@@ -12,6 +12,7 @@
 	import FileIndicator from './FileIndicator.svelte';
 	import TabNavigation from './TabNavigation.svelte';
 	import TreeSourceSelector from './TreeSourceSelector.svelte';
+	import { treeHasBranchLengths } from './services/prescreen/scope.js';
 	import backendAnalysisRunner from './services/BackendAnalysisRunner.js';
 	import wasmAnalysisRunner from './services/WasmAnalysisRunner.js';
 	import { ChevronDown, TreeDeciduous } from '$lib/icons';
@@ -131,6 +132,78 @@
 		});
 
 		try {
+			// AxoMEME is dispatched BEFORE the backend/WASM split, because it belongs to neither. It is
+			// not a HyPhy analysis: no hyphy.wasm invocation, no server job, no HyPhy JSON. It runs an
+			// ONNX graph in this tab and returns in seconds. The executionMode toggle does not apply —
+			// there is no server-side AxoMEME yet — so it is deliberately ignored rather than silently
+			// routing a browser-only method through a socket that has no handler for it.
+			if (method.toLowerCase() === 'axomeme') {
+				if (!$currentFile || !$currentFile.id) {
+					throw new Error('No file selected for analysis');
+				}
+
+				// Same source-of-truth order the other two branches use: prefer the canonical FASTA
+				// datareader.bf emits on upload, which has already collapsed PHYLIP / MEGA / CLUSTAL /
+				// NEXUS / FASTA to one shape, and only strip embedded trees from a raw user blob.
+				// AxoMEME cares about this more than most: a trailing newick line left in the FASTA
+				// would be appended to the last sequence and quietly corrupt that taxon's codons.
+				let alignment = $fileMetricsStore?.canonicalFasta;
+				if (!alignment) {
+					const fullFileData = await persistentFileStore.getFile($currentFile.id);
+					if (!fullFileData) {
+						throw new Error('Unable to load file data');
+					}
+					alignment = await fullFileData.text();
+					if (!alignment || !alignment.trim()) {
+						throw new Error('No sequence data available in selected file');
+					}
+					alignment = stripEmbeddedTrees(alignment);
+				}
+
+				// A tree with BRANCH LENGTHS is not optional here, unlike for some HyPhy methods. The
+				// model reads a patristic distance matrix; a topology-only tree yields all-zero
+				// distances and an all-zero embedding, and the model would return confident numbers
+				// computed from nothing.
+				const tree = getSelectedTreeData();
+				if (!tree) {
+					throw new Error(
+						'AxoMEME needs a phylogenetic tree. Infer one or upload your own before running it.'
+					);
+				}
+				// A non-empty string is not enough, and the comment above already said so. A
+				// topology-only tree — `(a,(b,c));` — or one whose lengths are all zero is truthy,
+				// reaches prepareAlignment, and yields an all-zero distance matrix and an all-zero
+				// embedding. The model then returns confident-looking numbers computed from nothing,
+				// and inspectBranchLengths reports `ok: true` for the all-zero case, so no warning
+				// fires either. treeHasBranchLengths is the predicate that actually answers this.
+				if (!treeHasBranchLengths(tree)) {
+					throw new Error(
+						'AxoMEME needs a tree with branch lengths — it reads them as evolutionary distances. ' +
+							'This tree has none, so every pair of sequences would look equally related. Infer a ' +
+							'neighbor-joining tree or upload one with branch lengths.'
+					);
+				}
+
+				const { axomemeAnalysisRunner } = await import('./services/AxomemeAnalysisRunner.js');
+				// No toast here, and no rethrow. BaseAnalysisRunner.completeAnalysis already fires one on
+				// success (with a View Results action) and one on failure, so doing it again stacked two
+				// toasts on every run — and letting the runner's rethrow reach the outer catch stacked a
+				// second error toast on top of that. The other two branches do not rethrow on the normal
+				// path, which is why only AxoMEME double-reported.
+				try {
+					return await axomemeAnalysisRunner.runAnalysis(
+						method,
+						config,
+						alignment,
+						tree,
+						$currentFile.id
+					);
+				} catch (error) {
+					console.error('AxoMEME analysis failed:', error);
+					return null;
+				}
+			}
+
 			if (config.executionMode === 'backend') {
 				// Backend execution
 				if (!$backendConnectivity.isConnected) {
@@ -389,7 +462,9 @@
 					</button>
 				{/if}
 				<ChevronDown
-					class="h-6 w-6 text-brand-royal transition-transform duration-premium {analysisSectionExpanded ? 'rotate-180' : ''}"
+					class="h-6 w-6 text-brand-royal transition-transform duration-premium {analysisSectionExpanded
+						? 'rotate-180'
+						: ''}"
 				/>
 			</div>
 		</div>
