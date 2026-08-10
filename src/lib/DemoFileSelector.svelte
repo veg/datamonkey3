@@ -10,9 +10,13 @@
 	// Names are user-friendly to help new users understand what to expect
 	const demoFiles = [
 		{
+			// Deliberately says how short it is. This is a 17-codon slice of CD2 kept for fast
+			// end-to-end smoke runs, not a realistic analysis: methods that need substitutions —
+			// MEME especially — will correctly report that there is nothing to find. Better the
+			// card says so up front than the user reads it as a comment on their own data.
 			name: 'CD2-slim.fna',
 			description: 'Quick Start Example',
-			detail: '10 sequences • Fast results',
+			detail: '10 sequences × 17 codons • Truncated demo',
 			path: '/test-data/CD2-slim.fna',
 			size: 'small'
 		},

@@ -5,7 +5,8 @@
 	import { fileMetricsStore } from '../stores/fileInfo';
 	import { treeStore } from '../stores/tree';
 	import BranchSelector from './BranchSelector.svelte';
-	import AnalysisTimingEstimate from './AnalysisTimingEstimate.svelte';
+	import RunOutlook from './RunOutlook.svelte';
+	import { treeHasBranchLengths } from './services/prescreen/scope.js';
 	import { AlertTriangle, Play, Loader2 } from 'lucide-svelte';
 	import { trackEvent } from './utils/analytics.js';
 	import {
@@ -1083,6 +1084,22 @@
 		}
 	}
 
+	// Which tree RunOutlook's MEME estimate should read depth from. Prefer the user's own tree, but
+	// only while its branch lengths are usable: a NEXUS upload often carries a topology-only tree
+	// alongside an inferred NJ tree that does have lengths, and depth is the whole point of the
+	// estimate. The source travels with it so the estimate can disclose that NJ lengths are
+	// nucleotide distances rather than the codon-model lengths MEME fits.
+	$: outlookTree = pickOutlookTree($treeStore);
+
+	function pickOutlookTree(store) {
+		const user = store?.usertree || '';
+		const nj = store?.nj || '';
+		if (treeHasBranchLengths(user)) return { newick: user, source: 'user' };
+		if (treeHasBranchLengths(nj)) return { newick: nj, source: 'nj' };
+		// Neither is usable; hand over whatever exists so the estimate can say why, not nothing.
+		return { newick: user || nj, source: user ? 'user' : nj ? 'nj' : 'unknown' };
+	}
+
 	// Get method info helper
 	function getMethodInfo(key) {
 		return (
@@ -1288,13 +1305,17 @@
 					</div>
 				{/if}
 
-				<!-- Timing Estimate - positioned near execution mode -->
+				<!-- What we can say before the run: runtime, plus the MEME outcome estimate.
+				     One panel, near the execution-mode choice it depends on. -->
 				<div class="mt-3">
-					<AnalysisTimingEstimate
+					<RunOutlook
 						method={selectedMethod}
 						methodOptions={methodOptions[selectedMethod] || {}}
 						{geneticCode}
 						executionMode={executionMode === 'local' ? 'wasm' : 'backend'}
+						alignment={$fileMetricsStore?.canonicalFasta || ''}
+						tree={outlookTree.newick}
+						treeSource={outlookTree.source}
 					/>
 				</div>
 			</div>

@@ -1,0 +1,139 @@
+/*
+ * Styles for MemeHitLikelihood.svelte.
+ *
+ * WHY THESE ARE NOT IN THE COMPONENT'S <style> BLOCK — this is a byte-accounting requirement, not a
+ * taste one, and putting them back would silently break it.
+ *
+ * MemeHitLikelihood.svelte is dynamically imported so that a non-MEME method downloads none of it.
+ * That works for the JS: rollup emits the component and the 735 KB model as their own chunks and
+ * nothing fetches them until MEME is selected. It does NOT work for a component <style> block.
+ * SvelteKit collects the CSS of dynamically-imported modules into the ROUTE NODE's stylesheet list
+ * (see .svelte-kit/output/server/nodes/<n>.js, `export const stylesheets = [...]`) precisely so a
+ * lazily-mounted component cannot flash unstyled — and every entry there becomes an unconditional
+ * `<link rel="stylesheet">` in the served HTML. Measured on this component before the move: 1,233 B
+ * raw / 363 B brotli, fetched on EVERY page load, before a method was chosen, and therefore for FEL
+ * and the ~14 other estimate-less methods. Small, but "ZERO estimator bytes for a non-MEME method"
+ * is stated absolutely in three places and was not literally true in the production build.
+ *
+ * Imported with `?inline`, this is a JS string instead: Vite emits no CSS asset for it, the text
+ * rides inside the component's own lazily-imported chunk, and the component injects it on first
+ * mount. Zero bytes until MEME is selected, in dev and in production alike.
+ *
+ * The cost is that these selectors are GLOBAL rather than svelte-scoped. Every class here is
+ * prefixed `hit-` and nothing else in the repository uses that prefix, which is what makes that
+ * safe; keep it true. The component carries a test that fails if a <style> block reappears.
+ */
+
+.hit-likelihood {
+	font-size: 13px;
+}
+
+.hit-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 4px;
+}
+
+.hit-label {
+	font-weight: 500;
+}
+
+.hit-value {
+	font-weight: 600;
+	margin-left: auto;
+	text-align: right;
+}
+
+/* The panel sits above the Run button, so the row keeps room for its copy from the first frame
+   instead of pushing the button down once the estimate resolves.
+
+   BOTH NUMBERS ARE MEASURED IN THE RUNNING APP, not derived, and they are measured at the two
+   widths this panel actually takes. The options column is fluid down to the layout's 1024px
+   breakpoint and then drops to a fixed 628px, and the copy wraps differently on each side of it:
+   the 'likely' and 'uncertain' bands — 98% of submissions between them — resolve to 79.7px of
+   body above 1024px and 97.1px below it. So the reserve is one tier per regime, keyed to the
+   same breakpoint the layout uses, and "estimating…" resolves without moving anything at either
+   (verified by sampling the panel's height every 50ms across the transition, at 1440, 1024, 900
+   and 768: min == max).
+
+   Headroom is well under a pixel, not a line. Any edit to a band's `lead`, or to the guidance
+   sentence recommendation.js supplies, has to be re-measured rather than eyeballed.
+
+   What this deliberately does not cover is the low band, which adds the rarity line: it comes to
+   101.1px wide / 153.2px narrow, and it fires on under 2% of submissions. Reserving for it would
+   leave a 21-56px hole under every ordinary estimate, which is the worse trade. RunOutlook's
+   placeholder for the not-yet-imported chunk is these numbers plus the 23.5px header — change
+   all four together. */
+.hit-body {
+	padding-left: 22px; /* Align with text after icon, as in AnalysisTimingEstimate */
+	min-height: 97.5px;
+}
+
+@media (min-width: 1024px) {
+	.hit-body {
+		min-height: 80px;
+	}
+}
+
+.hit-detail {
+	color: #64748b;
+	font-size: 12px;
+	line-height: 1.45;
+	margin: 0 0 4px 0;
+}
+
+/* The rate sentence under the band. Darker than the guidance below it: it is the band's actual
+   content, not a footnote to it. */
+.hit-lead {
+	color: #475569;
+}
+
+.hit-secondary {
+	color: #94a3b8;
+}
+
+.hit-basis-toggle {
+	font-size: 11px;
+	color: #64748b;
+	background: none;
+	border: none;
+	padding: 0;
+	margin-top: 2px;
+	cursor: pointer;
+	text-decoration: underline dotted;
+}
+
+.hit-basis-toggle:hover {
+	color: #475569;
+}
+
+.hit-basis {
+	margin-top: 4px;
+	border-left: 2px solid #e2e8f0;
+	padding-left: 8px;
+}
+
+.hit-basis p {
+	color: #64748b;
+	font-size: 11px;
+	line-height: 1.5;
+	margin: 0 0 4px 0;
+}
+
+/* The scope line: what this estimate is not. Darker than the provenance beneath it. */
+.hit-basis-lead {
+	color: #475569;
+	font-weight: 500;
+	margin-bottom: 6px !important;
+}
+
+/* Turns undifferentiated paragraphs into scannable rows. */
+.hit-basis-key {
+	color: #94a3b8;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	font-size: 9px;
+	font-weight: 600;
+	margin-right: 4px;
+}

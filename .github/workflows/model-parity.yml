@@ -1,0 +1,102 @@
+name: Model Parity
+
+# DM3 ships no ML runtime. The MEME hit-likelihood estimate is XGBoost's own save_model() JSON,
+# walked in ~40 lines of plain JS (xgbEnsemble.js over meme_gate.json) — no converter, no
+# intermediate format, so the bytes the ML team exports are the bytes the browser parses.
+#
+# The risk that buys is a walker that silently mis-reads a model it does not understand: unlike a
+# converter, a walker never fails at build time, it just returns a confident wrong number. This job
+# is the proof that it does not. If it fails, the numbers a researcher sees in the browser are not
+# the numbers that were validated — treat it as a release blocker, not a flake.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/lib/services/prescreen/**'
+      - 'scripts/prescreen/**'
+      - 'src/test/meme-hit-likelihood.test.js'
+      - '.github/workflows/model-parity.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/lib/services/prescreen/**'
+      - 'scripts/prescreen/**'
+      - 'src/test/meme-hit-likelihood.test.js'
+      - '.github/workflows/model-parity.yml'
+  workflow_dispatch:
+
+jobs:
+  parity:
+    name: The shipped JS walker reproduces XGBoost's own scoring of meme_gate.json
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No npm ci: xgbEnsemble.js imports nothing, so the walker runs on a bare Node. Keeping this
+      # job dependency-free is deliberate — it means a broken lockfile cannot take the model gate
+      # down with it. The unit-test job below is the one that needs node_modules.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: scripts/prescreen/requirements.txt
+
+      - name: Install verification-only dependencies
+        run: pip install -r scripts/prescreen/requirements.txt
+
+      # ORDER MATTERS. Both sides of the parity check read the same meme_gate.json, so corrupting
+      # that file would leave them agreeing and the gate green — a parity run is not self-evidently
+      # capable of failing. This step corrupts the JS side ONLY (score_gate.mjs takes an optional
+      # model path for exactly this reason) and requires the comparison to report FAILED. It also
+      # feeds the walker twelve real malformed models — DART weights, multi-class, categorical
+      # splits, a 4-feature retrain, a cyclic child index — and requires a throw on every one.
+      #
+      # This runs FIRST because it is the reason to believe the step after it.
+      - name: Prove the parity check can fail
+        run: python3 scripts/prescreen/verify_parity.py --self-test
+
+      # THE binding step: contract, pin, monotonicity, and the walker against xgboost's own scoring
+      # of the same bytes.
+      - name: JS walker vs XGBoost on the shipped model
+        run: python3 scripts/prescreen/verify_parity.py
+
+      # The one input class that can tell `<` from `<=`: values sitting exactly on the model's own
+      # split thresholds. Everywhere else the two operators route identically, so this bug survives
+      # any amount of random or grid testing. Also asserts the rows are SENSITIVE (flipping the
+      # operator has to change something) so the check cannot pass for free.
+      - name: Walker uses XGBoost's comparison operator on split boundaries
+        run: python3 scripts/prescreen/verify_parity.py --boundary
+
+      # NOTE ON WHAT THIS DOES AND DOES NOT GUARD. It compares golden.fixtures.json against
+      # xgboost's scoring of meme_gate.json. It does NOT run the JS walker, so a walker bug exits 0
+      # here — verified by flipping `<` to `<=`, which this step passes and the two steps above
+      # fail. What it catches is a stale or hand-edited fixture file, and a model swapped without
+      # regenerating the fixtures. Walker-vs-fixture coverage lives in the `unit` job below, which
+      # is also required.
+      - name: Golden fixtures still match XGBoost (does not exercise the JS walker)
+        run: python3 scripts/prescreen/verify_parity.py --emit-golden --check
+
+  unit:
+    # Split from `parity` so that job can stay dependency-free. This half exists because the
+    # MEME-only scope guards ("the estimate never names another analysis method") are unit tests,
+    # and until now nothing in CI ran `npm test` at all — the e2e half of that guard ran in
+    # e2e.yml, the unit half ran only on someone's laptop.
+    name: MEME hit-likelihood unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # NOT `npm test -- --run <file>`. The `test` script is already
+      # `npm run test:unit -- --run`, so adding another `--run` gives vitest the flag twice and it
+      # exits with "Expected a single value for option --run, received [true, true]" before running
+      # anything. The job failed on every push and the message looks nothing like a CLI mistake.
+      - run: npm test -- src/test/meme-hit-likelihood.test.js

@@ -65,3 +65,12 @@ coverage
 .telegram-bot-token
 
 coverage-e2e
+
+# Local scratch that is not part of the app. These are large (video-frames alone is ~240 MB) and
+# sit at the repo root, so a reflexive `git add -A` sweeps them into a commit. Ignoring them makes
+# the safe command the easy one.
+/Datamonkey_2_0/
+/video-frames/
+/benchmark-results/
+/hyphy-wasm-artifact/
+/src/benchmark/test-alignments/

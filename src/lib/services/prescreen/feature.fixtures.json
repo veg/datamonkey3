@@ -1,0 +1,64 @@
+{
+  "_about": {
+    "purpose": "Pins extractHitLikelihoodFeatures() — the three numbers the whole estimate is computed from. A drift here is worse than a drift in the model: the walker would still reproduce XGBoost exactly while being handed a different alignment than the user uploaded.",
+    "features": ["num_seqs", "num_sites", "median_pos_dist"],
+    "contract": [
+      "num_seqs = non-empty sequence records; falls back to the tree's tip count (commas + 1) when the alignment yields none",
+      "num_sites = floor(length of the FIRST sequence / 3), i.e. CODONS, not nucleotides",
+      "median_pos_dist = numpy-style median of the STRICTLY POSITIVE branch lengths in the newick (mean of the middle two when the count is even); 0.0 is the 'none were parsed' sentinel, never a measurement"
+    ],
+    "provenance": "Each `expected` is hand-derived from the contract above and the derivation is written out in `why`, so every number in this file can be checked by reading it rather than by running the code it tests. They are NOT recorded outputs of extractHitLikelihoodFeatures().",
+    "clip_note": "Unclipped on purpose. MODEL_INPUT_CLIP (median floor 0.001) lives at the scoring boundary; flooring here would make checkFeatureDomain's 'missing' branch unreachable and score a topology-only tree as if it were a measurement."
+  },
+  "cases": [
+    {
+      "name": "fasta_with_lengths",
+      "alignment": ">seqA\nATGACTGATCCC\n>seqB\nATGACAGATCCC\n>seqC\nATGACTGGTCCC\n>seqD\nATGACTGATCCA\n",
+      "tree": "((seqA:0.1,seqB:0.2):0.05,(seqC:0.3,seqD:0.15):0.25);",
+      "expected": [4.0, 4.0, 0.175],
+      "why": "4 records; 12 nt / 3 = 4 codons; branch lengths sorted 0.05 0.1 0.15 0.2 0.25 0.3 -> even count, median = (0.15 + 0.2) / 2 = 0.175"
+    },
+    {
+      "name": "fasta_no_positive_lengths",
+      "alignment": ">t1\nAAATTTGGGCCC\n>t2\nAAATTTGGGCCA\n>t3\nAAATTTGGGCCG\n",
+      "tree": "((t1,t2),t3);",
+      "expected": [3.0, 4.0, 0.0],
+      "why": "3 records; 12 nt / 3 = 4 codons; a topology-only tree has no ':' at all, so the positive-length list is empty and the median is the 0.0 sentinel"
+    },
+    {
+      "name": "fasta_scientific_notation",
+      "alignment": ">a\nATGCCCGGGAAATTT\n>b\nATGCCCGGGAAATTC\n",
+      "tree": "(a:1.5e-2,b:3.0E-3);",
+      "expected": [2.0, 5.0, 0.009],
+      "why": "2 records; 15 nt / 3 = 5 codons; both exponent spellings must parse -> 0.015 and 0.003, median = (0.003 + 0.015) / 2 = 0.009. A parser that missed the 'E' form would silently return the 0.0 sentinel here rather than erroring."
+    },
+    {
+      "name": "nexus_input",
+      "alignment": "#NEXUS\nBEGIN TAXA;\n  DIMENSIONS NTAX=3;\n  TAXLABELS 'sp1' 'sp2' 'sp3';\nEND;\nBEGIN CHARACTERS;\n  DIMENSIONS NCHAR=9;\n  MATRIX\n  ATGACTGAT\n  ATGACAGAT\n  ATGACTGGT;\nEND;\n",
+      "tree": "((sp1:0.4,sp2:0.6):0.1,sp3:0.5);",
+      "expected": [3.0, 3.0, 0.45],
+      "why": "NEXUS branch: 3 MATRIX rows (the last keeps its content and drops the terminating ';'); 9 nt / 3 = 3 codons; lengths sorted 0.1 0.4 0.5 0.6, median = (0.4 + 0.5) / 2 = 0.45"
+    },
+    {
+      "name": "fasta_wrapped_lines",
+      "alignment": ">long1\nATGACT\nGATCCC\nGGGAAA\n>long2\nATGACA\nGATCCC\nGGGAAT\n",
+      "tree": "(long1:0.12,long2:0.34);",
+      "expected": [2.0, 6.0, 0.23],
+      "why": "Wrapped records must be joined before measuring: 18 nt / 3 = 6 codons, not 6 nt / 3 = 2. Median of two lengths = (0.12 + 0.34) / 2 = 0.23"
+    },
+    {
+      "name": "fasta_headers_only_falls_back_to_tip_count",
+      "alignment": ">a\n>b\n>c\n>d\n",
+      "tree": "((a:0.1,b:0.2):0.05,(c:0.3,d:0.15):0.25);",
+      "expected": [4.0, 0.0, 0.175],
+      "why": "No sequence lines, so 0 records and 0 codons; num_seqs falls back to the tree's tip count = commas + 1 = 4. This path exists so a parse that recovers taxa but no residues still reports the right shape; it is reachable and previously untested. num_sites 0 is what makes checkFeatureDomain refuse it (below-min), so the fallback cannot fabricate a scorable row."
+    },
+    {
+      "name": "negative_branch_lengths_are_dropped_not_averaged",
+      "alignment": ">x\nATGACTGATCCCTTT\n>y\nATGACAGATCCCTTA\n>z\nATGACTGGTCCCTTG\n",
+      "tree": "(x:-0.5,y:0.2,z:0.4);",
+      "expected": [3.0, 5.0, 0.30000000000000004],
+      "why": "3 records; 15 nt / 3 = 5 codons; the median is over STRICTLY POSITIVE lengths only -> [0.2, 0.4], median = (0.2 + 0.4) / 2. Written as the exact float64 result of that sum rather than 0.3, because the test compares within 1e-12 and 0.2 + 0.4 is not 0.6. Including the -0.5 would give 0.2; a filter on `>= 0` rather than `> 0` would also give 0.2 on a tree carrying a 0.0."
+    }
+  ]
+}
