@@ -95,4 +95,8 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm test -- --run src/test/meme-hit-likelihood.test.js
+      # NOT `npm test -- --run <file>`. The `test` script is already
+      # `npm run test:unit -- --run`, so adding another `--run` gives vitest the flag twice and it
+      # exits with "Expected a single value for option --run, received [true, true]" before running
+      # anything. The job failed on every push and the message looks nothing like a CLI mistake.
+      - run: npm test -- src/test/meme-hit-likelihood.test.js
