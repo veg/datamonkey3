@@ -38,8 +38,8 @@
 				<ul class="list-inside list-disc space-y-1 text-amber-900">
 					{#if summary.speciesUsed !== summary.speciesInAlignment}
 						<li>
-							{summary.speciesUsed} of {summary.speciesInAlignment} sequences were used — the rest
-							were not found in the tree{summary.speciesUsed === 512
+							{summary.speciesUsed} of {summary.speciesInAlignment} sequences were used — the rest were
+							not found in the tree{summary.speciesUsed === 512
 								? ', or fell outside the 512-taxon limit'
 								: ''}.
 						</li>
@@ -64,6 +64,6 @@
 			</div>
 		{/if}
 
-		<AxomemeVisualization {data} />
+		<AxomemeVisualization {data} beta={true} />
 	</div>
 {/if}

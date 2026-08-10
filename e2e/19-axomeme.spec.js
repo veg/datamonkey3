@@ -154,6 +154,40 @@ test.describe('AxoMEME', () => {
 		await expect(page.getByRole('columnheader', { name: /dN/ })).toBeVisible();
 	});
 
+	test('is marked Beta wherever a user meets it', async ({ page }) => {
+		// The MODEL is under active development, not the integration. The badge has to appear both
+		// where the method is chosen and where the numbers are read — someone landing on a shared
+		// results view never sees the selector.
+		await freshStart(page);
+		await loadDemoFile(page, 'CD2-slim.fna');
+		await expect(async () => {
+			await goToAnalyzeTab(page);
+			await expect(page.locator('[data-testid="method-dropdown"]')).toBeVisible({ timeout: 5000 });
+		}).toPass({ timeout: 60000 });
+
+		await selectMethod(page, 'AxoMEME');
+		await expect(page.locator('.beta-badge')).toBeVisible({ timeout: 10000 });
+
+		// And it must be specific to AxoMEME rather than decorating every method.
+		await selectMethod(page, 'FEL');
+		await expect(page.locator('.beta-badge')).toHaveCount(0);
+
+		await selectMethod(page, 'AxoMEME');
+		expect(await clickRunAnalysis(page), 'run button was not clickable').toBe(true);
+		await expect(page.getByText(/AxoMEME prediction complete/i)).toBeVisible({ timeout: 120000 });
+		await page
+			.getByRole('button', { name: /results/i })
+			.first()
+			.click();
+		await page
+			.locator('.analysis-card')
+			.filter({ hasText: /AXOMEME Analysis/i })
+			.getByRole('button', { name: 'View' })
+			.first()
+			.click();
+		await expect(page.locator('.axomeme-beta')).toBeVisible({ timeout: 30000 });
+	});
+
 	test('suppresses controls that cannot reach the model', async ({ page }) => {
 		// Both were live at first and both imply a capability AxoMEME does not have: there is no
 		// server-side AxoMEME, and the model's tokenizer bakes in the universal genetic code.

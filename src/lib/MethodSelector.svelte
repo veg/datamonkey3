@@ -41,6 +41,10 @@
 		axomeme: {
 			name: 'AxoMEME',
 			fullName: 'AxoMEME 2.0 — neural surrogate for MEME',
+			// The MODEL is still under active development, not the integration. That distinction is
+			// what the badge is for: a user should know the numbers may move between releases even
+			// though the code around them is settled.
+			beta: true,
 			// Deliberately says PREDICTS. This is a fitted model estimating what MEME would report,
 			// not MEME, and the dropdown is the first place a user forms that expectation.
 			shortDescription: 'Predict MEME per-site selection in seconds, in your browser',
@@ -1292,6 +1296,7 @@
 				{#each availableMethods as method}
 					<option value={method.id} disabled={!method.info.supported}>
 						{method.info.name} - {method.info.fullName}
+						{#if method.info.beta}(Beta){/if}
 						{#if !method.info.supported}(Coming Soon){/if}
 					</option>
 				{/each}
@@ -1302,6 +1307,14 @@
 		{#if currentMethod}
 			<div class="method-description">
 				{currentMethod.info.shortDescription}
+				{#if currentMethod.info.beta}
+					<div
+						class="beta-badge"
+						title="The underlying model is still under active development; results may change between releases."
+					>
+						<span class="badge-text">Beta</span>
+					</div>
+				{/if}
 				{#if !currentMethod.info.supported}
 					<div class="coming-soon-badge">
 						<span class="badge-text">Coming Soon</span>
@@ -1704,6 +1717,20 @@
 		display: flex;
 		align-items: center;
 		gap: 12px;
+	}
+
+	.beta-badge {
+		display: inline-flex;
+		align-items: center;
+		padding: 2px 8px;
+		background: #ede9fe;
+		border: 1px solid #8b5cf6;
+		border-radius: 12px;
+		font-size: 11px;
+		font-weight: 500;
+		color: #5b21b6;
+		text-transform: uppercase;
+		letter-spacing: 0.025em;
 	}
 
 	.coming-soon-badge {
