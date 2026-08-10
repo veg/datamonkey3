@@ -1,14 +1,33 @@
 name: E2E Tests
 
+# MANUAL ONLY. These do not run on pull requests or pushes.
+#
+# The team's workflow is to run e2e locally before pushing (`npm run test:e2e`), which made this
+# redundant on every PR — and expensive: 13 minutes, of which 84% was the tests themselves. Playwright
+# runs with `workers: 1` in CI, deliberately, because parallel workers contend for the single dev
+# server and reintroduce flake. So the cost was not fixable by caching or a faster runner; only by
+# sharding across jobs, which is more machinery than a locally-run suite justifies.
+#
+# The workflow is kept rather than deleted, and can be started from the Actions tab or with
+# `gh workflow run e2e.yml`. Worth doing before a release, or on any change to what the app
+# DOWNLOADS: the byte-budget guards in 18-meme-hit-likelihood.spec.js and 19-axomeme.spec.js exist
+# because a previous version shipped 13.5 MB of ML runtime to every method and rendered nothing, and
+# an "is the element absent?" assertion passed the whole time. Those are the tests least likely to be
+# run from memory and most likely to catch a regression nobody thought to look for.
 on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: 'Which suite to run'
+        required: false
+        default: 'fast'
+        type: choice
+        options: [fast, wasm, both]
 
 jobs:
   fast-e2e:
     name: Fast E2E Tests
+    if: inputs.suite == 'fast' || inputs.suite == 'both'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,8 +59,10 @@ jobs:
 
   wasm-e2e:
     name: WASM E2E Tests
+    # Previously main-only. With no push trigger left, that condition would never fire, so the
+    # selector above is what decides now.
+    if: inputs.suite == 'wasm' || inputs.suite == 'both'
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
 
