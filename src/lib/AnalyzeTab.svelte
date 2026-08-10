@@ -12,6 +12,7 @@
 	import FileIndicator from './FileIndicator.svelte';
 	import TabNavigation from './TabNavigation.svelte';
 	import TreeSourceSelector from './TreeSourceSelector.svelte';
+	import { treeHasBranchLengths } from './services/prescreen/scope.js';
 	import backendAnalysisRunner from './services/BackendAnalysisRunner.js';
 	import wasmAnalysisRunner from './services/WasmAnalysisRunner.js';
 	import { ChevronDown, TreeDeciduous } from '$lib/icons';
@@ -167,6 +168,19 @@
 				if (!tree) {
 					throw new Error(
 						'AxoMEME needs a phylogenetic tree. Infer one or upload your own before running it.'
+					);
+				}
+				// A non-empty string is not enough, and the comment above already said so. A
+				// topology-only tree — `(a,(b,c));` — or one whose lengths are all zero is truthy,
+				// reaches prepareAlignment, and yields an all-zero distance matrix and an all-zero
+				// embedding. The model then returns confident-looking numbers computed from nothing,
+				// and inspectBranchLengths reports `ok: true` for the all-zero case, so no warning
+				// fires either. treeHasBranchLengths is the predicate that actually answers this.
+				if (!treeHasBranchLengths(tree)) {
+					throw new Error(
+						'AxoMEME needs a tree with branch lengths — it reads them as evolutionary distances. ' +
+							'This tree has none, so every pair of sequences would look equally related. Infer a ' +
+							'neighbor-joining tree or upload one with branch lengths.'
 					);
 				}
 

@@ -53,7 +53,13 @@ export class AxomemeAnalysisRunner extends BaseAnalysisRunner {
 	 */
 	async runAnalysis(method, config, fastaData, treeData, fileId = null) {
 		const analysisId = await this.createAnalysis(fileId, 'AXOMEME');
-		this.startAnalysisTracking(analysisId, 'AXOMEME', 'browser', 'Starting AxoMEME prediction...');
+		// 'wasm', NOT 'browser'. This value is persisted to IndexedDB and read by consumers that know
+		// only two vocabularies: analysisStore.cleanupInterruptedAnalyses() reaps stale runs by testing
+		// `executionMode === 'wasm'`, and the result viewer and progress row label the mode from it. A
+		// third value made an interrupted AxoMEME run unreapable — stuck at `running` forever after a
+		// refresh during the ~600 ms-2 s synchronous MDS — and rendered "Execution: Unknown". AxoMEME
+		// runs in the browser like the WASM path, so it shares that label.
+		this.startAnalysisTracking(analysisId, 'AXOMEME', 'wasm', 'Starting AxoMEME prediction...');
 
 		try {
 			this.updateProgress(analysisId, 'parsing', 5, 'Reading alignment...');
@@ -110,7 +116,14 @@ export class AxomemeAnalysisRunner extends BaseAnalysisRunner {
 					throw new Error(`AxoMEME input check failed: ${check.errors.slice(0, 3).join('; ')}`);
 				}
 				const out = await runSites(session, bundle, ort);
-				for (const key of Object.keys(accumulated)) accumulated[key].push(...out[key]);
+				// NOT `push(...out[key])`. batchSizeFor scales as 1/N^2, so a few-taxon alignment gets
+				// batches of 10^5-10^6 sites, and spreading that many elements into a call blows V8's
+				// argument limit with "Maximum call stack size exceeded" at ~90% progress. Measured: it
+				// throws at 167,772, which is exactly the batch size for a 10-taxon alignment.
+				for (const key of Object.keys(accumulated)) {
+					const src = out[key];
+					for (let i = 0; i < src.length; i++) accumulated[key].push(src[i]);
+				}
 
 				const done = Math.min(start + batch, prepared.totalCodons);
 				this.updateProgress(
@@ -125,20 +138,23 @@ export class AxomemeAnalysisRunner extends BaseAnalysisRunner {
 			this.updateProgress(analysisId, 'processing', 95, 'Building per-site results...');
 			// Variability is judged over the SELECTED species, which is what the model saw — not over
 			// every sequence in the file, which may include taxa the tree did not contain.
-			const selectedSeqs = prepared.selectedNames.map((n) => sequences[names.indexOf(n)] ?? '');
+			// By INDEX, not `names.indexOf(name)`. With duplicate FASTA headers indexOf returns the FIRST
+			// match while orderSpecies keeps the LAST, so the variability flags would come from a
+			// different sequence than the one the model was tokenised from.
+			const selectedSeqs = prepared.selectedIndices.map((i) => sequences[i] ?? '');
 			const variable = siteVariability(selectedSeqs, prepared.totalCodons);
-			const refSeq = sequences[names.indexOf(prepared.referenceName)] ?? sequences[0];
+			const refSeq = sequences[prepared.referenceIndex] ?? sequences[0];
 			const refCodons = Array.from({ length: prepared.totalCodons }, (_, i) =>
 				refSeq.slice(i * 3, i * 3 + 3)
 			);
-			const sites = buildPredictions(
-				accumulated,
-				{ refCodons, variable },
-				{
-					...(config?.calling ?? {}),
-					...(config?.callMode ? { mode: config.callMode } : {})
-				}
-			);
+			// ONE source of truth for the calling mode. This and the summary below used to resolve it
+			// with OPPOSITE precedence, so a config carrying both could score with percentile gates
+			// while the footer told the reader the calls meant "Z >= 2.5".
+			const callConfig = {
+				...(config?.calling ?? {}),
+				...(config?.callMode ? { mode: config.callMode } : {})
+			};
+			const sites = buildPredictions(accumulated, { refCodons, variable }, callConfig);
 
 			const result = {
 				method: 'AxoMEME',
@@ -157,7 +173,7 @@ export class AxomemeAnalysisRunner extends BaseAnalysisRunner {
 					referenceSequence: prepared.referenceName,
 					// Named in the footer: it changes what a "call" means, and the default is not the
 					// reference driver's.
-					callMode: config?.calling?.mode ?? config?.callMode ?? CALL_DEFAULTS.mode,
+					callMode: callConfig.mode ?? CALL_DEFAULTS.mode,
 					matchedFromTree: prepared.matchedFromTree,
 					duplicateSelections: prepared.duplicateSelections,
 					// Reported, not hidden. Clamping matches the model's training pipeline, so it is not

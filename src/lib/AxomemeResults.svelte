@@ -21,6 +21,7 @@
 	// Only worth interrupting the reader for. Sequences dropped, taxa repeated, a tree negative beyond
 	// float noise, or branch-length problems the sanitiser judged worth reporting.
 	$: hasCaveats =
+		summary.matchedFromTree === false ||
 		summary.speciesUsed !== summary.speciesInAlignment ||
 		summary.treeWarnings?.length > 0 ||
 		summary.duplicateSelections > 0 ||
@@ -36,6 +37,18 @@
 					What the model was given
 				</div>
 				<ul class="list-inside list-disc space-y-1 text-amber-900">
+					{#if summary.matchedFromTree === false}
+						<!-- The loudest case, and the one that was silent. If no alignment name matches a tree
+						     label, every distance is zero and the embedding is zero: the phylogeny contributed
+						     nothing at all, yet every other counter looks healthy (same species count, no
+						     duplicates, no negative distances, no tree warnings — the tree itself is fine).
+						     A mismatch as ordinary as `seq1` vs `seq1_2009` produces it. -->
+						<li>
+							<strong>No sequence name matched a tree label</strong>, so the tree contributed
+							nothing — every pair of sequences was treated as equally related. These rankings come
+							from the alignment alone. Check that your tree's labels match your sequence names.
+						</li>
+					{/if}
 					{#if summary.speciesUsed !== summary.speciesInAlignment}
 						<li>
 							{summary.speciesUsed} of {summary.speciesInAlignment} sequences were used — the rest were

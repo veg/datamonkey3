@@ -255,6 +255,11 @@ export function prepareAlignment(input) {
 		windowSize,
 		referenceName: refName,
 		selectedNames: selected.map((i) => names[i]),
+		// Indices as well as names. A caller that maps a name back with `names.indexOf()` gets the
+		// FIRST match, which is the wrong record when the alignment has duplicate headers — and this
+		// module already resolved duplicates the other way round.
+		selectedIndices: selected.slice(),
+		referenceIndex: names.indexOf(refName),
 		matchedFromTree,
 		duplicateSelections: duplicates,
 		clampedDistances,

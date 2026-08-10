@@ -61,7 +61,15 @@ async function sha256Hex(buffer) {
  * @returns {Promise<{session: any, sha256: string|null, bytes: number}>}
  */
 export function loadSession(options = {}) {
-	if (sessionPromise && !options.url && !options.ort && !options.fetchImpl) return sessionPromise;
+	// Memoise ONLY the production call — an options object of any kind bypasses the cache.
+	//
+	// This used to list url/ort/fetchImpl by name, which left `verifyHash` and `wasmPaths` out: a
+	// single `loadSession({ verifyHash: false })` would populate sessionPromise with a session that was
+	// never checked against VERIFIED_MODEL_SHA256, and every later production call would return it
+	// with `sha256: null` — which the runner then stamps as the verified hash. Inverting the test to
+	// "no options at all" cannot go stale when a new option is added.
+	const isProductionCall = Object.keys(options).length === 0;
+	if (sessionPromise && isProductionCall) return sessionPromise;
 
 	const promise = (async () => {
 		const url = options.url ?? MODEL_URL;
@@ -123,7 +131,7 @@ export function loadSession(options = {}) {
 		return { session, sha256, bytes: buffer.byteLength };
 	})();
 
-	if (!options.url && !options.ort && !options.fetchImpl) sessionPromise = promise;
+	if (isProductionCall) sessionPromise = promise;
 	// A failed load must not be memoised as a permanent failure — a transient fetch error would
 	// otherwise disable the feature for the rest of the page's life.
 	promise.catch(() => {

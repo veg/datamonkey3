@@ -1005,8 +1005,23 @@
 	 *     nothing, which is the worst of the three options.
 	 */
 	$: browserOnly = Boolean(currentMethod?.config?.browserOnly);
-	// Keep the reported mode honest for analytics and for the run-started toast.
-	$: if (browserOnly && executionMode !== 'local') executionMode = 'local';
+	// Keep the reported mode honest for analytics and the run-started toast — but REMEMBER what the
+	// user chose and give it back.
+	//
+	// This used to assign `executionMode = 'local'` with no restore. Picking Backend Server for FEL,
+	// then browsing to AxoMEME, then returning to FEL left the radio on Local and silently ran the
+	// next analysis through WASM instead of the server — which for a large dataset is the whole reason
+	// the server exists. Nothing told the user their choice had been discarded.
+	let executionModeBeforeBrowserOnly = null;
+	$: if (browserOnly) {
+		if (executionMode !== 'local') {
+			executionModeBeforeBrowserOnly = executionMode;
+			executionMode = 'local';
+		}
+	} else if (executionModeBeforeBrowserOnly) {
+		executionMode = executionModeBeforeBrowserOnly;
+		executionModeBeforeBrowserOnly = null;
+	}
 
 	// Get current method's advanced options
 	$: currentMethodOptions = selectedMethod

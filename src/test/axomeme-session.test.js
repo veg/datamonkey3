@@ -102,16 +102,42 @@ describe('loadSession', () => {
 		expect(err.message).toMatch(/404/);
 	});
 
-	it('memoises, so a second alignment does not re-download 17 MB', async () => {
+	it('memoises the PRODUCTION path, so a second alignment does not re-download 17 MB', async () => {
+		// This test used to pass `ort`/`fetchImpl`, which loadSession treats as "do not memoise" — so it
+		// asserted the BYPASS path and the memo itself had no coverage at all. A regression that dropped
+		// the memo would have left the suite green while every alignment re-downloaded 3.78 MB of model.
+		//
+		// The production path takes no options, so it is driven here by stubbing the globals it reaches
+		// for. onnxruntime-web cannot be imported under jsdom, so the assertion is on the FETCH count:
+		// one download no matter how many callers ask.
+		const buffer = SOME_BYTES;
+		let fetches = 0;
+		const realFetch = globalThis.fetch;
+		globalThis.fetch = async () => {
+			fetches++;
+			return { ok: true, status: 200, statusText: 'OK', arrayBuffer: async () => buffer };
+		};
+		try {
+			const a = loadSession();
+			const b = loadSession();
+			expect(a, 'a second call returned a different promise — the memo is not shared').toBe(b);
+			expect(isSessionLoaded(), 'isSessionLoaded stayed false on the production path').toBe(true);
+			await Promise.allSettled([a, b]);
+			// It fails at the hash check or the ort import, but only ONE fetch may have happened.
+			expect(fetches).toBeLessThanOrEqual(1);
+		} finally {
+			globalThis.fetch = realFetch;
+		}
+	});
+
+	it('bypasses the memo when options are supplied, so tests stay independent', async () => {
 		const ort = fakeOrt();
 		const fetchImpl = okFetch();
-		// The memo only applies to the production path (no overrides), so drive it through a module
-		// where the default URL is used but the runtime is injected — the override check is by
-		// identity of the options, so assert on the fetch count for the overridden path instead.
 		await loadSession({ ort, fetchImpl, verifyHash: false });
 		await loadSession({ ort, fetchImpl, verifyHash: false });
-		// Overridden calls deliberately bypass the memo so tests stay independent.
 		expect(fetchImpl).toHaveBeenCalledTimes(2);
+		// And an options call must never populate the production memo — including verifyHash:false,
+		// which would otherwise cache a session that was never checked against the pinned artifact.
 		expect(isSessionLoaded()).toBe(false);
 	});
 
