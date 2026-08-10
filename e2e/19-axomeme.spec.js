@@ -136,13 +136,20 @@ test.describe('AxoMEME', () => {
 		// writing it up, so the page must say MEME was not run AND that the number is not a p-value.
 		const body = await page.locator('body').innerText();
 		expect(body).toMatch(/MEME was not run/i);
-		expect(body).toMatch(/not a p-value/i);
+		expect(body).toMatch(/not calibrated/i);
 
-		// The table leads with RANK, and the model's output is labelled Score rather than LRT.
-		// Measured across 12 real submissions, its predicted LRT clears the chi-square gates once in
-		// 662 sites, so presenting it as an LRT invites a comparison it cannot support.
-		await expect(page.getByRole('columnheader', { name: 'Rank' })).toBeVisible();
-		await expect(page.getByRole('columnheader', { name: 'Score' })).toBeVisible();
+		// The table and plots come from hyphy-scope's AxomemeVisualization; DataMonkey contributes only
+		// the caveats about what it did to the data first. These assertions are on the library's
+		// output, so they also catch a stale `npm link` or a package build that did not include it.
+		await expect(page.locator('.axomeme-visualization')).toBeVisible();
+		await expect(page.locator('.axomeme-plot svg').first()).toBeVisible({ timeout: 20000 });
+
+		// Rank is a first-class column and the score is NOT labelled LRT. Measured across 12 real
+		// submissions, the model's predicted LRT clears the chi-square gates once in 662 sites, so
+		// presenting it as an LRT invites a comparison it cannot support.
+		await expect(page.getByRole('columnheader', { name: 'Percentile' })).toBeVisible();
+		// exact: log(1+score) also matches a loose "Score".
+		await expect(page.getByRole('columnheader', { name: 'Score', exact: true })).toBeVisible();
 		await expect(page.getByRole('columnheader', { name: 'LRT' })).toHaveCount(0);
 		await expect(page.getByRole('columnheader', { name: /dN/ })).toBeVisible();
 	});

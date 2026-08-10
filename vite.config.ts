@@ -67,6 +67,12 @@ export default defineConfig({
 	optimizeDeps: {
 		include: ['@biowasm/aioli', 'toml', 'marked', 'socket.io-client'],
 		// Exclude linked packages so changes are picked up immediately.
+		//
+		// hyphy-scope is deliberately NOT in this list even when linked via `npm link`. It pulls d3,
+		// phylotree, circos and @observablehq/plot, and excluding it from pre-bundling makes the dev
+		// server transform all of that on every request — enough to stall the page, which presents as
+		// an analysis that never finishes rather than as a slow import. Pre-bundle it and pick up
+		// library changes by rebuilding hyphy-scope and restarting dev (or `vite dev --force`).
 		exclude: ['phylotree', 'alivibe']
 	}
 });
