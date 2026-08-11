@@ -60,6 +60,14 @@
 	let treeData = {};
 	let showBatchExport = false;
 	let analysisStartTime = null; // Track analysis start time for duration calculation
+
+	// Engine-load state. The HyPhy WASM engine is a ~6.4 MB download and the whole app is replaced by
+	// a spinner until it lands. Previously nothing caught a failure, so a mangled .wasm MIME type, a
+	// dropped connection or a partial cache all produced the same spinner that never ended, with no
+	// text to search for and no reason to retry. See issue #190.
+	let engineError = null;
+	let engineSlow = false;
+	let engineWatchdog = null;
 	let primeCardDismissed = false;
 
 	// Handle URL query parameter for tab navigation (e.g., /?tab=results)
@@ -519,25 +527,78 @@
 		}
 	}
 
-	onMount(async () => {
-		// Initialize Aioli for HyPhy
-		cliObj = await new Aioli(
-			{
-				tool: 'hyphy',
-				version: '2.5.98',
-				urlPrefix: `${window.location.origin}/wasm/hyphy/2.5.98`
-			},
-			{
-				printInterleaved: false,
-				callback: updateHyphyProgress
+	/**
+	 * Load the HyPhy WASM engine. Returns true on success.
+	 *
+	 * Both the Aioli construction and the version exec are inside the try: the second is just as
+	 * capable of rejecting as the first, and an unhandled rejection anywhere here used to skip the
+	 * `loading = false` at the end of onMount and leave the spinner up permanently.
+	 */
+	async function initHyphyEngine() {
+		engineError = null;
+		engineSlow = false;
+		clearTimeout(engineWatchdog);
+
+		// The download continues; this only stops the user staring at an unlabelled spinner with no
+		// idea whether anything is still happening.
+		engineWatchdog = setTimeout(() => {
+			engineSlow = true;
+		}, 45000);
+
+		try {
+			cliObj = await new Aioli(
+				{
+					tool: 'hyphy',
+					version: '2.5.98',
+					urlPrefix: `${window.location.origin}/wasm/hyphy/2.5.98`
+				},
+				{
+					printInterleaved: false,
+					callback: updateHyphyProgress
+				}
+			);
+
+			aioliStore.set(cliObj);
+
+			// Get HyPhy version
+			result = await cliObj.exec('hyphy --version');
+			hyphyOut = result.stdout;
+			return true;
+		} catch (err) {
+			engineError = err instanceof Error ? err : new Error(String(err));
+			console.error('Failed to load the HyPhy WASM engine:', err);
+			return false;
+		} finally {
+			clearTimeout(engineWatchdog);
+		}
+	}
+
+	/**
+	 * Clear the browser caches holding the engine, then reload.
+	 *
+	 * A partial or corrupted cached copy reproduces the identical dead spinner, and a plain retry
+	 * would fetch the same bad bytes -- so this is offered as a separate action rather than folded
+	 * into the first retry, which would clear caches nobody needed cleared.
+	 */
+	async function retryEngineLoad({ clearCache = false } = {}) {
+		if (clearCache && typeof caches !== 'undefined') {
+			try {
+				const keys = await caches.keys();
+				await Promise.all(keys.map((k) => caches.delete(k)));
+			} catch (err) {
+				console.error('Could not clear cached engine:', err);
 			}
-		);
+		}
+		window.location.reload();
+	}
 
-		aioliStore.set(cliObj);
-
-		// Get HyPhy version
-		result = await cliObj.exec('hyphy --version');
-		hyphyOut = result.stdout;
+	onMount(async () => {
+		const engineReady = await initHyphyEngine();
+		if (!engineReady) {
+			// Show the error card rather than the spinner. Nothing below can work without the engine.
+			loading = false;
+			return;
+		}
 
 		// Load any previously saved files from browser storage
 		if (browser) {
@@ -1209,9 +1270,57 @@
 
 <div class="container mx-auto min-h-screen bg-brand-ghost">
 	{#if loading}
-		<div class="flex h-screen flex-col items-center justify-center px-4">
+		<div class="flex h-screen flex-col items-center justify-center px-4 text-center">
 			<div class="loader mb-premium-md"></div>
-			<p class="text-lg font-semibold text-brand-royal sm:text-premium-header">Loading HyPhy...</p>
+			<p class="text-lg font-semibold text-brand-royal sm:text-premium-header">
+				Loading the HyPhy analysis engine
+			</p>
+			<!-- Name the cost. It is a 6.4 MB download and the whole app is blocked on it; a bare
+			     spinner makes a normal wait indistinguishable from a hang. -->
+			<p class="text-text-muted mt-2 max-w-md text-sm">
+				About 6 MB, downloaded once and cached in your browser after this.
+			</p>
+			{#if engineSlow}
+				<p class="mt-4 max-w-md text-sm text-amber-700">
+					This is taking longer than usual. The download is still running — on a slow connection it
+					can take a few minutes. If it never finishes, reload the page to start over.
+				</p>
+			{/if}
+		</div>
+	{:else if engineError}
+		<div class="flex h-screen flex-col items-center justify-center px-4">
+			<div class="max-w-lg rounded-lg border border-red-200 bg-red-50 p-6 text-center">
+				<h2 class="mb-2 text-lg font-semibold text-red-800">
+					Couldn't load the HyPhy analysis engine
+				</h2>
+				<p class="mb-4 text-sm text-red-700">
+					The engine is a 6.4 MB download that runs the analyses in your browser. Check your
+					connection, and note that some institutional networks block or rewrite <code
+						class="rounded bg-red-100 px-1">.wasm</code
+					> files.
+				</p>
+				<p
+					class="mb-4 break-words rounded bg-white/70 p-2 text-left font-mono text-xs text-red-900"
+				>
+					{engineError.message}
+				</p>
+				<div class="flex flex-wrap justify-center gap-3">
+					<button
+						class="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+						onclick={() => retryEngineLoad()}
+					>
+						Try again
+					</button>
+					<!-- Second path on purpose: a partial or corrupted cached copy reproduces the same
+					     failure, and a plain retry would fetch the same bad bytes. -->
+					<button
+						class="rounded border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+						onclick={() => retryEngineLoad({ clearCache: true })}
+					>
+						Clear cached engine and retry
+					</button>
+				</div>
+			</div>
 		</div>
 	{:else}
 		<div class="pb-6 sm:pb-premium-xl">
