@@ -59,15 +59,17 @@ function createPersistentFileStore() {
 					// Update existing file with new content
 					console.log(`File with name ${file.name} already exists. Updating content.`);
 
-					// Read existing file to preserve metadata
-					const existingFileRecord = await fileStorage.getFile(existingFileId);
+					// Read existing file metadata (without its content buffer) to preserve
+					// id/createdAt etc. Fetching metadata-only avoids transiently holding
+					// the old file's ArrayBuffer in memory alongside the new one.
+					const existingFileMetadata = await fileStorage.getFileMetadata(existingFileId);
 
 					// Convert new file to ArrayBuffer
 					const arrayBuffer = await file.arrayBuffer();
 
 					// Update existing file with new content but preserve metadata
 					const updatedFile = {
-						...existingFileRecord,
+						...existingFileMetadata,
 						content: arrayBuffer,
 						size: file.size,
 						type: file.type,
