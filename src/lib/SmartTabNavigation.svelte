@@ -1,5 +1,5 @@
 <script>
-	import { persistentFileStore, currentFile } from '../stores/fileInfo';
+	import { persistentFileStore, currentFile, fileMetricsStore } from '../stores/fileInfo';
 	import { analysisStore } from '../stores/analyses';
 
 	export let activeTab = 'data';
@@ -29,8 +29,16 @@
 	// Show badge only if there are unviewed completions and not currently on Results tab
 	$: showResultsBadge = activeTab !== 'results' && unviewedCompletedCount > 0;
 
-	// Logic to determine if a tab should be disabled
-	$: isAnalyzeDisabled = !hasFiles;
+	// Logic to determine if a tab should be disabled.
+	//
+	// `hasFiles` alone was not enough: a file whose read FAILED still counts as a file, so Analyze
+	// unlocked for an alignment the app could not parse. Pressing Run then produced "No uploaded tree
+	// file available", naming a tree source the user cannot select, when the alignment was the actual
+	// problem. Issue #189.
+	$: currentFileFailedValidation = Boolean(
+		$fileMetricsStore?.error && !$fileMetricsStore?.FILE_INFO
+	);
+	$: isAnalyzeDisabled = !hasFiles || currentFileFailedValidation;
 	$: isResultsDisabled = !hasAnalyses;
 
 	// Function to handle tab clicks with context-aware behavior

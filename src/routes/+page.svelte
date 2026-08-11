@@ -623,6 +623,17 @@
 			trees = {};
 			treeData = resetTrees();
 
+			// Clear the descriptor stores too, for the same reason and at the same moment.
+			//
+			// Reading a 4 MB alignment takes 10-60 seconds, and for all of it the page kept rendering
+			// the PREVIOUS file: its metrics, its alignment viewer, its tree, and a green "Data ready
+			// for analysis" button. If the new file then failed validation, that stale description sat
+			// next to the red error, and Analyze happily offered to run on it. The delete path already
+			// models this correctly (FileManager.svelte:245-250); the upload path did not. Issue #189.
+			fileMetricsJSON = undefined;
+			fileMetricsStore.set(null);
+			alignmentFileStore.set(null);
+
 			// Check if this is a file selection event (from FileManager)
 			if (event.isSelection) {
 				console.log('File selected from FileManager:', event.fileId);
