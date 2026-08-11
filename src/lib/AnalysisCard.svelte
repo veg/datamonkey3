@@ -170,7 +170,11 @@
 
 	// Handle re-run action (for interrupted analyses)
 	function rerunAnalysis() {
-		dispatch('rerun', { analysisId: analysis.id, method: analysis.method, fileId: analysis.fileId });
+		dispatch('rerun', {
+			analysisId: analysis.id,
+			method: analysis.method,
+			fileId: analysis.fileId
+		});
 	}
 </script>
 
@@ -214,17 +218,32 @@
 					class:bg-red-100={analysis.status === 'error'}
 					class:text-red-800={analysis.status === 'error'}
 					class:bg-orange-100={analysis.status === 'cancelled' || analysis.status === 'interrupted'}
-					class:text-orange-800={analysis.status === 'cancelled' || analysis.status === 'interrupted'}
+					class:text-orange-800={analysis.status === 'cancelled' ||
+						analysis.status === 'interrupted'}
 					class:bg-blue-100={analysis.status === 'reconnecting'}
 					class:text-blue-800={analysis.status === 'reconnecting'}
 					class:bg-amber-100={analysis.status === 'connection_lost'}
 					class:text-amber-800={analysis.status === 'connection_lost'}
-					class:bg-gray-100={!['completed', 'running', 'pending', 'error', 'cancelled', 'interrupted', 'reconnecting', 'connection_lost'].includes(
-						analysis.status
-					)}
-					class:text-gray-800={!['completed', 'running', 'pending', 'error', 'cancelled', 'interrupted', 'reconnecting', 'connection_lost'].includes(
-						analysis.status
-					)}
+					class:bg-gray-100={![
+						'completed',
+						'running',
+						'pending',
+						'error',
+						'cancelled',
+						'interrupted',
+						'reconnecting',
+						'connection_lost'
+					].includes(analysis.status)}
+					class:text-gray-800={![
+						'completed',
+						'running',
+						'pending',
+						'error',
+						'cancelled',
+						'interrupted',
+						'reconnecting',
+						'connection_lost'
+					].includes(analysis.status)}
 				>
 					{#if analysis.status === 'running' || analysis.status === 'pending'}
 						<Loader2 class="-ml-0.5 mr-1.5 h-3 w-3 animate-spin" />
@@ -330,12 +349,18 @@
 				</button>
 			{/if}
 
-			<!-- Re-run button - for interrupted and connection_lost analyses -->
-			{#if analysis.status === 'interrupted' || analysis.status === 'connection_lost'}
+			<!-- Re-run button - for any run that ended without results. 'error' was excluded, which left a
+			     failed analysis with no way forward at all: no detail, no export, and nothing to click. -->
+			{#if analysis.status === 'error' || analysis.status === 'interrupted' || analysis.status === 'connection_lost'}
 				<button
 					on:click|stopPropagation={rerunAnalysis}
-					class="inline-flex items-center rounded px-2.5 py-1.5 text-xs font-medium transition-colors {analysis.status === 'connection_lost' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-orange-100 text-orange-700 hover:bg-orange-200'}"
-					title="Re-run this {analysis.status === 'connection_lost' ? 'disconnected' : 'interrupted'} analysis"
+					class="inline-flex items-center rounded px-2.5 py-1.5 text-xs font-medium transition-colors {analysis.status ===
+					'connection_lost'
+						? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+						: 'bg-orange-100 text-orange-700 hover:bg-orange-200'}"
+					title="Re-run this {analysis.status === 'connection_lost'
+						? 'disconnected'
+						: 'interrupted'} analysis"
 				>
 					<RefreshCw class="mr-1 h-3 w-3" />
 					Re-run
