@@ -5,6 +5,10 @@ function createToastStore() {
 
 	let toastId = 0;
 
+	// Track auto-dismiss timer handles keyed by toast id so they can be
+	// cleared when a toast is dismissed early (avoiding redundant timer fires).
+	const timers = new Map();
+
 	return {
 		subscribe,
 
@@ -33,9 +37,10 @@ function createToastStore() {
 
 			// Auto-dismiss after duration (if duration > 0)
 			if (toast.duration > 0) {
-				setTimeout(() => {
+				const handle = setTimeout(() => {
 					this.dismiss(id);
 				}, toast.duration);
+				timers.set(id, handle);
 			}
 
 			return id;
@@ -73,6 +78,11 @@ function createToastStore() {
 		 * Dismiss a specific toast by ID
 		 */
 		dismiss(id) {
+			const handle = timers.get(id);
+			if (handle !== undefined) {
+				clearTimeout(handle);
+				timers.delete(id);
+			}
 			update((toasts) => toasts.filter((t) => t.id !== id));
 		},
 
@@ -80,6 +90,10 @@ function createToastStore() {
 		 * Dismiss all toasts
 		 */
 		dismissAll() {
+			for (const handle of timers.values()) {
+				clearTimeout(handle);
+			}
+			timers.clear();
 			update(() => []);
 		}
 	};
