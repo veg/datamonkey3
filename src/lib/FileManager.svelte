@@ -1,6 +1,12 @@
 <script>
 	import { onMount } from 'svelte';
-	import { persistentFileStore, currentFile } from '../stores/fileInfo';
+	import {
+		persistentFileStore,
+		currentFile,
+		alignmentFileStore,
+		fileMetricsStore
+	} from '../stores/fileInfo';
+	import { treeStore } from '../stores/tree';
 	import { analysisStore } from '../stores/analyses';
 	import FileCard from './FileCard.svelte';
 	import { Search, Trash2, Loader2, File } from '$lib/icons';
@@ -139,9 +145,21 @@
 		}
 	}
 
+	// Reset the descriptor stores (alignment, metrics, trees) that describe the
+	// currently selected file, so stale UI is not shown after a delete/clear.
+	function resetFileDescriptorStores() {
+		alignmentFileStore.set(null);
+		fileMetricsStore.set(null);
+		treeStore.set({});
+	}
+
 	// Handle file deletion
 	async function deleteFile(fileId) {
 		try {
+			// Determine whether we are deleting the currently selected file, before
+			// the store clears currentFileId as part of the deletion.
+			const wasCurrentFile = $currentFile?.id === fileId;
+
 			// First delete any analyses associated with this file
 			const fileAnalyses = $analysisStore.analyses.filter((a) => a.fileId === fileId);
 			for (const analysis of fileAnalyses) {
@@ -150,6 +168,12 @@
 
 			// Then delete the file
 			await persistentFileStore.deleteFile(fileId);
+
+			// If the deleted file was the current one, clear its descriptor stores so
+			// the Data/Analyze tabs stop rendering stale alignment/tree UI.
+			if (wasCurrentFile) {
+				resetFileDescriptorStores();
+			}
 
 			// Track single file deletion
 			trackEvent('file-deleted', { fileCount: 1 });
@@ -219,6 +243,10 @@
 
 				// Clear the current file
 				persistentFileStore.setCurrentFile(null);
+
+				// Reset the descriptor stores so no deleted file's alignment/tree UI
+				// lingers in the Data/Analyze tabs.
+				resetFileDescriptorStores();
 
 				// Track bulk file deletion
 				trackEvent('file-deleted', { fileCount });
