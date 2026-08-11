@@ -113,7 +113,12 @@ test.describe('AxoMEME', () => {
 
 		// The analysis must reach a terminal state, and it must be success. An error toast here is the
 		// signal that the runtime or the model failed to load.
-		await expect(page.getByText(/AxoMEME prediction complete/i)).toBeVisible({ timeout: 120000 });
+		//
+		// This waits for the toast BaseAnalysisRunner.completeAnalysis fires, which is the only one.
+		// AnalyzeTab used to fire a second, AxoMEME-specific "AxoMEME prediction complete" on top of
+		// it; removing that duplicate left these assertions waiting on a string nothing emits any more,
+		// and all five tests that run an analysis timed out at 180s while the feature itself was fine.
+		await expect(page.getByText(/AXOMEME analysis complete/i)).toBeVisible({ timeout: 120000 });
 
 		// And the results must actually render. A completed analysis with nothing to show is the
 		// failure mode this test exists to catch.
@@ -174,7 +179,7 @@ test.describe('AxoMEME', () => {
 
 		await selectMethod(page, 'AxoMEME');
 		expect(await clickRunAnalysis(page), 'run button was not clickable').toBe(true);
-		await expect(page.getByText(/AxoMEME prediction complete/i)).toBeVisible({ timeout: 120000 });
+		await expect(page.getByText(/AXOMEME analysis complete/i)).toBeVisible({ timeout: 120000 });
 		await page
 			.getByRole('button', { name: /results/i })
 			.first()
@@ -231,7 +236,7 @@ test.describe('AxoMEME on the bundled demos', () => {
 			}).toPass({ timeout: 60000 });
 			await selectMethod(page, 'AxoMEME');
 			expect(await clickRunAnalysis(page), 'run button was not clickable').toBe(true);
-			await expect(page.getByText(/AxoMEME prediction complete/i)).toBeVisible({ timeout: 180000 });
+			await expect(page.getByText(/AXOMEME analysis complete/i)).toBeVisible({ timeout: 180000 });
 		});
 	}
 });
