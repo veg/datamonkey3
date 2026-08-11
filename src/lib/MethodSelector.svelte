@@ -962,11 +962,8 @@
 	// Method-specific advanced options state
 	let methodOptions = {};
 
-	// Tree data from store
-	let trees = {};
-	treeStore.subscribe((value) => {
-		trees = value;
-	});
+	// Tree data from store (auto-subscription; Svelte cleans it up on destroy)
+	$: trees = $treeStore;
 
 	// Get tree data for interactive selection
 	$: selectedTreeData = trees.nj || trees.usertree || trees.inferredNewick || '';
