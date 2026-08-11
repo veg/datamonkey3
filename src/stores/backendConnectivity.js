@@ -14,12 +14,19 @@ export const backendConnectivity = writable({
 // Store the persistent socket instance
 let persistentSocket = null;
 
+// Reference count of active consumers (mounted indicators, tabs, etc.).
+// The singleton socket is built once when the count goes 0 -> 1 and only
+// torn down when it returns to 0, so one consumer's teardown can't stomp
+// a socket another still needs.
+let referenceCount = 0;
+
 // Function to initialize persistent backend connection
 export function initializeBackendConnectivity(serverUrl = DATAMONKEY_SERVER_URL) {
-	// Clean up existing socket if any
+	// Track this consumer. If a socket already exists for the same URL, just
+	// share it rather than rebuilding (which would disrupt other consumers).
+	referenceCount += 1;
 	if (persistentSocket) {
-		persistentSocket.disconnect();
-		persistentSocket = null;
+		return persistentSocket;
 	}
 
 	backendConnectivity.update((state) => ({
@@ -129,6 +136,14 @@ export function reconnectBackend() {
 
 // Function to disconnect
 export function disconnectBackend() {
+	// Only tear down once every consumer has released the connection.
+	if (referenceCount > 0) {
+		referenceCount -= 1;
+	}
+	if (referenceCount > 0) {
+		return;
+	}
+
 	if (persistentSocket) {
 		persistentSocket.disconnect();
 		persistentSocket = null;
@@ -144,5 +159,15 @@ export function disconnectBackend() {
 // Function to change server URL and reconnect
 export function changeServerUrl(newServerUrl) {
 	console.log('🔄 Backend connectivity: Changing server URL to', newServerUrl);
+	// Tear down the existing socket without touching the reference count, then
+	// let initializeBackendConnectivity rebuild against the new URL. The +1/-1
+	// keeps referenceCount unchanged so existing consumers stay tracked.
+	if (persistentSocket) {
+		persistentSocket.disconnect();
+		persistentSocket = null;
+	}
+	if (referenceCount > 0) {
+		referenceCount -= 1;
+	}
 	initializeBackendConnectivity(newServerUrl);
 }
