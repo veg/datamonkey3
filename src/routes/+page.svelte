@@ -18,6 +18,7 @@
 	} from '../stores/analyses';
 	import { backendAnalysisRunner } from '../lib/services/BackendAnalysisRunner.js';
 	import { treeStore, addTree, updateTaggedTree, resetTrees } from '../stores/tree';
+	import { syncDescriptorStoresForFile as syncDescriptorStores } from '../lib/utils/descriptorSync.js';
 	import { trackEvent } from '../lib/utils/analytics.js';
 	import Aioli from '@biowasm/aioli';
 	import TreeSelector from '../lib/TreeSelector.svelte';
@@ -1102,43 +1103,22 @@
 		}
 	}
 
-	// Resync the descriptor stores (alignment/metrics/trees) to a given file so they
-	// describe the file that currentFile now points at. Used by the re-run path, which
-	// otherwise only flips currentFile and leaves the descriptor stores holding a
-	// different file's fasta+tree (issue #168).
+	// Resync the descriptor stores (alignment/metrics/trees) to a given file so they describe the file
+	// that currentFile now points at. Used by the re-run path, which otherwise only flips currentFile
+	// and leaves the descriptor stores holding a different file's fasta+tree (issue #168).
+	//
+	// The body lives in lib/utils/descriptorSync.js so it can be tested. As a local function here it
+	// had no seam a unit test could reach, which left the most dangerous of the state findings
+	// unverified.
 	async function syncDescriptorStoresForFile(fileId) {
-		try {
-			const alignmentFile = await persistentFileStore.getFile(fileId);
-			if (alignmentFile) {
-				file = alignmentFile;
-				alignmentFileStore.set(alignmentFile);
-			}
-
-			// Find the most recent completed datareader analysis for this file and
-			// rehydrate metrics + trees from it, mirroring the selection-reuse path.
-			const datareaderAnalyses = $analysisStore.analyses
-				.filter((a) => a.fileId === fileId && a.method === 'datareader' && a.status === 'completed')
-				.sort((a, b) => b.createdAt - a.createdAt);
-
-			trees = {};
-			treeData = resetTrees();
-
-			if (datareaderAnalyses[0]?.result) {
-				fileMetricsJSON = JSON.parse(datareaderAnalyses[0].result);
-				fileMetricsStore.set(fileMetricsJSON);
-
-				trees['nj'] = fileMetricsJSON.FILE_INFO?.nj;
-				trees['usertree'] = fileMetricsJSON?.FILE_PARTITION_INFO?.['0']?.usertree;
-				if (trees['nj']) {
-					treeData = addTree('nj', trees['nj'], treeData);
-				}
-				if (trees['usertree']) {
-					treeData = addTree('usertree', trees['usertree'], treeData);
-				}
-			}
-		} catch (err) {
-			console.error('Error resyncing descriptor stores for re-run file:', err);
-		}
+		const synced = await syncDescriptorStores(fileId, {
+			loadFile: (id) => persistentFileStore.getFile(id),
+			analyses: $analysisStore.analyses
+		});
+		if (synced.file) file = synced.file;
+		if (synced.metrics) fileMetricsJSON = synced.metrics;
+		trees = synced.trees;
+		treeData = synced.treeData;
 	}
 
 	// Handle tab switching events from child components

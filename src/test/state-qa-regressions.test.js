@@ -14,6 +14,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { get } from 'svelte/store';
 import { analysisStore } from '../stores/analyses.js';
 import { treeStore, addTree, removeTree, resetTrees } from '../stores/tree.js';
+import { alignmentFileStore, fileMetricsStore } from '../stores/fileInfo.js';
+import { syncDescriptorStoresForFile } from '../lib/utils/descriptorSync.js';
 
 // ---------------------------------------------------------------------------------------------
 // #165 — a Svelte store's state is not readable as a property of the store object
@@ -178,19 +180,101 @@ describe('#166 backend socket events route strictly by jobId', () => {
 // ---------------------------------------------------------------------------------------------
 
 describe('#168 re-run resyncs the descriptor stores', () => {
-	// NOT COVERED, and deliberately visible rather than quietly missing.
-	//
-	// The fix is `syncDescriptorStoresForFile()`, declared at +page.svelte:1109 as a local function
-	// inside the route component. It is not exported and there is no `context="module"` block, so
-	// there is no seam a unit test can reach — the only ways to exercise it are to drive the whole
-	// route in a browser, or to move the function into a module that both the component and a test
-	// can import.
-	//
-	// The bug it fixes is the most dangerous of the four: setting `currentFileId` without resyncing
-	// left the alignment, metrics and tree stores holding the PREVIOUS file's data, so a re-run
-	// submitted one file's sequences and tree under another file's id. That completes successfully
-	// and is attributed to the wrong file, which no assertion elsewhere in this suite would notice.
-	//
-	// Extracting it is a small change and would make this testable at the same level as #165-#167.
-	it.skip("submits the re-run file's own alignment and tree, not the previously selected one", () => {});
+	beforeEach(() => {
+		treeStore.set({});
+		alignmentFileStore.set(null);
+		fileMetricsStore.set(null);
+	});
+
+	/** A completed datareader result, the only thing that can rehydrate the descriptor stores. */
+	const datareader = (fileId, createdAt, { nj, usertree } = {}) => ({
+		fileId,
+		method: 'datareader',
+		status: 'completed',
+		createdAt,
+		result: JSON.stringify({
+			FILE_INFO: { nj },
+			FILE_PARTITION_INFO: { 0: { usertree } }
+		})
+	});
+
+	it("replaces the previous file's alignment and trees, not merges with them", async () => {
+		// The bug, end to end. File A is selected and its tree is in the store. A re-run belonging to
+		// file B flips currentFileId; without a resync the stores still hold A, so B's run is submitted
+		// with A's sequences and A's tree — and completes, attributed to B.
+		alignmentFileStore.set({ id: 'file-A', name: 'A.fasta' });
+		addTree('usertree', '((A1:0.1,A2:0.2):0.05,A3:0.3);', {});
+
+		const analyses = [
+			datareader('file-A', 100, { usertree: '((A1:0.1,A2:0.2):0.05,A3:0.3);' }),
+			datareader('file-B', 200, { nj: '((B1:0.4,B2:0.5):0.06,B3:0.7);' })
+		];
+
+		const out = await syncDescriptorStoresForFile('file-B', {
+			loadFile: async (id) => ({ id, name: `${id}.fasta` }),
+			analyses
+		});
+
+		expect(get(alignmentFileStore).id, 'alignment still points at the old file').toBe('file-B');
+		expect(out.file.id).toBe('file-B');
+		// A's usertree must be GONE, not merged alongside B's nj.
+		expect(get(treeStore).usertree, "the previous file's tree survived").toBeUndefined();
+		expect(get(treeStore).nj).toBe('((B1:0.4,B2:0.5):0.06,B3:0.7);');
+	});
+
+	it('leaves NO tree behind when the new file has none', async () => {
+		// The sharper case: B has a datareader result with no tree at all. Resetting only on the
+		// success path, or only when a tree is present, leaves A's tree in place — which is precisely
+		// how a tree-less alignment gets submitted with someone else's phylogeny.
+		addTree('usertree', '((A1:0.1,A2:0.2):0.05,A3:0.3);', {});
+		await syncDescriptorStoresForFile('file-B', {
+			loadFile: async (id) => ({ id }),
+			analyses: [datareader('file-B', 200)]
+		});
+		expect(get(treeStore)).toEqual({});
+	});
+
+	it('clears stale trees even when the file has no datareader result at all', async () => {
+		addTree('nj', '((A1:0.1,A2:0.2):0.05);', {});
+		await syncDescriptorStoresForFile('file-C', {
+			loadFile: async (id) => ({ id }),
+			analyses: []
+		});
+		expect(get(treeStore)).toEqual({});
+	});
+
+	it('uses the MOST RECENT datareader result for the file', async () => {
+		// A file can be re-read; the newest read is the one that describes it now.
+		await syncDescriptorStoresForFile('file-B', {
+			loadFile: async (id) => ({ id }),
+			analyses: [
+				datareader('file-B', 100, { nj: '(OLD);' }),
+				datareader('file-B', 300, { nj: '(NEW);' })
+			]
+		});
+		expect(get(treeStore).nj).toBe('(NEW);');
+	});
+
+	it('does not leave the previous file described when loading fails', async () => {
+		// An error must not fall back to "whatever was there" — that is the wrong-file submission
+		// again, arrived at by a different route.
+		alignmentFileStore.set({ id: 'file-A' });
+		addTree('usertree', '((A1:0.1,A2:0.2):0.05);', {});
+		const out = await syncDescriptorStoresForFile('file-B', {
+			loadFile: async () => {
+				throw new Error('IndexedDB unavailable');
+			},
+			analyses: []
+		});
+		expect(out.error).toBeInstanceOf(Error);
+		expect(get(treeStore), "the previous file's tree survived a failure").toEqual({});
+	});
+
+	it('ignores datareader results belonging to other files', async () => {
+		await syncDescriptorStoresForFile('file-B', {
+			loadFile: async (id) => ({ id }),
+			analyses: [datareader('file-A', 500, { nj: '(A_TREE);' })]
+		});
+		expect(get(treeStore).nj).toBeUndefined();
+	});
 });
