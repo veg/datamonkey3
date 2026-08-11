@@ -26,20 +26,33 @@ async function initDB() {
 			resolve(db);
 		};
 
+		// Surface (rather than silently hang on) an upgrade blocked because another
+		// tab still holds an open connection at the previous DB_VERSION.
+		request.onblocked = (event) => {
+			console.warn(
+				'IndexedDB upgrade blocked: another open connection is preventing the version change. ' +
+					'Please close other tabs running this app and reload.',
+				event
+			);
+			reject(
+				new Error(
+					'Database upgrade blocked by another open tab. Please close other tabs running Datamonkey and reload.'
+				)
+			);
+		};
+
 		request.onupgradeneeded = (event) => {
 			const db = event.target.result;
 
-			// Delete existing stores to start fresh (alpha version, no migration needed)
-			if (db.objectStoreNames.contains(FILES_STORE)) {
-				db.deleteObjectStore(FILES_STORE);
+			// Non-destructive migration: only create a store when it does not already
+			// exist so bumping DB_VERSION preserves previously stored files/analyses.
+			// (The old handler dropped and recreated both stores, wiping user data.)
+			if (!db.objectStoreNames.contains(FILES_STORE)) {
+				db.createObjectStore(FILES_STORE, { keyPath: 'id' });
 			}
-			if (db.objectStoreNames.contains(ANALYSES_STORE)) {
-				db.deleteObjectStore(ANALYSES_STORE);
+			if (!db.objectStoreNames.contains(ANALYSES_STORE)) {
+				db.createObjectStore(ANALYSES_STORE, { keyPath: 'id' });
 			}
-
-			// Create simplified stores (no indexes for small datasets)
-			db.createObjectStore(FILES_STORE, { keyPath: 'id' });
-			db.createObjectStore(ANALYSES_STORE, { keyPath: 'id' });
 		};
 	});
 }
@@ -58,7 +71,15 @@ export const fileStorage = {
 		try {
 			const db = await initDB();
 
-			// Check if a file with the same name already exists
+			// Check if a file with the same name already exists.
+			// NOTE (TOCTOU): findFileByName runs in its own read transaction and the
+			// add() below runs in a separate write transaction, so two truly-concurrent
+			// same-name uploads could both observe "no existing record" and both add(),
+			// creating duplicate records. This is not currently reachable because uploads
+			// are serialized through the store, and IndexedDB has no unique secondary-key
+			// constraint we could cheaply enforce here. Collapsing find+add into a single
+			// readwrite transaction would require reworking the helper methods (each opens
+			// its own transaction), so it is intentionally left as documented for now.
 			const existingFile = await this.findFileByName(file.name);
 
 			// If file exists and we're not forcing a new save, update it
@@ -101,8 +122,18 @@ export const fileStorage = {
 				};
 
 				request.onerror = (event) => {
-					console.error('Error saving file:', event.target.error);
-					reject(event.target.error);
+					const err = event.target.error;
+					if (err && err.name === 'QuotaExceededError') {
+						console.error('Storage quota exceeded while saving file:', err);
+						reject(
+							new Error(
+								'Not enough browser storage to save this file. Please delete some previously uploaded files or clear browser storage for this site and try again.'
+							)
+						);
+						return;
+					}
+					console.error('Error saving file:', err);
+					reject(err);
 				};
 			});
 		} catch (error) {
@@ -142,6 +173,19 @@ export const fileStorage = {
 			console.error('Error in getFile:', error);
 			throw error;
 		}
+	},
+
+	/**
+	 * Get a file's metadata from IndexedDB by ID, omitting the content ArrayBuffer.
+	 * Use this when only lightweight fields (id, createdAt, filename, etc.) are needed
+	 * so the full stored buffer is not round-tripped into memory.
+	 * @param {string} id - The ID of the file to retrieve
+	 * @returns {Promise<Object>} - The file record without its content buffer
+	 */
+	async getFileMetadata(id) {
+		const fileRecord = await this.getFile(id);
+		const { content, ...metadata } = fileRecord;
+		return metadata;
 	},
 
 	/**
@@ -309,8 +353,18 @@ export const analysisStorage = {
 				};
 
 				request.onerror = (event) => {
-					console.error('Error saving analysis:', event.target.error);
-					reject(event.target.error);
+					const err = event.target.error;
+					if (err && err.name === 'QuotaExceededError') {
+						console.error('Storage quota exceeded while saving analysis:', err);
+						reject(
+							new Error(
+								'Not enough browser storage to save this analysis. Please delete some previously saved analyses or clear browser storage for this site and try again.'
+							)
+						);
+						return;
+					}
+					console.error('Error saving analysis:', err);
+					reject(err);
 				};
 			});
 		} catch (error) {

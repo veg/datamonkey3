@@ -1,5 +1,6 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
+	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
 	import { aioliStore } from '../stores/aioli';
@@ -16,7 +17,8 @@
 		activeAnalyses
 	} from '../stores/analyses';
 	import { backendAnalysisRunner } from '../lib/services/BackendAnalysisRunner.js';
-	import { treeStore, addTree, updateTaggedTree } from '../stores/tree';
+	import { treeStore, addTree, updateTaggedTree, resetTrees } from '../stores/tree';
+	import { syncDescriptorStoresForFile as syncDescriptorStores } from '../lib/utils/descriptorSync.js';
 	import { trackEvent } from '../lib/utils/analytics.js';
 	import Aioli from '@biowasm/aioli';
 	import TreeSelector from '../lib/TreeSelector.svelte';
@@ -442,10 +444,13 @@
 				errorType: error.message?.substring(0, 50) || 'Unknown error'
 			});
 
-			// Update analysis with error
-			if (analysisStore.currentAnalysisId) {
-				await analysisStore.updateAnalysis(analysisStore.currentAnalysisId, {
-					status: 'completed',
+			// Update analysis with error. currentAnalysisId lives inside the store's
+			// state (createAnalysisStore returns an object literal that never surfaces
+			// it as a property), so read it via get() rather than off the store object.
+			const failedAnalysisId = get(analysisStore).currentAnalysisId;
+			if (failedAnalysisId) {
+				await analysisStore.updateAnalysis(failedAnalysisId, {
+					status: 'error',
 					result: JSON.stringify({ error: error.message })
 				});
 
@@ -612,6 +617,12 @@
 					: 'upload';
 		let currentStage = 'init';
 		try {
+			// Reset tree state at the start of every file load. addTree only ever adds
+			// keys, so without this a usertree extracted from a previous alignment would
+			// survive into a different file that has no tree of its own (issue #167).
+			trees = {};
+			treeData = resetTrees();
+
 			// Check if this is a file selection event (from FileManager)
 			if (event.isSelection) {
 				console.log('File selected from FileManager:', event.fileId);
@@ -640,9 +651,7 @@
 
 							// Extract trees
 							trees['nj'] = fileMetricsJSON.FILE_INFO?.nj;
-							if (fileMetricsJSON?.FILE_PARTITION_INFO) {
-								trees['usertree'] = fileMetricsJSON.FILE_PARTITION_INFO['0'].usertree;
-							}
+							trees['usertree'] = fileMetricsJSON?.FILE_PARTITION_INFO?.['0']?.usertree;
 
 							// Save extracted trees in treeData and update the tree store
 							if (trees['nj']) {
@@ -713,9 +722,7 @@
 
 					// Extract trees
 					trees['nj'] = fileMetricsJSON.FILE_INFO?.nj;
-					if (fileMetricsJSON?.FILE_PARTITION_INFO) {
-						trees['usertree'] = fileMetricsJSON.FILE_PARTITION_INFO['0'].usertree;
-					}
+					trees['usertree'] = fileMetricsJSON?.FILE_PARTITION_INFO?.['0']?.usertree;
 
 					// Save extracted trees in treeData and update the tree store
 					if (trees['nj']) {
@@ -914,9 +921,10 @@
 
 			// Extract trees
 			trees['nj'] = fileMetricsJSON.FILE_INFO?.nj;
-			if (fileMetricsJSON?.FILE_PARTITION_INFO) {
-				trees['usertree'] = fileMetricsJSON.FILE_PARTITION_INFO['0'].usertree;
-			}
+			// Guard the zero-key partition dereference: a present-but-empty or
+			// differently-keyed FILE_PARTITION_INFO must not throw mid-upload after
+			// stores were already set (issue #181).
+			trees['usertree'] = fileMetricsJSON?.FILE_PARTITION_INFO?.['0']?.usertree;
 
 			// Save extracted trees in treeData and update the tree store
 			if (trees['nj']) {
@@ -1095,8 +1103,26 @@
 		}
 	}
 
+	// Resync the descriptor stores (alignment/metrics/trees) to a given file so they describe the file
+	// that currentFile now points at. Used by the re-run path, which otherwise only flips currentFile
+	// and leaves the descriptor stores holding a different file's fasta+tree (issue #168).
+	//
+	// The body lives in lib/utils/descriptorSync.js so it can be tested. As a local function here it
+	// had no seam a unit test could reach, which left the most dangerous of the state findings
+	// unverified.
+	async function syncDescriptorStoresForFile(fileId) {
+		const synced = await syncDescriptorStores(fileId, {
+			loadFile: (id) => persistentFileStore.getFile(id),
+			analyses: $analysisStore.analyses
+		});
+		if (synced.file) file = synced.file;
+		if (synced.metrics) fileMetricsJSON = synced.metrics;
+		trees = synced.trees;
+		treeData = synced.treeData;
+	}
+
 	// Handle tab switching events from child components
-	function handleSwitchTab(event) {
+	async function handleSwitchTab(event) {
 		if (event.detail && event.detail.tabName) {
 			changeTab(event.detail.tabName);
 
@@ -1112,9 +1138,12 @@
 					selectedMethod = event.detail.method.toUpperCase();
 				}
 
-				// Set the current file if provided
+				// Set the current file if provided, and resync the descriptor stores so
+				// alignment/metrics/tree describe the re-run file rather than the
+				// previously-loaded one (issue #168).
 				if (event.detail.fileId) {
 					persistentFileStore.setCurrentFile(event.detail.fileId);
+					await syncDescriptorStoresForFile(event.detail.fileId);
 				}
 			}
 		}

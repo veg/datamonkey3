@@ -30,7 +30,10 @@ function createAnalysisStore() {
 					acc[a.status] = (acc[a.status] || 0) + 1;
 					return acc;
 				}, {});
-				console.log(`📊 [AnalysisStore] LOAD: ${analyses.length} analyses from IndexedDB`, statusCounts);
+				console.log(
+					`📊 [AnalysisStore] LOAD: ${analyses.length} analyses from IndexedDB`,
+					statusCounts
+				);
 
 				update((state) => ({ ...state, analyses, isLoading: false }));
 			} catch (error) {
@@ -119,6 +122,32 @@ function createAnalysisStore() {
 			try {
 				// Get the current analysis
 				const currentAnalysis = await analysisStorage.getAnalysis(analysisId);
+
+				// Guard against lost updates from the read-modify-write race:
+				// a stale running/reconnecting write (e.g. from reconnectToJobs) must not
+				// clobber a terminal record that a live completed/error event already wrote.
+				// Since getAnalysis() and saveAnalysis() are separate transactions, a
+				// concurrent completed-write can land in between; treat terminal states as final.
+				const TERMINAL_STATES = ['completed', 'error', 'cancelled'];
+				const NON_TERMINAL_INCOMING = [
+					'running',
+					'reconnecting',
+					'pending',
+					'initializing',
+					'processing'
+				];
+				if (
+					currentAnalysis &&
+					TERMINAL_STATES.includes(currentAnalysis.status) &&
+					data.status &&
+					NON_TERMINAL_INCOMING.includes(data.status)
+				) {
+					console.warn(
+						`📊 [AnalysisStore] Skipping stale '${data.status}' update for ${analysisId.slice(0, 8)}...; already '${currentAnalysis.status}'`
+					);
+					update((state) => ({ ...state, isLoading: false }));
+					return currentAnalysis;
+				}
 
 				// Merge the updates
 				const updatedAnalysis = {
@@ -255,7 +284,9 @@ function createAnalysisStore() {
 			let method = methodName;
 			let file = metadata.fileName || '';
 
-			console.log(`📊 [AnalysisStore] START: ${analysisId.slice(0, 8)}... method=${methodName} executionMode=${metadata.executionMode || 'unknown'}`);
+			console.log(
+				`📊 [AnalysisStore] START: ${analysisId.slice(0, 8)}... method=${methodName} executionMode=${metadata.executionMode || 'unknown'}`
+			);
 
 			update((state) => {
 				// Look up analysis details if not provided
@@ -313,14 +344,14 @@ function createAnalysisStore() {
 							updatedAt: Date.now()
 						};
 						await analysisStorage.saveAnalysis(updatedAnalysis);
-						console.log(`📊 [AnalysisStore] Persisted metadata (executionMode=${metadata.executionMode}, jobId=${metadata.jobId || 'n/a'}) for ${analysisId.slice(0, 8)}...`);
+						console.log(
+							`📊 [AnalysisStore] Persisted metadata (executionMode=${metadata.executionMode}, jobId=${metadata.jobId || 'n/a'}) for ${analysisId.slice(0, 8)}...`
+						);
 
 						// Also update the in-memory analyses array
 						update((state) => ({
 							...state,
-							analyses: state.analyses.map((a) =>
-								a.id === analysisId ? updatedAnalysis : a
-							)
+							analyses: state.analyses.map((a) => (a.id === analysisId ? updatedAnalysis : a))
 						}));
 					}
 				} catch (error) {
@@ -363,7 +394,9 @@ function createAnalysisStore() {
 		_updateAnalysisProgressByIdInternal(analysisId, status, progress, message, state) {
 			if (!analysisId) return state;
 
-			console.log(`📊 [AnalysisStore] UPDATE: ${analysisId.slice(0, 8)}... status=${status} progress=${progress}%`);
+			console.log(
+				`📊 [AnalysisStore] UPDATE: ${analysisId.slice(0, 8)}... status=${status} progress=${progress}%`
+			);
 
 			// Create log entry
 			const logEntry = { time: new Date().toISOString(), message, status };
@@ -492,8 +525,7 @@ function createAnalysisStore() {
 				} catch (error) {
 					console.error('Error updating analysis in IndexedDB:', error);
 				}
-
-				}
+			}
 		},
 
 		// Complete analysis progress by specific ID (atomic, avoids race conditions)
@@ -506,7 +538,9 @@ function createAnalysisStore() {
 
 			const status = success ? 'completed' : 'error';
 
-			console.log(`📊 [AnalysisStore] COMPLETE: ${analysisId.slice(0, 8)}... success=${success} status=${status}`);
+			console.log(
+				`📊 [AnalysisStore] COMPLETE: ${analysisId.slice(0, 8)}... success=${success} status=${status}`
+			);
 
 			// Get the active analysis data before updating
 			let activeAnalysisData = null;
@@ -663,7 +697,9 @@ function createAnalysisStore() {
 				return;
 			}
 
-			console.log(`📊 [AnalysisStore] Found ${interruptedAnalyses.length} interrupted WASM analyses`);
+			console.log(
+				`📊 [AnalysisStore] Found ${interruptedAnalyses.length} interrupted WASM analyses`
+			);
 
 			// Update each interrupted analysis
 			const updatedAnalyses = analyses.map((analysis) => {
@@ -687,7 +723,9 @@ function createAnalysisStore() {
 				if (analysis.status === 'interrupted') {
 					try {
 						await analysisStorage.saveAnalysis(analysis);
-						console.log(`📊 [AnalysisStore] Marked analysis ${analysis.id.slice(0, 8)}... as interrupted`);
+						console.log(
+							`📊 [AnalysisStore] Marked analysis ${analysis.id.slice(0, 8)}... as interrupted`
+						);
 					} catch (error) {
 						console.error(`Error saving interrupted analysis ${analysis.id}:`, error);
 					}
@@ -731,7 +769,9 @@ function createAnalysisStore() {
 				return [];
 			}
 
-			console.log(`📊 [AnalysisStore] Found ${backendToReconnect.length} backend analyses to reconnect`);
+			console.log(
+				`📊 [AnalysisStore] Found ${backendToReconnect.length} backend analyses to reconnect`
+			);
 
 			// Mark them as 'reconnecting' in both IndexedDB and store
 			const updatedAnalyses = analyses.map((analysis) => {
@@ -755,7 +795,9 @@ function createAnalysisStore() {
 				if (analysis.status === 'reconnecting') {
 					try {
 						await analysisStorage.saveAnalysis(analysis);
-						console.log(`📊 [AnalysisStore] Marked analysis ${analysis.id.slice(0, 8)}... as reconnecting`);
+						console.log(
+							`📊 [AnalysisStore] Marked analysis ${analysis.id.slice(0, 8)}... as reconnecting`
+						);
 					} catch (error) {
 						console.error(`Error saving reconnecting analysis ${analysis.id}:`, error);
 					}

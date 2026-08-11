@@ -140,21 +140,16 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 
 			const results = data.results || data;
 
-			// First, try to match by jobId if available
+			// Route strictly by jobId. Completing the "first" active analysis on a
+			// missing/unmatched jobId would misroute results between concurrent jobs.
 			if (data.jobId && this.activeAnalyses.has(data.jobId)) {
 				const analysisId = this.activeAnalyses.get(data.jobId);
 				await this.completeAnalysis(analysisId, true, results);
 				this.activeAnalyses.delete(data.jobId);
-			} else if (this.activeAnalyses.size > 0) {
-				// Fallback: If no jobId match but we have active analyses, complete the first one
-				const [firstJobId, analysisId] = this.activeAnalyses.entries().next().value;
-				await this.completeAnalysis(analysisId, true, results);
-				this.activeAnalyses.delete(firstJobId);
 			} else {
-				console.warn('⚠️ Completed analysis received but no active analyses:', {
+				console.warn('⚠️ Completed event without a matching jobId, ignoring to avoid misrouting:', {
 					receivedJobId: data.jobId,
-					activeAnalysesCount: this.activeAnalyses.size,
-					data: data
+					activeAnalysesCount: this.activeAnalyses.size
 				});
 			}
 		});
@@ -166,21 +161,30 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 			const errorMsg = error.message || error || '';
 			let userFacingError = `Analysis failed: ${errorMsg}`;
 
-			if (errorMsg.includes('Illegal right hand side in call to Topology') ||
+			if (
+				errorMsg.includes('Illegal right hand side in call to Topology') ||
 				errorMsg.includes('tree string is invalid') ||
-				errorMsg.includes('Newick tree spec')) {
-				userFacingError = 'Tree format error. Please select "Inferred NJ tree" in the Analyze tab, or upload a valid Newick tree file.';
+				errorMsg.includes('Newick tree spec')
+			) {
+				userFacingError =
+					'Tree format error. Please select "Inferred NJ tree" in the Analyze tab, or upload a valid Newick tree file.';
 			}
 
-			// Update all active analyses as failed (since we don't have specific job context)
-			for (const [jobId, analysisId] of this.activeAnalyses.entries()) {
-				await this.completeAnalysis(
-					analysisId,
-					false,
-					null,
-					userFacingError
+			// Route strictly by jobId. Failing every active analysis would incorrectly
+			// kill concurrent jobs that had nothing to do with this error.
+			const errorJobId = error.jobId || error.id;
+			if (errorJobId && this.activeAnalyses.has(errorJobId)) {
+				const analysisId = this.activeAnalyses.get(errorJobId);
+				await this.completeAnalysis(analysisId, false, null, userFacingError);
+				this.activeAnalyses.delete(errorJobId);
+			} else {
+				console.warn(
+					'⚠️ Script error without a matching jobId, not failing any analysis to avoid killing concurrent jobs:',
+					{
+						receivedJobId: errorJobId,
+						activeAnalysesCount: this.activeAnalyses.size
+					}
 				);
-				this.activeAnalyses.delete(jobId);
 			}
 		});
 
@@ -245,10 +249,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 			const cleanedFastaData = stripEmbeddedTrees(fastaData);
 
 			// Sanitize sequence names to remove characters invalid in Newick format
-			const { sanitizedFasta, sanitizedTree } = sanitizeSequenceNames(
-				cleanedFastaData,
-				treeData
-			);
+			const { sanitizedFasta, sanitizedTree } = sanitizeSequenceNames(cleanedFastaData, treeData);
 
 			console.log(`📤 Submitting ${method} analysis to backend:`, eventName, {
 				alignmentLength: sanitizedFasta.length,
@@ -322,9 +323,21 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 
 			console.log(`🔄 Querying status for job ${jobId} (analysis ${analysis.id.slice(0, 8)}...)`);
 
-			// Query current job status from backend
-			this.socket.emit('job:status', { jobId }, async (response) => {
+			// Query current job status from backend.
+			// Use an ack timeout so a dropped/never-invoked ack resolves the analysis
+			// out of the 'reconnecting' state instead of hanging forever.
+			this.socket.timeout(10000).emit('job:status', { jobId }, async (err, response) => {
 				try {
+					if (err || !response) {
+						// Ack timed out (or arrived empty) - server never confirmed status.
+						console.warn(`⏱️ job:status ack timed out for job ${jobId}, marking connection_lost`);
+						await analysisStore.updateAnalysis(analysis.id, {
+							status: 'connection_lost',
+							error: 'Timed out waiting for the server to report job status.',
+							updatedAt: Date.now()
+						});
+						return;
+					}
 					if (response.status === 'completed') {
 						// Job finished while we were away - retrieve results!
 						console.log(`✅ Job ${jobId} completed, retrieving results`);
@@ -422,7 +435,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 					resample: config.resample || 0,
 					'confidence-interval': config.confidenceIntervals ? true : false,
 					pvalue: config.pValueThreshold || 0.1,
-					branches: config.branchesToTest === 'Interactive' ? 'FG' : (config.branchesToTest || 'All'),
+					branches: config.branchesToTest === 'Interactive' ? 'FG' : config.branchesToTest || 'All',
 					samples: 100
 				};
 
@@ -430,7 +443,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 				return {
 					...baseParams,
 					pvalue: config.pvalue || config.pValueThreshold || 0.1,
-					branches: config.branchesToTest === 'Interactive' ? 'FG' : (config.branchesToTest || 'All'),
+					branches: config.branchesToTest === 'Interactive' ? 'FG' : config.branchesToTest || 'All',
 					samples: config.samples || 100,
 					code: config.code || 'Universal'
 				};
@@ -471,7 +484,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 				return {
 					...baseParams,
 					// Map aBSREL-specific parameters to backend format
-					branches: config.branchesToTest === 'Interactive' ? 'FG' : (config.branchesToTest || 'All'),
+					branches: config.branchesToTest === 'Interactive' ? 'FG' : config.branchesToTest || 'All',
 					multiple_hits: config.multipleHits || 'None',
 					srv: config.srv || 'Yes',
 					blb: config.blb || 1.0
@@ -497,7 +510,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 				return {
 					...baseParams,
 					// Map BUSTED-specific parameters to backend format
-					branches: config.branchesToTest === 'Interactive' ? 'FG' : (config.branchesToTest || 'All'),
+					branches: config.branchesToTest === 'Interactive' ? 'FG' : config.branchesToTest || 'All',
 					srv: config.srv || 'Yes',
 					'error-sink':
 						errorSinkValue === true
@@ -542,11 +555,18 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 				// Safety net: validate model is compatible with datatype
 				const nucleotideModels = ['GTR', 'HKY85', 'TN93', 'JC69'];
 				const proteinModels = ['JTT', 'WAG', 'LG', 'Dayhoff'];
-				if ((gardDatatype === 'nucleotide' || gardDatatype === 'codon') && !nucleotideModels.includes(gardModel)) {
-					console.warn(`GARD: Model "${gardModel}" incompatible with ${gardDatatype} data, falling back to GTR`);
+				if (
+					(gardDatatype === 'nucleotide' || gardDatatype === 'codon') &&
+					!nucleotideModels.includes(gardModel)
+				) {
+					console.warn(
+						`GARD: Model "${gardModel}" incompatible with ${gardDatatype} data, falling back to GTR`
+					);
 					gardModel = 'GTR';
 				} else if (gardDatatype === 'protein' && !proteinModels.includes(gardModel)) {
-					console.warn(`GARD: Model "${gardModel}" incompatible with protein data, falling back to JTT`);
+					console.warn(
+						`GARD: Model "${gardModel}" incompatible with protein data, falling back to JTT`
+					);
 					gardModel = 'JTT';
 				}
 
@@ -595,7 +615,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 				return {
 					...baseParams,
 					// Map PRIME-specific parameters to backend format
-					branches: config.branchesToTest === 'Interactive' ? 'FG' : (config.branchesToTest || 'All'),
+					branches: config.branchesToTest === 'Interactive' ? 'FG' : config.branchesToTest || 'All',
 					'property-set': config.propertySet || '5PROP',
 					pvalue: config.pValueThreshold || 0.1,
 					'impute-states': config.imputeStates || 'No'
