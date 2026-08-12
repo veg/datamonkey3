@@ -1185,8 +1185,14 @@
 		}
 	}
 
-	// Handle navigation from toast action (analysis completion)
-	function handleNavigateToResults() {
+	// Handle navigation from a toast action or a run row.
+	//
+	// The event carries the analysis it is about. Switching tabs alone was not enough: the detail
+	// pane renders whatever was selected before, so "View results" could land the user on an
+	// unrelated analysis -- or, on a fresh upload, on the invisible datareader job.
+	function handleNavigateToResults(event) {
+		const analysisId = event?.detail?.analysisId;
+		if (analysisId) selectAnalysis(analysisId);
 		changeTab('results');
 	}
 

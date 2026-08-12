@@ -82,6 +82,19 @@
 			})
 		}));
 
+	/**
+	 * Open a finished run.
+	 *
+	 * Both halves are required. Selecting without navigating leaves the user on Analyze with nothing
+	 * visibly changed -- the link appears dead. Navigating without selecting lands them on Results
+	 * showing whatever was selected before, which on a fresh upload is the invisible datareader job.
+	 * The event carries the id so the route can do the selection on its side too.
+	 */
+	function viewResults(id) {
+		analysisStore.setCurrentAnalysis(id);
+		window.dispatchEvent(new CustomEvent('navigate-to-results', { detail: { analysisId: id } }));
+	}
+
 	function dismiss(id) {
 		dismissed = new Set([...dismissed, id]);
 	}
@@ -105,7 +118,11 @@
 				<span class="spacer"></span>
 
 				{#if row.status === 'completed'}
-					<button class="run-action" on:click={() => analysisStore.setCurrentAnalysis(row.id)}>
+					<button
+						class="run-action"
+						data-testid="run-row-view-results"
+						on:click={() => viewResults(row.id)}
+					>
 						View results
 					</button>
 				{/if}
