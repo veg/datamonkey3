@@ -160,7 +160,15 @@ export class BaseAnalysisRunner {
 				}
 			});
 		} else {
-			toastStore.error(`${methodName} analysis failed: ${message || 'Unknown error'}`);
+			// Same affordance as the success case above. A failure is the toast a user is most likely
+			// to miss and most needs to act on, so it gets a route to the detail rather than being a
+			// dead end the moment it is dismissed.
+			toastStore.error(`${methodName} analysis failed: ${message || 'Unknown error'}`, {
+				action: 'See what happened',
+				onAction: () => {
+					window.dispatchEvent(new CustomEvent('navigate-to-results', { detail: { analysisId } }));
+				}
+			});
 		}
 
 		if (success && result) {

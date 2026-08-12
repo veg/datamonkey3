@@ -19,6 +19,7 @@
 	import { backendAnalysisRunner } from '../lib/services/BackendAnalysisRunner.js';
 	import { treeStore, addTree, updateTaggedTree, resetTrees } from '../stores/tree';
 	import { syncDescriptorStoresForFile as syncDescriptorStores } from '../lib/utils/descriptorSync.js';
+	import { resolveSelectedAnalysis } from '../lib/utils/analysisSelection.js';
 	import { trackEvent } from '../lib/utils/analytics.js';
 	import Aioli from '@biowasm/aioli';
 	import TreeSelector from '../lib/TreeSelector.svelte';
@@ -52,7 +53,6 @@
 	let cliObj;
 	let result;
 	let fileMetricsJSON;
-	let selectedAnalysisId = null;
 	let showAllHistory = false;
 	let activeTab = 'data'; // 'data', 'analyze', or 'results'
 	let selectedTree = 'nj';
@@ -60,6 +60,14 @@
 	let treeData = {};
 	let showBatchExport = false;
 	let analysisStartTime = null; // Track analysis start time for duration calculation
+
+	// Engine-load state. The HyPhy WASM engine is a ~6.4 MB download and the whole app is replaced by
+	// a spinner until it lands. Previously nothing caught a failure, so a mangled .wasm MIME type, a
+	// dropped connection or a partial cache all produced the same spinner that never ended, with no
+	// text to search for and no reason to retry. See issue #190.
+	let engineError = null;
+	let engineSlow = false;
+	let engineWatchdog = null;
 	let primeCardDismissed = false;
 
 	// Handle URL query parameter for tab navigation (e.g., /?tab=results)
@@ -196,9 +204,25 @@
 		}
 	};
 
+	// WHICH ANALYSIS THE DETAIL PANE SHOWS.
+	//
+	// This is derived from the store, not held locally. There used to be a second copy —
+	// `let selectedAnalysisId = null` — that only `selectAnalysis()` ever wrote, while the history
+	// list highlighted `$analysisStore.currentAnalysisId`. Every path that creates an analysis
+	// WITHOUT going through `selectAnalysis` — which is every real run — left the two disagreeing:
+	// the new run was highlighted blue in the list while the pane beside it still showed the previous
+	// selection, on a fresh upload the invisible `datareader` job. The user clicked "View Results" on
+	// their MEME run and got a screen headed "DATAREADER Analysis". See issue #188.
+	//
+	// Deriving it means the pane follows every `createAnalysis()` by construction, and the two can no
+	// longer drift apart, because there is only one of them.
+	$: selectedAnalysisId = resolveSelectedAnalysis(
+		$analysisStore.currentAnalysisId,
+		$analysisStore.analyses
+	);
+
 	// Select an analysis to view
 	function selectAnalysis(analysisId) {
-		selectedAnalysisId = analysisId;
 		analysisStore.setCurrentAnalysis(analysisId);
 	}
 
@@ -519,25 +543,78 @@
 		}
 	}
 
-	onMount(async () => {
-		// Initialize Aioli for HyPhy
-		cliObj = await new Aioli(
-			{
-				tool: 'hyphy',
-				version: '2.5.98',
-				urlPrefix: `${window.location.origin}/wasm/hyphy/2.5.98`
-			},
-			{
-				printInterleaved: false,
-				callback: updateHyphyProgress
+	/**
+	 * Load the HyPhy WASM engine. Returns true on success.
+	 *
+	 * Both the Aioli construction and the version exec are inside the try: the second is just as
+	 * capable of rejecting as the first, and an unhandled rejection anywhere here used to skip the
+	 * `loading = false` at the end of onMount and leave the spinner up permanently.
+	 */
+	async function initHyphyEngine() {
+		engineError = null;
+		engineSlow = false;
+		clearTimeout(engineWatchdog);
+
+		// The download continues; this only stops the user staring at an unlabelled spinner with no
+		// idea whether anything is still happening.
+		engineWatchdog = setTimeout(() => {
+			engineSlow = true;
+		}, 45000);
+
+		try {
+			cliObj = await new Aioli(
+				{
+					tool: 'hyphy',
+					version: '2.5.98',
+					urlPrefix: `${window.location.origin}/wasm/hyphy/2.5.98`
+				},
+				{
+					printInterleaved: false,
+					callback: updateHyphyProgress
+				}
+			);
+
+			aioliStore.set(cliObj);
+
+			// Get HyPhy version
+			result = await cliObj.exec('hyphy --version');
+			hyphyOut = result.stdout;
+			return true;
+		} catch (err) {
+			engineError = err instanceof Error ? err : new Error(String(err));
+			console.error('Failed to load the HyPhy WASM engine:', err);
+			return false;
+		} finally {
+			clearTimeout(engineWatchdog);
+		}
+	}
+
+	/**
+	 * Clear the browser caches holding the engine, then reload.
+	 *
+	 * A partial or corrupted cached copy reproduces the identical dead spinner, and a plain retry
+	 * would fetch the same bad bytes -- so this is offered as a separate action rather than folded
+	 * into the first retry, which would clear caches nobody needed cleared.
+	 */
+	async function retryEngineLoad({ clearCache = false } = {}) {
+		if (clearCache && typeof caches !== 'undefined') {
+			try {
+				const keys = await caches.keys();
+				await Promise.all(keys.map((k) => caches.delete(k)));
+			} catch (err) {
+				console.error('Could not clear cached engine:', err);
 			}
-		);
+		}
+		window.location.reload();
+	}
 
-		aioliStore.set(cliObj);
-
-		// Get HyPhy version
-		result = await cliObj.exec('hyphy --version');
-		hyphyOut = result.stdout;
+	onMount(async () => {
+		const engineReady = await initHyphyEngine();
+		if (!engineReady) {
+			// Show the error card rather than the spinner. Nothing below can work without the engine.
+			loading = false;
+			return;
+		}
 
 		// Load any previously saved files from browser storage
 		if (browser) {
@@ -622,6 +699,17 @@
 			// survive into a different file that has no tree of its own (issue #167).
 			trees = {};
 			treeData = resetTrees();
+
+			// Clear the descriptor stores too, for the same reason and at the same moment.
+			//
+			// Reading a 4 MB alignment takes 10-60 seconds, and for all of it the page kept rendering
+			// the PREVIOUS file: its metrics, its alignment viewer, its tree, and a green "Data ready
+			// for analysis" button. If the new file then failed validation, that stale description sat
+			// next to the red error, and Analyze happily offered to run on it. The delete path already
+			// models this correctly (FileManager.svelte:245-250); the upload path did not. Issue #189.
+			fileMetricsJSON = undefined;
+			fileMetricsStore.set(null);
+			alignmentFileStore.set(null);
 
 			// Check if this is a file selection event (from FileManager)
 			if (event.isSelection) {
@@ -1187,9 +1275,10 @@
 
 	// Handle navigation from a toast action or a run row.
 	//
-	// The event carries the analysis it is about. Switching tabs alone was not enough: the detail
-	// pane renders whatever was selected before, so "View results" could land the user on an
-	// unrelated analysis -- or, on a fresh upload, on the invisible datareader job.
+	// Two callers, one reason. The event carries the analysis it is about, because switching tabs
+	// alone was not enough: the detail pane renders whatever was selected before, so "See what
+	// happened" on a failed run, or "View results" on a finished one, could land the user on an
+	// unrelated analysis — or, on a fresh upload, on the invisible datareader job.
 	function handleNavigateToResults(event) {
 		const analysisId = event?.detail?.analysisId;
 		if (analysisId) selectAnalysis(analysisId);
@@ -1215,9 +1304,57 @@
 
 <div class="container mx-auto min-h-screen bg-brand-ghost">
 	{#if loading}
-		<div class="flex h-screen flex-col items-center justify-center px-4">
+		<div class="flex h-screen flex-col items-center justify-center px-4 text-center">
 			<div class="loader mb-premium-md"></div>
-			<p class="text-lg font-semibold text-brand-royal sm:text-premium-header">Loading HyPhy...</p>
+			<p class="text-lg font-semibold text-brand-royal sm:text-premium-header">
+				Loading the HyPhy analysis engine
+			</p>
+			<!-- Name the cost. It is a 6.4 MB download and the whole app is blocked on it; a bare
+			     spinner makes a normal wait indistinguishable from a hang. -->
+			<p class="text-text-muted mt-2 max-w-md text-sm">
+				About 6 MB, downloaded once and cached in your browser after this.
+			</p>
+			{#if engineSlow}
+				<p class="mt-4 max-w-md text-sm text-amber-700">
+					This is taking longer than usual. The download is still running — on a slow connection it
+					can take a few minutes. If it never finishes, reload the page to start over.
+				</p>
+			{/if}
+		</div>
+	{:else if engineError}
+		<div class="flex h-screen flex-col items-center justify-center px-4">
+			<div class="max-w-lg rounded-lg border border-red-200 bg-red-50 p-6 text-center">
+				<h2 class="mb-2 text-lg font-semibold text-red-800">
+					Couldn't load the HyPhy analysis engine
+				</h2>
+				<p class="mb-4 text-sm text-red-700">
+					The engine is a 6.4 MB download that runs the analyses in your browser. Check your
+					connection, and note that some institutional networks block or rewrite <code
+						class="rounded bg-red-100 px-1">.wasm</code
+					> files.
+				</p>
+				<p
+					class="mb-4 break-words rounded bg-white/70 p-2 text-left font-mono text-xs text-red-900"
+				>
+					{engineError.message}
+				</p>
+				<div class="flex flex-wrap justify-center gap-3">
+					<button
+						class="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+						onclick={() => retryEngineLoad()}
+					>
+						Try again
+					</button>
+					<!-- Second path on purpose: a partial or corrupted cached copy reproduces the same
+					     failure, and a plain retry would fetch the same bad bytes. -->
+					<button
+						class="rounded border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+						onclick={() => retryEngineLoad({ clearCache: true })}
+					>
+						Clear cached engine and retry
+					</button>
+				</div>
+			</div>
 		</div>
 	{:else}
 		<div class="pb-6 sm:pb-premium-xl">

@@ -13,6 +13,7 @@
 		getHyphyEyeUrl
 	} from './utils/hyphyEyeIntegration';
 	import { safeParseJSON } from './utils/jsonUtils';
+	import { formatArguments, formatLogTail, buildDiagnostics } from './utils/analysisDiagnostics.js';
 	import {
 		FelVisualization as HyphyScopeFel,
 		SimpleFelVisualization,
@@ -176,6 +177,26 @@
 		}
 	}
 
+	// Copying diagnostics is the difference between "it failed" and a message a maintainer can act
+	// on. Reverts to the idle label after two seconds; a permanently "Copied" button is a lie the
+	// second time someone clicks it.
+	let copiedDiagnostics = false;
+	async function copyDiagnostics() {
+		const text = buildDiagnostics(analysis, {
+			method: analysis?.method,
+			filename: file?.filename
+		});
+		try {
+			await navigator.clipboard.writeText(text);
+			copiedDiagnostics = true;
+			setTimeout(() => (copiedDiagnostics = false), 2000);
+		} catch (err) {
+			// Clipboard access can be refused (permissions, insecure context). Failing silently would
+			// leave the user believing they had copied something.
+			console.error('Could not copy diagnostics:', err);
+		}
+	}
+
 	onMount(() => {
 		if (analysisId) {
 			loadAnalysis(analysisId);
@@ -205,8 +226,11 @@
 		</div>
 	{:else if analysis && file}
 		<div class="analysis-container">
-			<!-- Export panel with options -->
-			<ExportPanel {analysisId} />
+			<!-- Export panel with options. Gated on a completed run: offering "Download JSON" for a failed
+			     analysis exports nothing and implies results exist. -->
+			{#if analysis.status === 'completed'}
+				<ExportPanel {analysisId} />
+			{/if}
 
 			<div class="bg-surface-sunken p-4">
 				<div class="flex items-center justify-between">
@@ -219,9 +243,11 @@
 						<span
 							class="font-semibold capitalize {analysis.status === 'completed'
 								? 'text-status-success'
-								: analysis.status === 'pending'
-									? 'text-status-warning'
-									: 'text-text-slate'}"
+								: ['error', 'interrupted', 'connection_lost'].includes(analysis.status)
+									? 'text-status-error-text'
+									: analysis.status === 'pending'
+										? 'text-status-warning'
+										: 'text-text-slate'}"
 						>
 							{analysis.status === 'completed' ? 'Completed' : analysis.status}
 						</span>
@@ -459,6 +485,61 @@
 							class="rounded bg-status-warning px-3 py-1 text-sm text-white hover:bg-accent-copper"
 						>
 							Retry Loading Results
+						</button>
+					</div>
+				{:else if ['error', 'interrupted', 'connection_lost'].includes(analysis.status)}
+					<!-- A failed run used to render "No results available" and stop there, even though the
+					     error text and the exact argument list were both already persisted and simply never
+					     read. This branch reads them. See issue #186. -->
+					<div class="rounded-lg border border-status-error bg-status-error-bg p-4">
+						<p class="mb-2 font-semibold text-status-error-text">
+							{analysis.status === 'error'
+								? 'This analysis failed.'
+								: analysis.status === 'connection_lost'
+									? 'The connection to the server was lost.'
+									: 'This analysis was interrupted.'}
+						</p>
+
+						{#if analysis.error}
+							<pre
+								class="mb-3 overflow-x-auto whitespace-pre-wrap rounded bg-white/70 p-3 text-left font-mono text-xs text-status-error-text">{analysis.error}</pre>
+						{:else}
+							<p class="mb-3 text-sm text-status-error-text">
+								No error detail was recorded for this run.
+							</p>
+						{/if}
+
+						{#if analysis.arguments}
+							<!-- The settings that produced the failure. Without these a re-run is guesswork, and
+							     six months later there is no way to recover what was actually run. -->
+							<details class="mb-3">
+								<summary class="cursor-pointer text-sm font-medium text-status-error-text">
+									Run settings
+								</summary>
+								<pre
+									class="mt-2 overflow-x-auto rounded bg-white/70 p-3 text-left font-mono text-xs text-text-slate">{formatArguments(
+										analysis.arguments
+									)}</pre>
+							</details>
+						{/if}
+
+						{#if analysis.logs?.length}
+							<details class="mb-3">
+								<summary class="cursor-pointer text-sm font-medium text-status-error-text">
+									Last {Math.min(20, analysis.logs.length)} log lines
+								</summary>
+								<pre
+									class="mt-2 max-h-64 overflow-auto rounded bg-white/70 p-3 text-left font-mono text-xs text-text-slate">{formatLogTail(
+										analysis.logs
+									)}</pre>
+							</details>
+						{/if}
+
+						<button
+							on:click={copyDiagnostics}
+							class="rounded border border-status-error px-3 py-1 text-sm text-status-error-text hover:bg-white/50"
+						>
+							{copiedDiagnostics ? 'Copied' : 'Copy diagnostics'}
 						</button>
 					</div>
 				{:else}

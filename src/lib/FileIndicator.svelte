@@ -1,7 +1,7 @@
 <script>
 	import { currentFile } from '../stores/fileInfo';
 	import { fileMetricsStore } from '../stores/fileInfo';
-	import { Dna, Users, Grid3X3, HardDrive, CheckCircle2 } from 'lucide-svelte';
+	import { Dna, Users, Grid3X3, HardDrive, CheckCircle2, AlertTriangle } from 'lucide-svelte';
 
 	// Format file size in a human-readable way
 	function formatFileSize(bytes) {
@@ -11,12 +11,18 @@
 		return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)}${units[i]}`;
 	}
 
-	// Determine which property to use for the filename
-	$: filename = $currentFile?.filename || $currentFile?.name || 'CD2-slim.fna';
+	// Determine which property to use for the filename.
+	//
+	// The old fallback here was the literal string 'CD2-slim.fna' -- a demo filename, shown for
+	// whatever file the user had actually chosen. Same for the 10 / 17 / 800 fallbacks below. A
+	// plausible-looking wrong number is worse than a blank, because nothing prompts the user to
+	// doubt it. Issue #189.
+	$: filename = $currentFile?.filename || $currentFile?.name || 'Untitled';
 
-	// For debugging
-	$: console.log('Current File:', $currentFile);
-	$: console.log('File Metrics:', $fileMetricsStore);
+	// Whether the current file actually passed validation. The component had NO validity input at
+	// all and emitted "Valid for analysis" unconditionally -- including above a file whose read had
+	// just failed, and above the previous file's sequence and site counts.
+	$: fileFailedValidation = Boolean($fileMetricsStore?.error && !$fileMetricsStore?.FILE_INFO);
 </script>
 
 {#if $currentFile}
@@ -51,18 +57,27 @@
 						{/if}
 						<span class="flex items-center" title="File Size">
 							<HardDrive class="mr-1 h-4 w-4 text-text-slate" />
-							<span class="text-text-rich">{formatFileSize($currentFile.size || 800)}</span>
+							<span class="text-text-rich">{formatFileSize($currentFile.size)}</span>
 						</span>
 					</div>
 				</div>
 			</div>
 			<div>
-				<div
-					class="flex items-center rounded-premium-sm bg-white px-premium-sm py-premium-xs text-premium-caption font-medium text-accent-copper"
-				>
-					<CheckCircle2 class="mr-1 h-4 w-4" />
-					Valid for analysis
-				</div>
+				{#if fileFailedValidation}
+					<div
+						class="flex items-center rounded-premium-sm bg-white px-premium-sm py-premium-xs text-premium-caption font-medium text-status-warning-text"
+					>
+						<AlertTriangle class="mr-1 h-4 w-4" />
+						Not validated — see the errors on the Data tab
+					</div>
+				{:else}
+					<div
+						class="flex items-center rounded-premium-sm bg-white px-premium-sm py-premium-xs text-premium-caption font-medium text-accent-copper"
+					>
+						<CheckCircle2 class="mr-1 h-4 w-4" />
+						Valid for analysis
+					</div>
+				{/if}
 			</div>
 		</div>
 	</div>
