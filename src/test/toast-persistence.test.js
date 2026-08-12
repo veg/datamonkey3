@@ -98,3 +98,61 @@ describe('#187 hovering or focusing a toast stops its dismiss clock', () => {
 		expect(get(toastStore)).toHaveLength(1);
 	});
 });
+
+/**
+ * Issue #205 — the regression that persistent errors introduced.
+ *
+ * Making errors permanent was right, but it moved a responsibility onto the caller that nothing was
+ * discharging: a message describing one file must not outlive the moment the user moves to another
+ * file. Before #187 the 8-second timer hid this; after it, a validation error naming file A sat on
+ * screen while the user looked at file B, describing sequences that were no longer loaded.
+ */
+describe('#205 stale errors do not follow the user to the next file', () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		toastStore.dismissAll();
+	});
+	afterEach(() => {
+		toastStore.dismissAll();
+		vi.useRealTimers();
+	});
+
+	it('dismisses errors and warnings but keeps successes', () => {
+		toastStore.error('In-frame stop codons found in 4 of 8 sequences');
+		toastStore.warning('Short alignment');
+		toastStore.success('FEL analysis complete!');
+
+		const removed = toastStore.dismissWhere((t) => t.type === 'error' || t.type === 'warning');
+
+		expect(removed).toBe(2);
+		const left = get(toastStore);
+		expect(left).toHaveLength(1);
+		// The success toast links to an analysis that still exists, so it is not stale.
+		expect(left[0].type).toBe('success');
+	});
+
+	it('is a no-op when nothing matches', () => {
+		toastStore.success('done');
+		expect(toastStore.dismissWhere((t) => t.type === 'error')).toBe(0);
+		expect(get(toastStore)).toHaveLength(1);
+	});
+
+	it('clears the timer of a dismissed toast, not just the entry', () => {
+		toastStore.warning('short alignment'); // 5s default
+		toastStore.dismissWhere((t) => t.type === 'warning');
+		expect(get(toastStore)).toHaveLength(0);
+		// If the handle leaked, this would fire against a removed id.
+		expect(() => vi.advanceTimersByTime(10_000)).not.toThrow();
+		expect(get(toastStore)).toHaveLength(0);
+	});
+
+	it('survives a predicate that throws', () => {
+		toastStore.error('boom');
+		expect(() =>
+			toastStore.dismissWhere(() => {
+				throw new Error('bad predicate');
+			})
+		).not.toThrow();
+		expect(get(toastStore)).toHaveLength(1);
+	});
+});

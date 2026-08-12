@@ -132,6 +132,34 @@ function createToastStore() {
 		},
 
 		/**
+		 * Dismiss every toast matching a predicate.
+		 *
+		 * Exists because errors no longer auto-dismiss. That was the right call -- an 8-second window
+		 * routinely expired while the user was reading, or in another window -- but it made something
+		 * else the caller's job: a message describing one file must not outlive the moment the user
+		 * moves to a different file. Nothing was doing that, so a validation error about file A hung
+		 * over file B, which is the wrong-file class of bug this app has spent a lot of effort
+		 * removing. See issue #205.
+		 *
+		 * @param {(toast: {id: number, type: string, message: string}) => boolean} predicate
+		 */
+		dismissWhere(predicate) {
+			const doomed = [];
+			const unsub = subscribe((toasts) => {
+				for (const t of toasts) {
+					try {
+						if (predicate(t)) doomed.push(t.id);
+					} catch {
+						// A throwing predicate must not take out the toast system.
+					}
+				}
+			});
+			unsub();
+			for (const id of doomed) this.dismiss(id);
+			return doomed.length;
+		},
+
+		/**
 		 * Dismiss all toasts
 		 */
 		dismissAll() {
