@@ -275,18 +275,18 @@ export function sanitizeSequenceNames(fastaData, treeData) {
  * Only entries that differ from Universal (0) are listed separately.
  */
 const STOP_CODONS_BY_GENETIC_CODE = {
-	0: ['TAA', 'TAG', 'TGA'],  // Universal
-	1: ['TAA', 'TAG', 'AGA', 'AGG'],  // Vertebrate mitochondrial
-	2: ['TAA', 'TAG'],  // Yeast mitochondrial
-	3: ['TAA', 'TAG'],  // Mold mitochondrial
-	4: ['TAA', 'TAG'],  // Invertebrate mitochondrial
-	5: ['TGA'],  // Ciliate nuclear (TAA/TAG code for Gln)
-	6: ['TAA', 'TAG'],  // Echinoderm mitochondrial
-	7: ['TAA', 'TAG'],  // Euplotid nuclear
-	8: ['TAA', 'TAG', 'TGA'],  // Alternative yeast nuclear
-	9: ['TAA', 'TAG'],  // Ascidian mitochondrial
-	10: ['TAA', 'TAG'],  // Flatworm mitochondrial
-	11: ['TAA', 'TGA']  // Blepharisma nuclear
+	0: ['TAA', 'TAG', 'TGA'], // Universal
+	1: ['TAA', 'TAG', 'AGA', 'AGG'], // Vertebrate mitochondrial
+	2: ['TAA', 'TAG'], // Yeast mitochondrial
+	3: ['TAA', 'TAG'], // Mold mitochondrial
+	4: ['TAA', 'TAG'], // Invertebrate mitochondrial
+	5: ['TGA'], // Ciliate nuclear (TAA/TAG code for Gln)
+	6: ['TAA', 'TAG'], // Echinoderm mitochondrial
+	7: ['TAA', 'TAG'], // Euplotid nuclear
+	8: ['TAA', 'TAG', 'TGA'], // Alternative yeast nuclear
+	9: ['TAA', 'TAG'], // Ascidian mitochondrial
+	10: ['TAA', 'TAG'], // Flatworm mitochondrial
+	11: ['TAA', 'TGA'] // Blepharisma nuclear
 };
 
 /**
@@ -392,6 +392,163 @@ export function parseAlignment(content) {
  * @param {number} [geneticCodeId=0] - Genetic code ID (0 = Universal)
  * @returns {{ valid: boolean, errors: string[] }}
  */
+/**
+ * Human-readable names for the genetic codes above, so a report can say which one it used.
+ * Ids match HyPhy's numbering and the selector in MethodSelector.
+ */
+const GENETIC_CODE_NAMES = {
+	0: 'Universal',
+	1: 'Vertebrate mitochondrial',
+	2: 'Yeast mitochondrial',
+	3: 'Mold mitochondrial',
+	4: 'Invertebrate mitochondrial',
+	5: 'Ciliate nuclear',
+	6: 'Echinoderm mitochondrial',
+	7: 'Euplotid nuclear',
+	8: 'Alternative yeast nuclear',
+	9: 'Ascidian mitochondrial',
+	10: 'Flatworm mitochondrial',
+	11: 'Blepharisma nuclear'
+};
+
+/** Characters treated as a gap or missing data. */
+const GAP_CHARS = /[-.?~]/;
+
+/**
+ * Locate in-frame stop codons, in ALIGNMENT coordinates.
+ *
+ * This reports what is in the file. It draws no conclusion about what the file should be, and
+ * nothing here suggests an edit: which of several very different causes produced a premature stop
+ * -- a frameshift, a pseudogene, a sequencing error, a genuine nonsense mutation, or simply the
+ * wrong genetic code -- is a question about the data, and the answer is not the software's to give.
+ *
+ * FOUR DECISIONS THAT MAKE THE NUMBERS MEAN SOMETHING:
+ *
+ * 1. Positions are codon COLUMNS OF THE ALIGNMENT, counting from 1. The previous implementation
+ *    stripped gaps first and reported positions in ungapped coordinates, which correspond to no
+ *    column the user can look at -- in a gapped alignment they point somewhere else entirely.
+ *    HyPhy works in alignment columns and so does the alignment viewer.
+ *
+ * 2. Nothing is scanned unless the alignment length is a multiple of three. Without that, codon
+ *    columns are not defined, and any stop codon "found" would be an artefact of an arbitrary
+ *    frame rather than a fact about the data.
+ *
+ * 3. Each sequence's own last non-gap codon is skipped. A terminal stop is ordinary, and sequences
+ *    end at different columns when there are trailing gaps.
+ *
+ * 4. Only unambiguous ACGT codons are called. A codon containing a gap or an ambiguity code is not
+ *    a codon we can read, so it is passed over rather than guessed at.
+ *
+ * @param {string} alignmentData
+ * @param {number} geneticCodeId
+ * @returns {{scanned: boolean, reason?: string, geneticCode: string, totalSequences: number,
+ *   affected: Array<{header: string, hits: Array<{position: number, codon: string}>}>}}
+ */
+export function findStopCodons(alignmentData, geneticCodeId = 0) {
+	const geneticCode = GENETIC_CODE_NAMES[geneticCodeId] ?? `code ${geneticCodeId}`;
+	const empty = { scanned: false, geneticCode, totalSequences: 0, affected: [] };
+
+	if (!alignmentData || !alignmentData.trim()) {
+		return { ...empty, reason: 'no alignment data' };
+	}
+
+	let parsed;
+	try {
+		parsed = parseAlignment(alignmentData);
+	} catch (e) {
+		return { ...empty, reason: e.message };
+	}
+
+	const sequences = parsed?.sequences ?? [];
+	if (sequences.length === 0) return { ...empty, reason: 'no sequences found' };
+
+	const columns = sequences[0].sequence.length;
+	if (columns % 3 !== 0) {
+		// Decision 2. Say why nothing was scanned rather than silently reporting nothing.
+		return {
+			...empty,
+			totalSequences: sequences.length,
+			reason: `alignment length (${columns}) is not a multiple of 3, so codon positions are undefined`
+		};
+	}
+
+	const stopSet = new Set(
+		STOP_CODONS_BY_GENETIC_CODE[geneticCodeId] || STOP_CODONS_BY_GENETIC_CODE[0]
+	);
+
+	const affected = [];
+	for (const seq of sequences) {
+		const raw = String(seq.sequence ?? '').toUpperCase();
+		const codons = [];
+		for (let c = 0; c + 3 <= raw.length; c += 3) codons.push(raw.substring(c, c + 3));
+
+		// Decision 3: the sequence's own last codon that is not entirely gap.
+		let lastReal = -1;
+		for (let i = codons.length - 1; i >= 0; i--) {
+			if (!/^[-.?~]{3}$/.test(codons[i])) {
+				lastReal = i;
+				break;
+			}
+		}
+
+		const hits = [];
+		for (let i = 0; i < codons.length; i++) {
+			if (i === lastReal) continue;
+			const codon = codons[i];
+			// Decision 4.
+			if (GAP_CHARS.test(codon) || !/^[ACGT]{3}$/.test(codon)) continue;
+			if (stopSet.has(codon)) hits.push({ position: i + 1, codon });
+		}
+
+		if (hits.length) affected.push({ header: seq.header, hits });
+	}
+
+	return { scanned: true, geneticCode, totalSequences: sequences.length, affected };
+}
+
+/**
+ * Render a stop-codon finding as plain text.
+ *
+ * Description only. No recommendation, no proposed edit, no next step -- the reader is a
+ * molecular biologist looking at their own data, and they do not need software to tell them what a
+ * premature stop codon might mean.
+ *
+ * @param {ReturnType<typeof findStopCodons>} finding
+ * @param {{maxSequences?: number, maxPerSequence?: number}} [limits]
+ * @returns {string} empty when there is nothing to report
+ */
+export function formatStopCodonReport(finding, { maxSequences = 10, maxPerSequence = 5 } = {}) {
+	if (!finding?.scanned || finding.affected.length === 0) return '';
+
+	const n = finding.affected.length;
+	const total = finding.totalSequences;
+	const lines = [
+		`In-frame stop codons found in ${n} of ${total} ${total === 1 ? 'sequence' : 'sequences'}, ` +
+			`reading the ${finding.geneticCode} genetic code.`,
+		''
+	];
+
+	for (const seq of finding.affected.slice(0, maxSequences)) {
+		const shown = seq.hits
+			.slice(0, maxPerSequence)
+			.map((h) => `codon ${h.position} (${h.codon})`)
+			.join(', ');
+		const extra =
+			seq.hits.length > maxPerSequence ? `, and ${seq.hits.length - maxPerSequence} more` : '';
+		lines.push(`  ${seq.header}: ${shown}${extra}`);
+	}
+
+	if (n > maxSequences) lines.push(`  ...and ${n - maxSequences} further sequences.`);
+
+	lines.push(
+		'',
+		'Positions are codon columns of the alignment, counting from 1. The final codon of each ' +
+			'sequence is not counted.'
+	);
+
+	return lines.join('\n');
+}
+
 export function validateCodonAlignment(alignmentData, geneticCodeId = 0) {
 	const errors = [];
 
@@ -418,38 +575,24 @@ export function validateCodonAlignment(alignmentData, geneticCodeId = 0) {
 	if (alignmentSites % 3 !== 0) {
 		errors.push(
 			`Alignment site count (${alignmentSites}) is not divisible by 3. ` +
-			`Codon-based analyses require the alignment length to be a multiple of 3.`
+				`Codon-based analyses require the alignment length to be a multiple of 3.`
 		);
 	}
 
-	// Determine stop codons for this genetic code
-	const stopCodons = STOP_CODONS_BY_GENETIC_CODE[geneticCodeId] ||
-		STOP_CODONS_BY_GENETIC_CODE[0];
+	// In-frame stop codons, reported as one consolidated finding.
+	//
+	// This replaces a per-sequence loop that pushed one long sentence per affected sequence -- for a
+	// 200-sequence alignment that produced 200 lines, joined with newlines and shown in a toast. It
+	// also reported positions in UNGAPPED coordinates, obtained by stripping gaps before scanning,
+	// which point at no column the user can actually look at.
+	//
+	// findStopCodons works in alignment columns and reports every occurrence rather than the first
+	// per sequence. See its comment for the four decisions that make the numbers meaningful.
+	const stopFinding = findStopCodons(alignmentData, geneticCodeId);
+	const stopReport = formatStopCodonReport(stopFinding);
+	if (stopReport) errors.push(stopReport);
 
-	const stopCodonSet = new Set(stopCodons);
-
-	// Scan each sequence for in-frame stop codons (excluding the last codon)
-	for (const seq of sequences) {
-		const cleanSeq = seq.sequence.replace(/[-.]/g, '').toUpperCase();
-		// Only check if ungapped length is divisible by 3
-		if (cleanSeq.length % 3 !== 0) continue;
-
-		const lastCodonStart = cleanSeq.length - 3;
-		for (let i = 0; i < lastCodonStart; i += 3) {
-			const codon = cleanSeq.substring(i, i + 3);
-			if (stopCodonSet.has(codon)) {
-				const codonPosition = (i / 3) + 1;
-				errors.push(
-					`In-frame stop codon (${codon}) found in sequence "${seq.header}" ` +
-					`at codon position ${codonPosition}. Codon-based analyses cannot proceed ` +
-					`with premature stop codons.`
-				);
-				break;
-			}
-		}
-	}
-
-	return { valid: errors.length === 0, errors };
+	return { valid: errors.length === 0, errors, stopCodons: stopFinding };
 }
 
 /**

@@ -67,7 +67,9 @@ describe('validateCodonAlignment', () => {
 			const result = validateCodonAlignment(data, 0);
 			expect(result.valid).toBe(false);
 			expect(result.errors[0]).toContain('TAA');
-			expect(result.errors[0]).toContain('codon position 2');
+			// Position is unchanged; the wording is not. Stop codons are now reported as one
+			// consolidated finding in alignment-column coordinates: "codon 2 (TAA)".
+			expect(result.errors[0]).toContain('codon 2 (TAA)');
 		});
 
 		it('detects TAG stop codon in-frame', () => {
@@ -111,7 +113,13 @@ describe('validateCodonAlignment', () => {
 			]);
 			const result = validateCodonAlignment(data, 0);
 			expect(result.valid).toBe(false);
-			expect(result.errors).toHaveLength(2);
+			// ONE consolidated entry now, not one per sequence -- a 200-sequence alignment used to
+			// produce 200 lines joined into a single toast. Both sequences must still be named, so
+			// the consolidation loses nothing.
+			expect(result.errors).toHaveLength(1);
+			expect(result.errors[0]).toContain('2 of 2 sequences');
+			expect(result.errors[0]).toContain('Seq1: codon 2 (TAA)');
+			expect(result.errors[0]).toContain('Seq2: codon 2 (TAG)');
 		});
 	});
 
