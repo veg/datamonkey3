@@ -7,6 +7,8 @@ import { analysisStore } from '../../stores/analyses.js';
 import { toastStore } from '../../stores/toast.js';
 import { get } from 'svelte/store';
 import { validateCodonAlignment, isJSParseableFormat } from '../utils/fastaValidation.js';
+import { fileMetricsStore } from '../../stores/fileInfo.js';
+import { calculateRuntimeEstimate } from '../utils/timingEstimates.js';
 
 /**
  * Methods that require codon-aligned input (sequence length divisible by 3, no premature stop codons).
@@ -27,6 +29,27 @@ const CODON_AWARE_METHODS = new Set([
 	'b-still',
 	'bstill'
 ]);
+
+/**
+ * Pre-run runtime estimate in seconds, or null when one cannot be made.
+ *
+ * Reads the alignment dimensions from `fileMetricsStore`, which datareader has already populated by
+ * the time any analysis can be started -- so this costs no parsing and no extra state.
+ */
+function estimateSecondsFor(method, executionMode) {
+	try {
+		const info = get(fileMetricsStore)?.FILE_INFO;
+		const sequences = info?.sequences;
+		const sites = info?.sites;
+		if (!sequences || !sites) return null;
+
+		const estimate = calculateRuntimeEstimate(method, sequences, sites, executionMode);
+		return estimate?.minutes ? Math.round(estimate.minutes * 60) : null;
+	} catch {
+		// An estimate is a nicety. Never let it break starting an analysis.
+		return null;
+	}
+}
 
 export class BaseAnalysisRunner {
 	constructor() {
@@ -77,6 +100,18 @@ export class BaseAnalysisRunner {
 			executionMode,
 			startTime: new Date().toISOString()
 		};
+
+		// Capture the pre-run estimate so the run row can tell an ordinary wait from a stuck one.
+		//
+		// It is stored as a NUMBER OF SECONDS and used only to decide when the row's sentence changes
+		// -- never displayed beside the elapsed clock. The fitted power law is R^2 ~ 0.63: good to a
+		// factor of two, not to the minute, so showing it as a countdown would be a promise the
+		// software cannot keep. Methods with no fitted equation simply get no key, and the row then
+		// reports elapsed time and says nothing else.
+		const estimateSeconds = estimateSecondsFor(method, executionMode);
+		if (estimateSeconds) {
+			metadata.estimateSeconds = estimateSeconds;
+		}
 
 		// Add arguments to metadata if provided
 		if (args) {
