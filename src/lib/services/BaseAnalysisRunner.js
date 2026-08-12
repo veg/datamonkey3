@@ -12,8 +12,20 @@ import { validateCodonAlignment, isJSParseableFormat } from '../utils/fastaValid
  * Methods that require codon-aligned input (sequence length divisible by 3, no premature stop codons).
  */
 const CODON_AWARE_METHODS = new Set([
-	'fel', 'slac', 'fubar', 'meme', 'absrel', 'busted', 'relax',
-	'contrast-fel', 'bgm', 'prime', 'multi-hit', 'multihit', 'b-still', 'bstill'
+	'fel',
+	'slac',
+	'fubar',
+	'meme',
+	'absrel',
+	'busted',
+	'relax',
+	'contrast-fel',
+	'bgm',
+	'prime',
+	'multi-hit',
+	'multihit',
+	'b-still',
+	'bstill'
 ]);
 
 export class BaseAnalysisRunner {
@@ -51,7 +63,14 @@ export class BaseAnalysisRunner {
 	 * @param {object|null} args - Optional arguments preview
 	 * @param {string|null} jobId - Optional backend job ID (for reconnection support)
 	 */
-	startAnalysisTracking(analysisId, method, executionMode, message = null, args = null, jobId = null) {
+	startAnalysisTracking(
+		analysisId,
+		method,
+		executionMode,
+		message = null,
+		args = null,
+		jobId = null
+	) {
 		const defaultMessage = message || `Starting ${method} analysis...`;
 
 		const metadata = {
@@ -106,7 +125,15 @@ export class BaseAnalysisRunner {
 				}
 			});
 		} else {
-			toastStore.error(`${methodName} analysis failed: ${message || 'Unknown error'}`);
+			// Same affordance as the success case above. A failure is the toast a user is most likely
+			// to miss and most needs to act on, so it gets a route to the detail rather than being a
+			// dead end the moment it is dismissed.
+			toastStore.error(`${methodName} analysis failed: ${message || 'Unknown error'}`, {
+				action: 'See what happened',
+				onAction: () => {
+					window.dispatchEvent(new CustomEvent('navigate-to-results', { detail: { analysisId } }));
+				}
+			});
 		}
 
 		if (success && result) {
@@ -142,7 +169,11 @@ export class BaseAnalysisRunner {
 
 		// Use the ID-specific method to avoid race conditions and ensure correct analysis is updated
 		if (analysisId) {
-			await analysisStore.completeAnalysisProgressById(analysisId, success, message || defaultMessage);
+			await analysisStore.completeAnalysisProgressById(
+				analysisId,
+				success,
+				message || defaultMessage
+			);
 			// Remove from active analyses after completion
 			analysisStore.removeFromActiveAnalyses(analysisId);
 		} else {

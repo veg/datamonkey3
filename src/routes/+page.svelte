@@ -1202,7 +1202,13 @@
 	}
 
 	// Handle navigation from toast action (analysis completion)
-	function handleNavigateToResults() {
+	//
+	// The event now carries the analysis it is about. Switching tabs alone was not enough: the
+	// detail pane shows whatever was selected before, so "See what happened" on a failure could
+	// land the user on an unrelated analysis — exactly the run they were not asking about.
+	function handleNavigateToResults(event) {
+		const analysisId = event?.detail?.analysisId;
+		if (analysisId) selectAnalysis(analysisId);
 		changeTab('results');
 	}
 

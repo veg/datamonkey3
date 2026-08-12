@@ -30,12 +30,20 @@
 
 <div class="toast-container" aria-live="polite" aria-atomic="true">
 	{#each $toastStore as toast (toast.id)}
+		<!-- Pointer and keyboard both stop the dismiss clock: a toast the user is actively reading
+		     must not disappear mid-sentence. focusin/focusout covers keyboard and screen-reader
+		     users, who reach the dismiss and action buttons by tab and would otherwise lose the
+		     message while moving between them. -->
 		<div
 			class="toast toast-{toast.type}"
 			in:fly={{ x: 300, duration: 300 }}
 			out:fade={{ duration: 200 }}
 			animate:flip={{ duration: 300 }}
 			role="alert"
+			on:mouseenter={() => toastStore.pause(toast.id)}
+			on:mouseleave={() => toastStore.resume(toast.id)}
+			on:focusin={() => toastStore.pause(toast.id)}
+			on:focusout={() => toastStore.resume(toast.id)}
 		>
 			<div class="toast-icon">
 				<svelte:component this={getIcon(toast.type)} size={20} />
