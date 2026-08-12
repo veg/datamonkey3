@@ -21,6 +21,7 @@
 	import { syncDescriptorStoresForFile as syncDescriptorStores } from '../lib/utils/descriptorSync.js';
 	import { resolveSelectedAnalysis } from '../lib/utils/analysisSelection.js';
 	import { trackEvent } from '../lib/utils/analytics.js';
+	import { toastStore } from '../stores/toast';
 	import Aioli from '@biowasm/aioli';
 	import TreeSelector from '../lib/TreeSelector.svelte';
 	import ErrorHandler from '../lib/ErrorHandler.svelte';
@@ -694,6 +695,19 @@
 					: 'upload';
 		let currentStage = 'init';
 		try {
+			// CLEAR THE PREVIOUS FILE'S ERROR FIRST, before any branch that can return early.
+			//
+			// This used to sit further down, after the selection branch -- which returns early at the
+			// "loaded existing analysis" path. So selecting a file that already had a datareader result
+			// skipped the reset entirely, and a validation error naming the PREVIOUS file stayed on
+			// screen beside the newly selected one. Same shape as the descriptorSync bug (#168): a
+			// reset placed after something that can exit early is not a reset. Issue #205.
+			validationError = null;
+			// Errors no longer auto-dismiss (#187), which is right for someone who stepped away --
+			// but it means a stale error toast would otherwise outlive the file it describes.
+			// Successes are left alone: they link to a result that still exists.
+			toastStore.dismissWhere((t) => t.type === 'error' || t.type === 'warning');
+
 			// Reset tree state at the start of every file load. addTree only ever adds
 			// keys, so without this a usertree extracted from a previous alignment would
 			// survive into a different file that has no tree of its own (issue #167).
@@ -772,8 +786,7 @@
 
 			if (!file) return; // No file selected
 
-			// Clear any previous errors
-			validationError = null;
+			// (Errors were already cleared at the top of this function, before any early return.)
 
 			// For new uploads, save the file to browser storage
 			// For selections, this is already done
