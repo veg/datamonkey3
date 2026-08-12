@@ -128,6 +128,24 @@ function createAnalysisStore() {
 				// clobber a terminal record that a live completed/error event already wrote.
 				// Since getAnalysis() and saveAnalysis() are separate transactions, a
 				// concurrent completed-write can land in between; treat terminal states as final.
+				// CANCELLATION IS FINAL, and is checked before anything else.
+				//
+				// A cancelled local run keeps computing -- WasmAnalysisRunner cannot terminate the Aioli
+				// worker -- and minutes later writes 'completed' over the cancelled record. 'completed'
+				// is terminal, so the guard below (which only rejects NON-terminal incoming states) let
+				// it through, and the card visibly changed from Cancelled back to Completed on its own.
+				// The user was then shown a result produced by settings they had explicitly rejected,
+				// with nothing anywhere reporting the contradiction. See issue #201.
+				//
+				// Cancelling is a user decision. No later machine event may undo it.
+				if (currentAnalysis?.status === 'cancelled' && data.status && data.status !== 'cancelled') {
+					console.warn(
+						`📊 [AnalysisStore] Ignoring '${data.status}' for ${analysisId.slice(0, 8)}...; it was cancelled`
+					);
+					update((state) => ({ ...state, isLoading: false }));
+					return currentAnalysis;
+				}
+
 				const TERMINAL_STATES = ['completed', 'error', 'cancelled'];
 				const NON_TERMINAL_INCOMING = [
 					'running',

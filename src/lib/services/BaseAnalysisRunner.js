@@ -55,6 +55,10 @@ export class BaseAnalysisRunner {
 	constructor() {
 		this.isRunning = false;
 		this.activeAnalyses = new Map(); // Track running analyses: jobId -> analysisId
+
+		// Analyses the user cancelled whose computation may still be in flight. Consulted by
+		// completeAnalysis so a run that was called off cannot report itself finished. Issue #201.
+		this.cancelledAnalyses = new Set();
 	}
 
 	/**
@@ -144,6 +148,21 @@ export class BaseAnalysisRunner {
 	async completeAnalysis(analysisId, success = true, result = null, message = null) {
 		const defaultMessage = success ? 'Analysis completed successfully' : 'Analysis failed';
 
+		// A cancelled run must not announce itself later.
+		//
+		// The store now refuses to overwrite a cancelled record, but that alone would still fire a
+		// "FEL analysis complete!" toast and a result write for work the user called off minutes
+		// earlier. Stop at the source instead: if this analysis was cancelled, there is nothing to
+		// report. Issue #201.
+		if (this.cancelledAnalyses?.has(analysisId)) {
+			this.cancelledAnalyses.delete(analysisId);
+			this.activeAnalyses.forEach((aId, jobId) => {
+				if (aId === analysisId) this.activeAnalyses.delete(jobId);
+			});
+			console.warn(`Suppressing completion for cancelled analysis ${analysisId.slice(0, 8)}...`);
+			return;
+		}
+
 		// Get the arguments metadata from the active analysis progress
 		const currentState = get(analysisStore);
 		const activeAnalysis = currentState?.activeAnalyses?.find((a) => a.id === analysisId);
@@ -221,6 +240,9 @@ export class BaseAnalysisRunner {
 	 * Cancel a running analysis
 	 */
 	async cancelAnalysis(analysisId) {
+		// Record the cancellation BEFORE touching the store, so a completion racing us is suppressed.
+		this.cancelledAnalyses.add(analysisId);
+
 		// Remove from active analyses
 		for (const [jobId, aId] of this.activeAnalyses.entries()) {
 			if (aId === analysisId) {
