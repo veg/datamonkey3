@@ -5,6 +5,7 @@
 
 import { BaseAnalysisRunner } from './BaseAnalysisRunner.js';
 import { aioliStore } from '../../stores/aioli.js';
+import { toastStore } from '../../stores/toast.js';
 import { get } from 'svelte/store';
 import { getCachedOrCompute, generateAnalysisKey } from '../utils/cacheUtils.js';
 import { sanitizeSequenceNames } from '../utils/fastaValidation.js';
@@ -181,10 +182,7 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 		const cleanedFastaData = stripEmbeddedTrees(fastaData);
 
 		// Sanitize sequence names to remove characters invalid in Newick format
-		const { sanitizedFasta, sanitizedTree } = sanitizeSequenceNames(
-			cleanedFastaData,
-			treeData
-		);
+		const { sanitizedFasta, sanitizedTree } = sanitizeSequenceNames(cleanedFastaData, treeData);
 
 		// Create temporary file from cleaned FASTA data
 		const inputFile = new File([sanitizedFasta], 'user.nex', { type: 'text/plain' });
@@ -351,10 +349,9 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 				} else if (key === 'rates') {
 					// Multi-Hit rate classes parameter
 					args.push(`--rates ${value}`);
-			} else if (key === 'rate_classes') {
-				// NRM rate classes parameter (convert underscore to hyphen)
-				args.push(`--rate-classes ${value}`);
-
+				} else if (key === 'rate_classes') {
+					// NRM rate classes parameter (convert underscore to hyphen)
+					args.push(`--rate-classes ${value}`);
 				} else if (key === 'triple_islands') {
 					// Multi-Hit triple islands parameter (convert underscore to hyphen)
 					args.push(`--triple-islands ${value}`);
@@ -477,9 +474,11 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 		}
 
 		// Check for tree-related errors
-		if (stdout.includes('Illegal right hand side in call to Topology') ||
+		if (
+			stdout.includes('Illegal right hand side in call to Topology') ||
 			stdout.includes('tree string is invalid') ||
-			stdout.includes('Newick tree spec')) {
+			stdout.includes('Newick tree spec')
+		) {
 			throw new Error(
 				'Tree format error. Please select "Inferred NJ tree" in the Analyze tab, or upload a valid Newick tree file.'
 			);
@@ -684,7 +683,7 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 		}
 
 		return {
-			command: `hyphy LIBPATH=/res/ ${method.toLowerCase()} ${args.join(' ')}`,  // Preview shows method name for readability
+			command: `hyphy LIBPATH=/res/ ${method.toLowerCase()} ${args.join(' ')}`, // Preview shows method name for readability
 			method: method.toUpperCase(),
 			parameters: config,
 			treeData: treeData
@@ -707,6 +706,35 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 	destroy() {
 		super.destroy();
 		this.isInitialized = false;
+	}
+
+	/**
+	 * Cancel a local run.
+	 *
+	 * WHAT THIS DOES AND DOES NOT DO, stated plainly because the previous behaviour was a lie.
+	 *
+	 * It marks the analysis cancelled and suppresses its completion, so the record stays cancelled
+	 * and no success toast or result arrives later. Before this, completeAnalysis wrote
+	 * status:'completed' over the cancelled record minutes afterwards and the card visibly
+	 * un-cancelled itself, presenting a result produced by settings the user had rejected.
+	 *
+	 * It does NOT stop the computation. hyphy.wasm keeps running to completion in Aioli's Web
+	 * Worker, so the tab stays busy. Terminating it is not reachable through Aioli's public API:
+	 * Aioli.init() creates the Worker as a local (`new v()` in aioli.mjs), wraps it with Comlink and
+	 * returns only the proxy -- the Worker handle is never retained, and the bundle exports no
+	 * `terminate`. Fixing that needs an upstream change, or capturing the Worker at construction
+	 * time where the instance is built. Tracked in issue #201.
+	 *
+	 * The user is told, rather than left to wonder why the tab is still busy.
+	 */
+	async cancelAnalysis(analysisId) {
+		await super.cancelAnalysis(analysisId);
+
+		toastStore.info(
+			'Analysis cancelled. Its results will not be saved or reported, but the computation ' +
+				'already running in this tab cannot be interrupted and will finish in the background.',
+			{ duration: 12000 }
+		);
 	}
 }
 
