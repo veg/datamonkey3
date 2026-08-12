@@ -193,9 +193,15 @@ test.describe('AxoMEME', () => {
 		await expect(page.locator('.axomeme-beta')).toBeVisible({ timeout: 30000 });
 	});
 
-	test('suppresses controls that cannot reach the model', async ({ page }) => {
-		// Both were live at first and both imply a capability AxoMEME does not have: there is no
-		// server-side AxoMEME, and the model's tokenizer bakes in the universal genetic code.
+	test('suppresses the genetic code, which neither surface can honour', async ({ page }) => {
+		// This used to assert that the EXECUTION MODE toggle was suppressed too. That is no longer
+		// true and should not be: there is a server-side AxoMEME now (axomeme.sh runs a Node CLI
+		// through the standard job lifecycle), so the toggle is a real choice.
+		//
+		// The genetic code is different, and the distinction is the point of this test. Neither
+		// surface can honour one: the model's tokenizer bakes in the universal table, and the server
+		// descriptor hardcodes genetic_code "Universal" and warns if one is supplied. A control that
+		// reaches nothing implies a capability that does not exist.
 		await freshStart(page);
 		await loadDemoFile(page, 'CD2-slim.fna');
 		await expect(async () => {
@@ -205,9 +211,11 @@ test.describe('AxoMEME', () => {
 
 		await selectMethod(page, 'AxoMEME');
 		const body = await page.locator('body').innerText();
-		expect(body).not.toMatch(/Backend Server/i);
-		expect(body).toMatch(/Runs in your browser/i);
+		// The mode toggle is now OFFERED for AxoMEME -- that is the capability the server added.
+		expect(body, 'the execution-mode toggle should be available now').toMatch(/Backend Server/i);
+		// The genetic code still is not, on either surface.
 		expect(body).toMatch(/cannot be changed for this method/i);
+		expect(body).not.toMatch(/Genetic Code:/i);
 
 		// And the controls must come back for a method that does have them.
 		await selectMethod(page, 'FEL');

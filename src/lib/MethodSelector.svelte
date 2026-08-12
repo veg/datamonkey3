@@ -1035,6 +1035,14 @@
 	 *     nothing, which is the worst of the three options.
 	 */
 	$: browserOnly = Boolean(currentMethod?.config?.browserOnly);
+	// Separate from browserOnly on purpose. AxoMEME now HAS a server-side implementation, so the
+	// execution-mode toggle applies to it -- but neither implementation can honour a genetic code,
+	// because the model's tokenizer bakes in the universal table and the server descriptor hardcodes
+	// it. Conflating "runs only in the browser" with "has no genetic code" meant enabling the first
+	// would silently have re-enabled a control that reaches nothing.
+	$: noGeneticCode = Boolean(
+		currentMethod?.config?.noGeneticCode || currentMethod?.config?.browserOnly
+	);
 	// Keep the reported mode honest for analytics and the run-started toast — but REMEMBER what the
 	// user chose and give it back.
 	//
@@ -1457,9 +1465,10 @@
 						<span class="options-label">Essential</span>
 					</div>
 
-					{#if browserOnly}
+					{#if noGeneticCode}
 						<p class="browser-only-note">
-							This model reads the standard genetic code. It cannot be changed for this method.
+							This model reads the standard genetic code. It cannot be changed for this method, in
+							the browser or on the server.
 						</p>
 					{:else}
 						<div class="option-group">

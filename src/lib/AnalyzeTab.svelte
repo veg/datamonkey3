@@ -132,11 +132,14 @@
 		});
 
 		try {
-			// AxoMEME is dispatched BEFORE the backend/WASM split, because it belongs to neither. It is
-			// not a HyPhy analysis: no hyphy.wasm invocation, no server job, no HyPhy JSON. It runs an
-			// ONNX graph in this tab and returns in seconds. The executionMode toggle does not apply —
-			// there is no server-side AxoMEME yet — so it is deliberately ignored rather than silently
-			// routing a browser-only method through a socket that has no handler for it.
+			// AxoMEME is handled here because the IN-BROWSER path belongs to neither of the two
+			// branches below: no hyphy.wasm invocation, no HyPhy JSON, just an ONNX graph evaluated in
+			// this tab. It is still not a HyPhy analysis on the server either — axomeme.sh runs a Node
+			// CLI rather than HYPHYMPI — but it now goes through the standard job lifecycle, so a
+			// backend run falls through to the ordinary split and needs nothing special here.
+			//
+			// The executionMode toggle is therefore real for AxoMEME now; it used to be ignored because
+			// there was no server-side implementation to route to.
 			if (method.toLowerCase() === 'axomeme') {
 				if (!$currentFile || !$currentFile.id) {
 					throw new Error('No file selected for analysis');
@@ -184,23 +187,27 @@
 					);
 				}
 
-				const { axomemeAnalysisRunner } = await import('./services/AxomemeAnalysisRunner.js');
-				// No toast here, and no rethrow. BaseAnalysisRunner.completeAnalysis already fires one on
-				// success (with a View Results action) and one on failure, so doing it again stacked two
-				// toasts on every run — and letting the runner's rethrow reach the outer catch stacked a
-				// second error toast on top of that. The other two branches do not rethrow on the normal
-				// path, which is why only AxoMEME double-reported.
-				try {
-					return await axomemeAnalysisRunner.runAnalysis(
-						method,
-						config,
-						alignment,
-						tree,
-						$currentFile.id
-					);
-				} catch (error) {
-					console.error('AxoMEME analysis failed:', error);
-					return null;
+				// Only the browser path is special-cased. A backend run falls through to the standard
+				// split, which already knows how to spawn `<method>:spawn` and track a job.
+				if (config.executionMode !== 'backend') {
+					const { axomemeAnalysisRunner } = await import('./services/AxomemeAnalysisRunner.js');
+					// No toast here, and no rethrow. BaseAnalysisRunner.completeAnalysis already fires one on
+					// success (with a View Results action) and one on failure, so doing it again stacked two
+					// toasts on every run — and letting the runner's rethrow reach the outer catch stacked a
+					// second error toast on top of that. The other two branches do not rethrow on the normal
+					// path, which is why only AxoMEME double-reported.
+					try {
+						return await axomemeAnalysisRunner.runAnalysis(
+							method,
+							config,
+							alignment,
+							tree,
+							$currentFile.id
+						);
+					} catch (error) {
+						console.error('AxoMEME analysis failed:', error);
+						return null;
+					}
 				}
 			}
 
