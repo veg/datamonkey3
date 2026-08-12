@@ -19,6 +19,7 @@
 	import { backendAnalysisRunner } from '../lib/services/BackendAnalysisRunner.js';
 	import { treeStore, addTree, updateTaggedTree, resetTrees } from '../stores/tree';
 	import { syncDescriptorStoresForFile as syncDescriptorStores } from '../lib/utils/descriptorSync.js';
+	import { resolveSelectedAnalysis } from '../lib/utils/analysisSelection.js';
 	import { trackEvent } from '../lib/utils/analytics.js';
 	import Aioli from '@biowasm/aioli';
 	import TreeSelector from '../lib/TreeSelector.svelte';
@@ -52,7 +53,6 @@
 	let cliObj;
 	let result;
 	let fileMetricsJSON;
-	let selectedAnalysisId = null;
 	let showAllHistory = false;
 	let activeTab = 'data'; // 'data', 'analyze', or 'results'
 	let selectedTree = 'nj';
@@ -196,9 +196,25 @@
 		}
 	};
 
+	// WHICH ANALYSIS THE DETAIL PANE SHOWS.
+	//
+	// This is derived from the store, not held locally. There used to be a second copy —
+	// `let selectedAnalysisId = null` — that only `selectAnalysis()` ever wrote, while the history
+	// list highlighted `$analysisStore.currentAnalysisId`. Every path that creates an analysis
+	// WITHOUT going through `selectAnalysis` — which is every real run — left the two disagreeing:
+	// the new run was highlighted blue in the list while the pane beside it still showed the previous
+	// selection, on a fresh upload the invisible `datareader` job. The user clicked "View Results" on
+	// their MEME run and got a screen headed "DATAREADER Analysis". See issue #188.
+	//
+	// Deriving it means the pane follows every `createAnalysis()` by construction, and the two can no
+	// longer drift apart, because there is only one of them.
+	$: selectedAnalysisId = resolveSelectedAnalysis(
+		$analysisStore.currentAnalysisId,
+		$analysisStore.analyses
+	);
+
 	// Select an analysis to view
 	function selectAnalysis(analysisId) {
-		selectedAnalysisId = analysisId;
 		analysisStore.setCurrentAnalysis(analysisId);
 	}
 
