@@ -6,6 +6,9 @@
 	import { treeStore } from '../stores/tree';
 	import BranchSelector from './BranchSelector.svelte';
 	import RunOutlook from './RunOutlook.svelte';
+	import RunStrip from './RunStrip.svelte';
+	import { analysisStore } from '../stores/analyses';
+	import { currentFile } from '../stores/fileInfo';
 	import { treeHasBranchLengths } from './services/prescreen/scope.js';
 	import { AlertTriangle, Play, Loader2 } from 'lucide-svelte';
 	import { trackEvent } from './utils/analytics.js';
@@ -149,6 +152,36 @@
 	let geneticCodeId = 0; // For matching HyPhy numeric codes
 	let executionMode = 'local'; // 'local' or 'backend'
 	let isSubmitting = false; // Track submission state for button feedback
+
+	// WHY THE RUN BUTTON IS BLOCKED, derived from the analysis store rather than a timer.
+	//
+	// The button used to re-enable on setTimeout(..., 2000) regardless of state, which is what let an
+	// impatient second click create a duplicate analysis. The rule below is decided by the code, not
+	// by taste:
+	//
+	//   - Same method already in flight for this file -> block. It is the same run.
+	//   - ANY local run in flight, while this one would also run locally -> block. executeWasmAnalysis
+	//     mounts a fixed user.nex into one shared Aioli instance and reads
+	//     /shared/data/user.nex.{METHOD}.json, so two concurrent local runs corrupt each other and
+	//     produce silently wrong results. A warning would be wrong here: clicking through it is
+	//     exactly the case that must not happen.
+	//   - A server run while another server run is in flight -> allowed. Distinct jobIds; running FEL
+	//     and MEME together is routine.
+	$: liveRuns = ($analysisStore.analyses ?? []).filter(
+		(a) =>
+			a.method !== 'datareader' &&
+			!['completed', 'error', 'cancelled', 'interrupted', 'connection_lost'].includes(a.status)
+	);
+	$: sameMethodRunning = liveRuns.some(
+		(a) => a.method?.toLowerCase() === selectedMethod?.toLowerCase()
+	);
+	$: localRunInFlight = liveRuns.some((a) => a.metadata?.executionMode !== 'backend');
+	$: wouldRunLocally = executionMode !== 'backend';
+	$: runBlockedReason = sameMethodRunning
+		? `${selectedMethod?.toUpperCase()} is already running on this file`
+		: localRunInFlight && wouldRunLocally
+			? 'Another analysis is running in this tab — only one can run here at a time'
+			: null;
 
 	// Genetic code mapping (HyPhy uses numeric IDs)
 	const GENETIC_CODES = [
@@ -1210,11 +1243,12 @@
 			);
 			runMethod(selectedMethod, analysisConfig);
 
-			// Reset button state after parent has had time to start the analysis
-			// This provides immediate feedback that the click was registered
-			setTimeout(() => {
-				isSubmitting = false;
-			}, 2000);
+			// The button used to re-enable on a bare 2-second timer, regardless of whether anything
+			// had started. That timer WAS the duplicate-run bug: the impatient second click was
+			// accepted and created a second analysis, and in local mode both runs mount the same
+			// user.nex into one shared Aioli instance and read the same output path, so they corrupt
+			// each other silently. Release on the submission settling instead.
+			isSubmitting = false;
 		}
 	}
 
@@ -1642,13 +1676,18 @@
 				disabled={!selectedMethod ||
 					!currentMethod?.info.supported ||
 					isSubmitting ||
+					Boolean(runBlockedReason) ||
 					!relaxBranchesValid ||
 					!contrastFelBranchesValid}
+				title={runBlockedReason ?? ''}
 				data-testid="run-analysis-btn"
 			>
 				{#if isSubmitting}
 					<Loader2 class="run-icon spinning" />
 					Starting Analysis...
+				{:else if runBlockedReason}
+					<Loader2 class="run-icon spinning" />
+					{sameMethodRunning ? `${currentMethod?.info.name ?? ''} running` : 'Analysis running'}
 				{:else if currentMethod?.info.supported}
 					<Play class="run-icon" />
 					Run {currentMethod?.info.name || ''} Analysis
@@ -1656,6 +1695,11 @@
 					Coming Soon
 				{/if}
 			</button>
+
+			<!-- Status belongs beside the button that created it. Below the button, never above: at the
+			     top of the tab it would shift the button 44px down at the instant the pointer is
+			     travelling toward it. -->
+			<RunStrip fileId={$currentFile?.id ?? null} />
 		</div>
 	{/if}
 
