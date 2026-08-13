@@ -1,5 +1,6 @@
 <script>
 	import PhyloTree from './phylotree.svelte';
+	import { formatAlignmentLength, formatGeneticCode } from './utils/fileMetricsDisplay.js';
 	import { AlertTriangle, Check, Info, ChevronRight, Copy } from 'lucide-svelte';
 
 	export let fileMetricsJSON = null;
@@ -103,14 +104,16 @@
 					<span class="font-medium text-text-rich">{fileMetricsJSON.FILE_INFO.partitions}</span>
 				</div>
 				<div class="flex justify-between">
-					<span class="text-text-slate">Sites</span>
+					<span class="text-text-slate">Length</span>
 					<span class="font-medium text-text-rich">
-						{fileMetricsJSON.FILE_INFO.rawsites} raw → {fileMetricsJSON.FILE_INFO.sites} processed
+						{formatAlignmentLength(fileMetricsJSON.FILE_INFO)}
 					</span>
 				</div>
 				<div class="flex justify-between">
 					<span class="text-text-slate">Genetic Code</span>
-					<span class="font-medium text-text-rich">{fileMetricsJSON.FILE_INFO.gencodeid}</span>
+					<span class="font-medium text-text-rich"
+						>{formatGeneticCode(fileMetricsJSON.FILE_INFO.gencodeid)}</span
+					>
 				</div>
 				{#if fileMetricsJSON.FILE_INFO.type}
 					<div class="flex justify-between">
@@ -134,16 +137,22 @@
 						<span class="font-medium text-status-warning">{fileMetricsJSON.FILE_INFO.sequences_renamed}</span>
 					</div>
 				{/if}
-				{#if fileMetricsJSON.FILE_INFO.ambiguous_sites}
+				<!-- `padded_sequences` is a real count; `ambiguous_sites` is the legacy boolean that
+				     carried the same signal (datareader.bf padWarning) and is all a cached record has. -->
+				{#if fileMetricsJSON.FILE_INFO.padded_sequences || fileMetricsJSON.FILE_INFO.ambiguous_sites}
 					<div class="flex justify-between">
-						<span class="text-text-slate">Ambiguous Sites</span>
-						<span class="font-medium text-status-warning">Present</span>
+						<span class="text-text-slate">Sequences Padded</span>
+						<span class="font-medium text-status-warning">
+							{fileMetricsJSON.FILE_INFO.padded_sequences ?? 'Present'}
+						</span>
 					</div>
 				{/if}
-				{#if fileMetricsJSON.FILE_INFO.stop_codons_stripped > 0}
+				{#if fileMetricsJSON.FILE_INFO.stop_codons_stripped}
+					<!-- Boolean, not a count: datareader sets it to 1 when EVERY sequence ended in a
+					     stop codon and that whole final column was dropped. -->
 					<div class="flex justify-between">
-						<span class="text-text-slate">Stop Codons Stripped</span>
-						<span class="font-medium text-status-warning">{fileMetricsJSON.FILE_INFO.stop_codons_stripped}</span>
+						<span class="text-text-slate">Trailing Stop Codons Stripped</span>
+						<span class="font-medium text-status-warning">Yes</span>
 					</div>
 				{/if}
 			</div>

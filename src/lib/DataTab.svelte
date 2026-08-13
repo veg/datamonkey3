@@ -10,7 +10,12 @@
 	import TabNavigation from './TabNavigation.svelte';
 	import FastaExport from './FastaExport.svelte';
 	import AlignmentViewer from './AlignmentViewer.svelte';
+	import { uploadLimitsCopy } from './config/uploadLimits.js';
 	import { ArrowRight, AlertTriangle, TreeDeciduous, Info } from 'lucide-svelte';
+
+	// Rendered from the constants rather than typed inline: the previous copy claimed 5,000
+	// sequences / >500-needs-a-tree, and both numbers were invented.
+	const limitsCopy = uploadLimitsCopy();
 
 	// Props
 	export let handleFileUpload = () => {};
@@ -19,6 +24,9 @@
 	export let fileMetricsJSON = null;
 	export let handleValidated = () => {};
 	export let handleUseRepaired = () => {};
+	export let handleAlignmentEdited = () => {};
+	// Actions attached to the validation-error card (e.g. restoring the pre-edit alignment).
+	export let validationErrorActions = [];
 
 	// Tab navigation
 	export let activeTab = 'data';
@@ -67,9 +75,8 @@
 		<div class="mt-premium-md flex items-start gap-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-700">
 			<Info class="mt-0.5 h-4 w-4 flex-shrink-0" />
 			<div>
-				<span class="font-medium">File limits:</span>
-				Max 5,000 sequences, 12,000 alignment sites.
-				Files with &gt;500 sequences require an embedded tree.
+				<span class="font-medium">Upload limits:</span>
+				{limitsCopy}
 			</div>
 		</div>
 
@@ -77,6 +84,8 @@
 		<ErrorHandler
 			error={validationError}
 			level={errorLevel}
+			suggestions={validationErrorActions}
+			on:suggestion={(e) => e.detail?.run?.()}
 			on:dismiss={() => (validationError = null)}
 		/>
 	</div>
@@ -111,7 +120,11 @@
 					Alignment Viewer
 				</h2>
 				<div class="rounded-premium border border-border-platinum bg-white shadow-premium overflow-hidden">
-					<AlignmentViewer alignmentFile={$alignmentFileStore} {fileMetricsJSON} />
+					<AlignmentViewer
+						alignmentFile={$alignmentFileStore}
+						{fileMetricsJSON}
+						on:editsSaved={handleAlignmentEdited}
+					/>
 				</div>
 			</div>
 		{/if}

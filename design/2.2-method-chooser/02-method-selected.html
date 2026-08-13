@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>02 — A method is selected</title>
+		<link rel="stylesheet" href="_wf.css" />
+	</head>
+	<body>
+		<div class="sheet">
+			<div class="hdr">
+				<h1>State 02 · the decision is made</h1>
+				<p>A method is selected</p>
+				<div class="sub">
+					The chooser collapses to a single row the moment a method is chosen, and the space returns
+					to configuration — which is what the user needs next. The question they answered stays on
+					screen.
+				</div>
+			</div>
+
+			<div>
+				<div class="screen">
+					<div class="panel-hd">Analysis <span class="chev">&#9650;</span></div>
+					<div class="body">
+						<div class="summary">
+							<div>
+								<div class="q2">Which sites are under selection?</div>
+								<div class="nm2">FEL <span class="full">· Fixed Effects Likelihood</span></div>
+								<div class="ds2">Maximum-likelihood test at every site. The usual first choice.</div>
+							</div>
+							<div class="acts">
+								<a href="#">Change</a>
+								<a href="#">Method docs &#8599;</a>
+							</div>
+						</div>
+
+						<div class="stub">Execution mode &mdash; Local (Browser) / Backend Server</div>
+						<div class="stub">Genetic code &mdash; Universal</div>
+						<div class="stub">Branches to test &mdash; All</div>
+						<div class="stub">Advanced options (p&#8209;value, SRV, output)</div>
+						<div class="stub">Before you run &mdash; runtime estimate (RunOutlook)</div>
+						<div class="runbtn">&#9654;&nbsp; Run FEL Analysis</div>
+					</div>
+				</div>
+				<p class="caption">Summary row 81&nbsp;px. Today's select + description block: 111&nbsp;px.</p>
+
+				<div class="screen rejected">
+					<div class="panel-hd">Analysis</div>
+					<div class="body">
+						<div class="selbox">
+							<span>FEL - Fixed Effects Likelihood</span><span class="chev">&#9662;</span>
+						</div>
+						<div style="font-size: 13px; color: #4a5568; padding: 8px 0 24px">
+							Detect selection at individual sites
+						</div>
+						<div class="stub">Execution mode</div>
+					</div>
+				</div>
+				<p class="caption">
+					Today, for comparison: the orienting sentence has vanished, and nothing on screen says what
+					question FEL answers or that there were alternatives.
+				</p>
+			</div>
+
+			<div class="notes">
+				<h3>Why this shape</h3>
+
+				<div class="note accent">
+					<b>The question line is the whole fix for the vanishing hint.</b>
+					"Which sites are under selection?" sits above the chosen method for the rest of the
+					session. It costs one 17&nbsp;px line and it is the only thing on this screen that tells a
+					returning user what they decided and on what basis. Nothing new is invented: it is the
+					legend from state 01, kept.
+				</div>
+
+				<div class="note accent">
+					<b>Steady state is 14&nbsp;px smaller than today.</b>
+					81&nbsp;px summary + 16&nbsp;px margin = 97&nbsp;px, against 111&nbsp;px for the current
+					select plus its description block. The 478&nbsp;px spent in state 01 is not carried; it is
+					borrowed for the length of the decision and repaid on the click that ends it.
+				</div>
+
+				<div class="note">
+					<b>"Change" reopens the chooser in place, with FEL still selected.</b>
+					It must not clear <code>methodOptions</code>. A user comparing FEL against FUBAR should be
+					able to look and come back without losing a branch selection they spent five minutes
+					tagging on a tree.
+				</div>
+
+				<div class="note">
+					<b>One documentation link, here, and nowhere else.</b>
+					<code>methodConfig[method].url</code> (<code>+page.svelte:74&ndash;197</code>) holds a
+					hyphy.org slug for all sixteen methods and is read by nothing. Surface it once, on the
+					method actually chosen, at the moment before committing. Fifteen links in the chooser would
+					be the documentation layer this feature must not become. Mark it as leaving the app
+					(&#8599;) — it is an outbound link, and the local-serving constraint in
+					<code>CLAUDE.md</code> is about fetched assets, not hyperlinks.
+				</div>
+
+				<div class="note">
+					<b>Do not add a runtime label to the chooser.</b>
+					<code>RunOutlook</code> (<code>:1445&ndash;1456</code>) already states expected runtime for
+					<em>this</em> alignment, which a static "Slow" badge cannot. The audit says this and the
+					audit is right.
+				</div>
+
+				<div class="note">
+					<b>The Beta badge moves with the method.</b>
+					If AxoMEME is the selection, the summary row reads "Which sites are under selection? ·
+					AxoMEME [Beta] · Predicts what MEME would report…" — the surrogate relationship is
+					restated, not dropped, because that is exactly the claim a user is about to publish
+					against.
+				</div>
+			</div>
+		</div>
+	</body>
+</html>

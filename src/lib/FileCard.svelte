@@ -321,6 +321,13 @@
 						<div class="text-text-slate">Upload Date:</div>
 						<div class="font-medium text-text-rich">{formatDate(file.createdAt)}</div>
 
+						<!-- Written only when an upload replaced this record's contents in place, which is
+						     the one case where "Upload Date" no longer describes the bytes. -->
+						{#if file.updatedAt && file.updatedAt !== file.createdAt}
+							<div class="text-text-slate">Last modified:</div>
+							<div class="font-medium text-text-rich">{formatDate(file.updatedAt)}</div>
+						{/if}
+
 						<div class="text-text-slate">ID:</div>
 						<div class="font-mono text-[10px] text-text-silver opacity-70">{file.id}</div>
 					</div>

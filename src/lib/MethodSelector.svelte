@@ -10,7 +10,7 @@
 	import RunOutlook from './RunOutlook.svelte';
 	import RunStrip from './RunStrip.svelte';
 	import { analysisStore } from '../stores/analyses';
-	import { currentFile } from '../stores/fileInfo';
+	import { currentFile, revalidatingFileId } from '../stores/fileInfo';
 	import { treeHasBranchLengths } from './services/prescreen/scope.js';
 	import { AlertTriangle, Play, Loader2 } from 'lucide-svelte';
 	import { trackEvent } from './utils/analytics.js';
@@ -18,7 +18,7 @@
 	import { executionAdvice } from './utils/executionAdvice.js';
 	// callModes.js is a leaf (no imports) precisely so this line costs the main chunk nothing but the
 	// constants — see the note at the top of that file.
-	import { describeCallMode, CALL_DEFAULTS } from './services/axomeme/callModes.js';
+	import { describeCallMode, CALL_DEFAULTS } from './services/axomeme/callModes.js';	// Shared with the Data tab, which needs to turn datareader's gencodeid back into a name.
 	import { GENETIC_CODES } from './config/geneticCodes.js';
 
 	export let methodConfig;
@@ -189,31 +189,20 @@
 	);
 	$: localRunInFlight = liveRuns.some((a) => a.metadata?.executionMode !== 'backend');
 	$: wouldRunLocally = executionMode !== 'backend';
-	$: runBlockedReason = sameMethodRunning
-		? `${selectedMethod?.toUpperCase()} is already running on this file`
-		: localRunInFlight && wouldRunLocally
-			? 'Another analysis is running in this tab — only one can run here at a time'
-			: null;
-
-	// Genetic code mapping (HyPhy uses numeric IDs)
-	const GENETIC_CODES = [
-		{ id: 0, name: 'Universal', label: 'Universal code' },
-		{ id: 1, name: 'Vertebrate mitochondrial', label: 'Vertebrate mitochondrial DNA code' },
-		{ id: 2, name: 'Yeast mitochondrial', label: 'Yeast mitochondrial DNA code' },
-		{
-			id: 3,
-			name: 'Mold mitochondrial',
-			label: 'Mold, Protozoan and Coelenterate mt; Mycloplasma/Spiroplasma'
-		},
-		{ id: 4, name: 'Invertebrate mitochondrial', label: 'Invertebrate mitochondrial DNA code' },
-		{ id: 5, name: 'Ciliate nuclear', label: 'Ciliate, Dasycladacean and Hexamita Nuclear code' },
-		{ id: 6, name: 'Echinoderm mitochondrial', label: 'Echinoderm mitochondrial DNA code' },
-		{ id: 7, name: 'Euplotid nuclear', label: 'Euplotid Nuclear code' },
-		{ id: 8, name: 'Alternative yeast nuclear', label: 'Alternative Yeast Nuclear code' },
-		{ id: 9, name: 'Ascidian mitochondrial', label: 'Ascidian mitochondrial DNA code' },
-		{ id: 10, name: 'Flatworm mitochondrial', label: 'Flatworm mitochondrial DNA code' },
-		{ id: 11, name: 'Blepharisma nuclear', label: 'Blepharisma Nuclear code' }
-	];
+	//   - The current file is being re-read after an alignment edit -> block. This one is not in
+	//     liveRuns: MethodSelector filters datareader out of it (a file's own validation must never
+	//     look like a running analysis), so the re-read is invisible here without its own flag. For
+	//     the seconds it takes, fileMetricsStore is null and canonicalFasta does not exist, so a Run
+	//     started now would submit the user's original blob — the alignment they just edited away.
+	$: revalidatingThisFile =
+		Boolean($revalidatingFileId) && $revalidatingFileId === $currentFile?.id;
+	$: runBlockedReason = revalidatingThisFile
+		? 'Re-checking your edited alignment…'
+		: sameMethodRunning
+			? `${selectedMethod?.toUpperCase()} is already running on this file`
+			: localRunInFlight && wouldRunLocally
+				? 'Another analysis is running in this tab — only one can run here at a time'
+				: null;
 
 	// Method-specific advanced options state
 	let methodOptions = {};
@@ -1088,7 +1077,11 @@
 					Starting Analysis...
 				{:else if runBlockedReason}
 					<Loader2 class="run-icon spinning" />
-					{sameMethodRunning ? `${currentMethod?.info.name ?? ''} running` : 'Analysis running'}
+					{revalidatingThisFile
+						? 'Re-checking alignment…'
+						: sameMethodRunning
+							? `${currentMethod?.info.name ?? ''} running`
+							: 'Analysis running'}
 				{:else if currentMethod?.info.supported}
 					<Play class="run-icon" />
 					Run {currentMethod?.info.name || ''} Analysis

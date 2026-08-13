@@ -1,6 +1,7 @@
 <!-- src/lib/SequenceWarnings.svelte -->
 <script>
 	import { AlertCircle, AlertTriangle, Info } from 'lucide-svelte';
+	import { buildWarnings } from './utils/datareaderWarnings.js';
 
 	export let fileMetricsJSON = null;
 
@@ -8,89 +9,13 @@
 	let warnings = [];
 	let showAllWarnings = false;
 
-	// Watch for changes in fileMetricsJSON
-	$: if (fileMetricsJSON) {
-		generateWarnings(fileMetricsJSON);
-	}
+	// The generator lives in datareaderWarnings.js: the copy is the whole point of these warnings,
+	// and inside a component there was no seam a test could reach it through.
+	$: warnings = buildWarnings(fileMetricsJSON?.FILE_INFO);
 
-	// Generate warnings based on file metrics
-	function generateWarnings(data) {
-		warnings = [];
-
-		if (!data || !data.FILE_INFO) return;
-
-		// Check for duplicate sequences
-		if (data.FILE_INFO.duplicate_sequences && data.FILE_INFO.duplicate_sequences > 0) {
-			warnings.push({
-				type: 'warning',
-				title: 'Duplicate Sequences Detected',
-				message: `Found ${data.FILE_INFO.duplicate_sequences} duplicate sequence${data.FILE_INFO.duplicate_sequences === 1 ? '' : 's'} in your alignment.`,
-				details:
-					'Duplicate sequences can affect the accuracy of selection analysis. Consider removing duplicates for more reliable results.',
-				action: null
-			});
-		}
-
-		// Check for short alignment
-		if (data.FILE_INFO.sites && data.FILE_INFO.sites < 30) {
-			warnings.push({
-				type: 'info',
-				title: 'Short Alignment',
-				message: `Your alignment has only ${data.FILE_INFO.sites} sites, which is relatively short.`,
-				details:
-					'Short alignments may have limited statistical power for detecting selection. Consider adding more sequences or sites if possible.',
-				action: null
-			});
-		}
-
-		// Check for small number of sequences
-		if (data.FILE_INFO.sequences && data.FILE_INFO.sequences < 8) {
-			warnings.push({
-				type: 'info',
-				title: 'Small Sample Size',
-				message: `Your alignment has only ${data.FILE_INFO.sequences} sequences, which is a small sample.`,
-				details:
-					'Selection analyses generally perform better with larger samples. Consider adding more sequences if possible.',
-				action: null
-			});
-		}
-
-		// Check for ambiguous characters
-		if (data.FILE_INFO.ambiguous_sites && data.FILE_INFO.ambiguous_sites > 0) {
-			warnings.push({
-				type: 'warning',
-				title: 'Ambiguous Characters',
-				message: `Found ${data.FILE_INFO.ambiguous_sites} ambiguous character${data.FILE_INFO.ambiguous_sites === 1 ? '' : 's'} in your alignment.`,
-				details:
-					'Ambiguous characters (like N, X, etc.) may cause issues with some analyses. Consider resolving these ambiguities if possible.',
-				action: null
-			});
-		}
-
-		// Check for stop codons
-		if (data.FILE_INFO.stop_codons && data.FILE_INFO.stop_codons > 0) {
-			warnings.push({
-				type: 'error',
-				title: 'Stop Codons Detected',
-				message: `Found ${data.FILE_INFO.stop_codons} stop codon${data.FILE_INFO.stop_codons === 1 ? '' : 's'} in your alignment.`,
-				details:
-					'Stop codons within the alignment may indicate frame shifts, sequencing errors, or pseudogenes. Verify your alignment and genetic code selection.',
-				action: null
-			});
-		}
-
-		// Check for frameshift issues (uneven codon count)
-		if (data.FILE_INFO.rawsites && data.FILE_INFO.rawsites % 3 !== 0) {
-			warnings.push({
-				type: 'error',
-				title: 'Alignment Length Not Divisible by 3',
-				message: `Your alignment length (${data.FILE_INFO.rawsites}) is not divisible by 3.`,
-				details:
-					'Codon-based analyses require sequence lengths to be multiples of 3. Check for frameshifts or alignment errors.',
-				action: null
-			});
-		}
-	}
+	// How many names to show inline before collapsing the rest into a count. Long enough to be
+	// useful on a hand-curated alignment, short enough not to bury the message.
+	const MAX_LISTED_NAMES = 10;
 
 	// Get the color class based on warning type
 	function getWarningColorClass(type) {
@@ -153,6 +78,21 @@
 						<h4 class="text-sm font-semibold">{warning.title}</h4>
 						<p class="text-sm">{warning.message}</p>
 
+						{#if warning.items && warning.items.length > 0}
+							<ul class="mt-1.5 space-y-0.5 font-mono text-xs opacity-90">
+								{#each warning.items.slice(0, MAX_LISTED_NAMES) as item}
+									<li class="break-all">{item}</li>
+								{/each}
+							</ul>
+							{#if warning.items.length > MAX_LISTED_NAMES || warning.truncated}
+								<p class="mt-1 text-xs opacity-70">
+									+{warning.items.length -
+										Math.min(warning.items.length, MAX_LISTED_NAMES) +
+										(warning.truncated || 0)} more not listed
+								</p>
+							{/if}
+						{/if}
+
 						{#if warning.details}
 							<p class="mt-1 text-xs opacity-80">{warning.details}</p>
 						{/if}
@@ -180,7 +120,7 @@
 	</div>
 
 	<p class="mt-2 text-xs text-text-silver">
-		These warnings are meant to help you improve your analysis results. Minor issues may not
-		significantly affect results.
+		These notes describe what your file contained and what the reader did with it before analysis.
+		They are not errors, and none of them changed the file you uploaded.
 	</p>
 {/if}

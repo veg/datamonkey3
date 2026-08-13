@@ -8,13 +8,12 @@ const packageJson = JSON.parse(readFileSync('./package.json', 'utf8'));
 export default defineConfig({
 	plugins: [sveltekit()],
 
-	// Under vitest, resolve Svelte's BROWSER entry. Without the extra condition `mount()` comes from
-	// svelte/index-server.js and every component render throws "mount(...) is not available on the
-	// server" — which is why no test in this repo could mount a component until now. This is the
-	// workaround the Svelte 5 testing docs prescribe; it is scoped to the test run so the dev server
-	// and the production build resolve exactly as before.
 	resolve: {
 		dedupe: ['svelte'],
+		// Under Vitest, resolve packages to their BROWSER build. Without this, `svelte` resolves to
+		// its server entry and mount() throws "not available on the server", so no test can render a
+		// component — only reason it went unnoticed is that the one component test in the suite never
+		// actually called render(). Scoped to VITEST so dev and build are untouched.
 		...(process.env.VITEST ? { conditions: ['browser'] } : {})
 	},
 
