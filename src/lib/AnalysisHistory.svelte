@@ -146,12 +146,15 @@
 
 	// Handle re-run action (for interrupted analyses)
 	function handleRerun(event) {
-		const { method, fileId } = event.detail;
+		// analysisId travels too. Without it the Analyze tab knows only WHICH method to preselect and
+		// has no way back to the settings that run was configured with, so "Re-run" meant "start over".
+		const { analysisId, method, fileId } = event.detail;
 		// Dispatch event to switch to Analyze tab with the method pre-selected
 		dispatchEvent(
 			new CustomEvent('switchTab', {
 				detail: {
 					tabName: 'analyze',
+					analysisId,
 					method,
 					fileId,
 					rerun: true

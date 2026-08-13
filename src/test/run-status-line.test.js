@@ -122,6 +122,46 @@ describe('a running row', () => {
 	});
 });
 
+describe('a server job that has not started yet', () => {
+	// Submitted is not started. A job sitting in the scheduler that reads "on the server · running"
+	// makes a slow queue look like a slow analysis, and the user waits on a machine that has not begun.
+	const queued = (status, elapsed) =>
+		runStatusLine({ method: 'FEL', status, executionMode: 'backend', elapsedSeconds: elapsed });
+
+	it('says it is queued, not running', () => {
+		const r = queued('pending', 90);
+		expect(r.detail).toBe('queued on the server');
+		expect(r.clock).toBe('1:30');
+		expect(r.tone).toBe('running');
+	});
+
+	it('covers initializing too, and still hides the clock in the first ten seconds', () => {
+		expect(queued('initializing', 90).detail).toBe('queued on the server');
+		expect(queued('pending', 3).detail).toBe('queued on the server');
+		expect(queued('pending', 3).clock).toBeNull();
+	});
+
+	it('leaves local runs alone — there is no queue in this tab', () => {
+		const r = runStatusLine({
+			method: 'FEL',
+			status: 'pending',
+			executionMode: 'wasm',
+			elapsedSeconds: 90
+		});
+		expect(r.detail).toBe('in this tab · running');
+	});
+
+	it('stops claiming a queue once the job is actually running', () => {
+		const r = runStatusLine({
+			method: 'FEL',
+			status: 'running',
+			executionMode: 'backend',
+			elapsedSeconds: 90
+		});
+		expect(r.detail).toBe('on the server · running');
+	});
+});
+
 describe('a finished row', () => {
 	it('reports elapsed as a fact and drops the running clock', () => {
 		const r = runStatusLine({

@@ -112,6 +112,22 @@ export function runStatusLine({
 
 	// --- still running ---
 
+	// A server job that has been submitted but not started is QUEUED, not running. Saying "on the
+	// server · running" for a job sitting in the scheduler is a lie, and the specific lie that makes a
+	// slow queue look like a slow analysis — the user waits on a machine that has not begun.
+	//
+	// Only the backend gets this branch: a wasm run has no queue, so 'pending' there is genuinely the
+	// first moments of execution.
+	if (executionMode === 'backend' && (status === 'pending' || status === 'initializing')) {
+		return {
+			label,
+			detail: 'queued on the server',
+			tone: 'running',
+			clock: elapsedSeconds < CLOCK_AFTER_SECONDS ? null : clock,
+			showDetails: false
+		};
+	}
+
 	if (elapsedSeconds < CLOCK_AFTER_SECONDS) {
 		return {
 			label,

@@ -68,7 +68,9 @@ describe('Page Refresh Handling', () => {
 				expect.objectContaining({
 					id: 'wasm-analysis-1',
 					status: 'interrupted',
-					error: 'Analysis was interrupted by page refresh'
+					// Reworded with the heartbeat gate: a reaped record is no longer necessarily a
+					// refresh — it may be a tab that was closed. See multi-tab-liveness.test.js.
+					error: 'This run stopped when its browser tab closed or reloaded.'
 				})
 			);
 
