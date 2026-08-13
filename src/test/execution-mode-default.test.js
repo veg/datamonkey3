@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { analysisConfig } from '../stores/analysisConfig.js';
 import { render, screen, fireEvent, cleanup } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import MethodSelector from '../lib/MethodSelector.svelte';
@@ -77,7 +78,13 @@ async function mountWith({ connected, method }) {
 }
 
 describe('execution mode default', () => {
+	// analysisConfig is a module singleton that deliberately survives tab switches (that is the whole
+	// point of item 3.4). It therefore also survives between tests in this file: the hours-long-run
+	// case above selects the server, and without this reset the fast-method case inherits it and sees
+	// backend pre-selected. Production behaviour is correct; only the isolation was missing, and it
+	// could not have been noticed before 3.4 and 2.1 were merged together.
 	beforeEach(() => {
+		analysisConfig.reset();
 		fileMetricsStore.set(null);
 	});
 
