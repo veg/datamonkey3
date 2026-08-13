@@ -13,6 +13,10 @@
 	import { AlertTriangle, Play, Loader2 } from 'lucide-svelte';
 	import { trackEvent } from './utils/analytics.js';
 	import { countBranchGroups, contrastFelHasEnoughGroups } from './utils/branchGroupValidation.js';
+	import { executionAdvice } from './utils/executionAdvice.js';
+	// callModes.js is a leaf (no imports) precisely so this line costs the main chunk nothing but the
+	// constants — see the note at the top of that file.
+	import { describeCallMode, CALL_DEFAULTS } from './services/axomeme/callModes.js';
 
 	export let methodConfig;
 	export let runMethod = null;
@@ -151,6 +155,11 @@
 	let geneticCode = 'Universal';
 	let geneticCodeId = 0; // For matching HyPhy numeric codes
 	let executionMode = 'local'; // 'local' or 'backend'
+	// Has the user touched the execution-mode radios for the method+file currently on screen? The
+	// advice below may move the radio, but only until someone disagrees with it: an estimate is a
+	// curve fitted at R² ≈ 0.63, a click is a decision, and the decision wins.
+	let executionModeTouched = false;
+	let lastAdvisedFor = null;
 	let isSubmitting = false; // Track submission state for button feedback
 
 	// WHY THE RUN BUTTON IS BLOCKED, derived from the analysis store rather than a timer.
@@ -1061,6 +1070,50 @@
 		executionModeBeforeBrowserOnly = null;
 	}
 
+	// WHERE THIS RUN SHOULD GO, and why the default is no longer always Local.
+	//
+	// executionMode was hard-coded to 'local' and nothing ever moved it, including for datasets this
+	// app's own estimator calls Very Slow: BGM on 20x255 reads "~2h 15m" in the panel three rows below
+	// these radios while Local sits selected, and a local run dies with the tab. The advice comes from
+	// the same estimator the panel prints, so the two can never contradict each other.
+	//
+	// The counts are read WITHOUT AnalysisTimingEstimate's `|| 10` / `|| 1000` fallbacks. Those exist
+	// so the panel can show its shape before a file is parsed; borrowing them here would let a
+	// fabricated dataset move a radio with nothing loaded.
+	$: seqCount = $fileMetricsStore?.FILE_INFO?.sequences ?? $currentFile?.sequences ?? 0;
+	$: siteCount = $fileMetricsStore?.FILE_INFO?.sites ?? $currentFile?.sites ?? 0;
+	$: advice = executionAdvice({
+		method: selectedMethod,
+		sequences: seqCount,
+		sites: siteCount,
+		methodOptions: methodOptions[selectedMethod] || {},
+		serverConnected: $backendConnectivity.isConnected
+	});
+
+	// A different method, or a different file, is a different question — so the advice gets to answer
+	// it again. Within one method+file, a click is final.
+	$: adviceKey = `${selectedMethod ?? ''}|${$currentFile?.id ?? ''}`;
+	$: if (adviceKey !== lastAdvisedFor) {
+		lastAdvisedFor = adviceKey;
+		executionModeTouched = false;
+	}
+
+	// ORDERED AFTER the browserOnly restore above, deliberately. Both write executionMode; if a
+	// browser-only method ever returns, the restore must have the last word or the two ping-pong.
+	$: if (!executionModeTouched && advice.recommend === 'backend' && executionMode !== 'backend') {
+		executionMode = 'backend';
+	}
+	// Safety rail, and it fixes something older than the advice: pick Backend, lose the socket, and
+	// the radio greys out while executionMode stays 'backend' — the run then throws "Backend server is
+	// not connected" (AnalyzeTab.svelte:215-217) with a disabled radio still claiming to be selected.
+	$: if (!$backendConnectivity.isConnected && executionMode === 'backend') {
+		executionMode = 'local';
+	}
+	// Only true while the recommendation is actually in force. The advice sentence itself never claims
+	// which radio is selected, because the user may have clicked Local a second ago.
+	$: autoSelectedBackend =
+		advice.recommend === 'backend' && !executionModeTouched && executionMode === 'backend';
+
 	// Get current method's advanced options
 	$: currentMethodOptions = selectedMethod
 		? METHOD_ADVANCED_OPTIONS[selectedMethod.toLowerCase()] || {}
@@ -1260,10 +1313,10 @@
 		}
 	}
 
-	// Smart default: suggest backend for larger datasets
-	function getSmartDefault(fileSequenceCount = 0) {
-		return fileSequenceCount > 1000 ? 'backend' : 'local';
-	}
+	// getSmartDefault(fileSequenceCount > 1000 ? 'backend' : 'local') used to live here. It was never
+	// called by anything, and a second, contradicting threshold — sequence count alone, ignoring
+	// sites and the method — would now disagree with executionAdvice() on exactly the datasets this
+	// panel is about (BGM on 20 sequences is hours; FEL on 900 is not).
 
 	// Handle branch selection from interactive tree
 	function handleBranchSelectionChange(event) {
@@ -1400,10 +1453,18 @@
 							bind:group={executionMode}
 							value="local"
 							class="execution-mode-radio"
+							on:change={() => (executionModeTouched = true)}
 						/>
 						<div class="execution-mode-content">
 							<div class="execution-mode-name">Local (Browser)</div>
-							<div class="execution-mode-desc">Fast • Small datasets</div>
+							<!-- "Fast • Small datasets" was a claim about the dataset the app had already
+							     measured and disagreed with. Where there is a fitted equation, say the number;
+							     where there is not, say the consequence, which is true either way. -->
+							<div class="execution-mode-desc">
+								{advice.local
+									? `${advice.local.description} in this tab`
+									: 'Runs in this tab — it must stay open'}
+							</div>
 						</div>
 					</label>
 					<label class="execution-mode-option">
@@ -1413,12 +1474,15 @@
 							value="backend"
 							class="execution-mode-radio"
 							disabled={!$backendConnectivity.isConnected}
+							on:change={() => (executionModeTouched = true)}
 						/>
 						<div class="execution-mode-content">
 							<div class="execution-mode-name">Backend Server</div>
 							<div class="execution-mode-desc">
 								{#if $backendConnectivity.isConnected}
-									Powerful • Large datasets
+									{advice.server
+										? `${advice.server.description} on the server`
+										: 'Runs on the server — you can close the tab'}
 								{:else}
 									Server unavailable
 								{/if}
@@ -1426,10 +1490,26 @@
 						</div>
 					</label>
 				</div>
+				{#if $backendConnectivity.isConnected && advice.advice}
+					<p class="execution-mode-advice" data-testid="execution-mode-advice">
+						{advice.advice}{#if autoSelectedBackend}
+							The server is selected; choose Local to run it here anyway.{/if}
+					</p>
+				{/if}
 				{#if !$backendConnectivity.isConnected}
 					<div class="backend-status-warning">
 						<AlertTriangle class="warning-icon" />
-						<span>Server temporarily unavailable. Please use Local mode.</span>
+						<!-- The slow-run sentence extends the existing warning rather than opening a second,
+						     competing box next to it. The two branches are mutually exclusive, so the testid
+						     stays unique on the page. -->
+						<div class="warning-lines">
+							<span>Server temporarily unavailable. Please use Local mode.</span>
+							{#if advice.advice}
+								<p class="execution-mode-advice" data-testid="execution-mode-advice">
+									{advice.advice}
+								</p>
+							{/if}
+						</div>
 					</div>
 				{/if}
 			</div>
@@ -1562,6 +1642,17 @@
 									{/if}
 								</div>
 							{/each}
+							<!-- What the SELECTED mode will actually do, which the option renderer above cannot
+							     say: it prints one static `config.description` for all three modes, and the
+							     consequence that matters here is specific to one of them. percentile always
+							     calls a fixed share of the variable sites, whether or not any site is under
+							     selection — the results table says so afterwards ("Top 2%"), and before the run
+							     nothing did. -->
+							{#if selectedMethod?.toLowerCase() === 'axomeme'}
+								<p class="call-mode-consequence" data-testid="axomeme-call-consequence">
+									{describeCallMode(methodOptions[selectedMethod]?.callMode ?? CALL_DEFAULTS.mode)}
+								</p>
+							{/if}
 						{:else}
 							<div class="no-options">
 								<span class="no-options-text">This method uses default parameters</span>
@@ -1907,9 +1998,19 @@
 		color: #718096;
 	}
 
+	/* Sits directly under the two radios and reads as their caption, not as an alert: it is a
+	   comparison of two durations the user can act on, and colouring it would make an ordinary
+	   large-dataset run look like an error. */
+	.execution-mode-advice {
+		margin: 8px 0 0;
+		font-size: 12px;
+		line-height: 1.45;
+		color: #4a5568;
+	}
+
 	.backend-status-warning {
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
 		gap: 8px;
 		margin-top: 12px;
 		padding: 8px 12px;
@@ -1918,6 +2019,19 @@
 		border-radius: 4px;
 		font-size: 12px;
 		color: #92400e;
+	}
+
+	.warning-lines {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	/* Inside the warning it is a second line of the same message, so it takes the warning's colour
+	   and drops its own top margin. */
+	.backend-status-warning .execution-mode-advice {
+		margin: 0;
+		color: inherit;
 	}
 
 	.warning-icon {
@@ -2163,6 +2277,16 @@
 		margin-top: 4px;
 		line-height: 1.4;
 		font-style: italic;
+	}
+
+	/* Upright, unlike .option-description above it: that one compares the three modes, this one states
+	   what the chosen mode will do to this alignment. Different job, so it should not look like more
+	   of the same caption. */
+	.call-mode-consequence {
+		margin: 8px 0 0;
+		font-size: 12px;
+		line-height: 1.45;
+		color: #4a5568;
 	}
 
 	.option-group.disabled {

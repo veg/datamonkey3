@@ -23,35 +23,15 @@
  */
 
 import { GENETIC_CODE, aaToken } from './tokenizer.js';
+import { CALL_DEFAULTS } from './callModes.js';
 
 /**
- * Default tier gates.
- *
- * THE DEFAULT MODE IS `percentile`, WHICH IS NOT THE REFERENCE'S DEFAULT, and the reason is measured
- * rather than preferential. The reference defaults to `pvalue`, which compares the predicted LRT
- * against 4.45 and 3.12 — chi-square thresholds for a GENUINE likelihood ratio. The model's output
- * does not live on that scale. Across 12 real DataMonkey submissions and 662 variable sites, the
- * highest predicted LRT anywhere was 3.902; exactly one site cleared 3.12 and none cleared 4.45.
- * On an alignment where MEME itself reports 17 sites at p <= 0.05, the model's maximum was 2.484.
- *
- * So under `pvalue` this feature ships reporting nothing on real data. That is not a threshold worth
- * tuning — it reflects what the model is: a RANKER. The metric its authors report is Spearman rank
- * correlation, not calibration, and rank correlation can be good while absolute scale is off.
- * `percentile` asks the question the model can answer — which sites in THIS alignment look most
- * interesting — instead of one it cannot.
- *
- * The gates themselves are unchanged from the driver's argparse (lines 984-991), so switching modes
- * reproduces the reference exactly.
+ * The tier gates live in callModes.js — a leaf with no imports — so the pre-run copy in
+ * MethodSelector can state what a mode will do without dragging tokenizer.js's genetic-code table
+ * into the main bundle. Re-exported here because this is where every caller already looks for them,
+ * and because one definition is the point of the move.
  */
-export const CALL_DEFAULTS = Object.freeze({
-	mode: 'percentile',
-	tier1LrtGate: 4.45, // p <= 0.05
-	tier2LrtGate: 3.12, // p <= 0.10
-	tier1Zscore: 2.5,
-	tier2Zscore: 2.0,
-	tier1Percentile: 98.0,
-	tier2Percentile: 95.0
-});
+export { CALL_DEFAULTS };
 
 export const NEUTRAL_CALL = 'Neutral';
 
