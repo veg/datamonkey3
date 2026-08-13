@@ -149,6 +149,20 @@ test.describe('AxoMEME', () => {
 		await expect(page.locator('.axomeme-visualization')).toBeVisible();
 		await expect(page.locator('.axomeme-plot svg').first()).toBeVisible({ timeout: 20000 });
 
+		// And NOTHING dumps the stored result underneath it. This is the production-shaped check for
+		// the raw-JSON removal: this run persists method 'AXOMEME' (uppercase, via
+		// AxomemeAnalysisRunner), which is what made it miss the old hardcoded whitelist and fall
+		// through to the generic dump. `modelSha256` is a key only a JSON.stringify of the stored
+		// result can produce, so it catches the dump wherever in the result pane it is rendered — the
+		// class name alone would miss a second <pre> in a different branch, which is exactly what the
+		// first attempt at this fix left behind.
+		await expect(page.locator('[data-testid="analysis-viewer"] .json-display')).toHaveCount(0);
+		await expect(
+			page.locator('[data-testid="analysis-viewer"] .result-content pre', {
+				hasText: 'modelSha256'
+			})
+		).toHaveCount(0);
+
 		// Rank is a first-class column and the score is NOT labelled LRT. Measured across 12 real
 		// submissions, the model's predicted LRT clears the chi-square gates once in 662 sites, so
 		// presenting it as an LRT invites a comparison it cannot support.

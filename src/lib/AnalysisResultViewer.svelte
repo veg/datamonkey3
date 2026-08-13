@@ -3,7 +3,6 @@
 	import { analysisStore } from '../stores/analyses';
 	import { persistentFileStore } from '../stores/fileInfo';
 	import ExportPanel from './ExportPanel.svelte';
-	import FelVisualization from './FelVisualization.svelte';
 	import AxomemeResults from './AxomemeResults.svelte';
 	import AnalysisProgress from './AnalysisProgress.svelte';
 	import { safeParseJSON } from './utils/jsonUtils';
@@ -280,20 +279,6 @@
 								<h3 class="mb-4 text-lg font-semibold">
 									{analysis.method.toUpperCase()} Analysis Visualization
 								</h3>
-								<!-- Debug logging for aBSREL data structure -->
-								{#if analysis.method.toLowerCase() === 'absrel'}
-									<div class="mb-4 text-xs text-text-silver">
-										<details>
-											<summary>Debug: aBSREL Data Structure</summary>
-											<pre
-												class="max-h-40 overflow-auto bg-surface-raised p-2 text-xs">{JSON.stringify(
-													resultData,
-													null,
-													2
-												)}</pre>
-										</details>
-									</div>
-								{/if}
 								<svelte:component this={hyphyScopeComponent} data={resultData} />
 							</div>
 						</div>
@@ -324,98 +309,13 @@
 								</div>
 							{/if}
 						</div>
-					{:else if ['FEL', 'CONTRAST-FEL', 'SLAC', 'MEME', 'BUSTED', 'RELAX', 'FUBAR', 'aBSREL', 'ABSREL', 'GARD', 'MULTI-HIT', 'NRM'].includes(analysis.method)}
-						<!-- Selection analysis results with fallback legacy visualization for FEL -->
-						<div class="selection-analysis">
-							{#if resultData.input && resultData.input.file}
-								<p><strong>Analysis File:</strong> {resultData.input.file}</p>
-							{/if}
-
-							<!-- Legacy FEL visualization (keeping as fallback) -->
-							{#if analysis.method === 'FEL' && !hyphyScopeComponent}
-								<div class="mb-6 mt-6 rounded-lg bg-white p-4 shadow-sm">
-									<h3 class="mb-4 text-lg font-semibold">FEL Analysis Visualization (Legacy)</h3>
-									<FelVisualization {resultData} />
-								</div>
-							{/if}
-
-							{#if resultData.fits && resultData.fits.length > 0}
-								<h3 class="mb-2 text-lg font-bold">Model Fits</h3>
-								<div class="overflow-x-auto">
-									<table class="w-full table-auto">
-										<thead class="bg-surface-sunken">
-											<tr>
-												<th class="p-2 text-left">Model</th>
-												<th class="p-2 text-left">Log Likelihood</th>
-												<th class="p-2 text-left">Parameters</th>
-												<th class="p-2 text-left">AIC</th>
-											</tr>
-										</thead>
-										<tbody>
-											{#each resultData.fits as fit}
-												<tr class="border-b">
-													<td class="p-2">{fit.model || 'Unknown'}</td>
-													<td class="p-2"
-														>{fit.log_likelihood ? fit.log_likelihood.toFixed(2) : 'N/A'}</td
-													>
-													<td class="p-2">{fit.parameters || 'N/A'}</td>
-													<td class="p-2">{fit.AIC ? fit.AIC.toFixed(2) : 'N/A'}</td>
-												</tr>
-											{/each}
-										</tbody>
-									</table>
-								</div>
-							{/if}
-
-							{#if resultData.tested && resultData.tested.sites && resultData.tested.sites.length > 0}
-								<h3 class="my-2 text-lg font-bold">Site Results</h3>
-								<div class="max-h-96 overflow-auto">
-									<table class="w-full table-auto">
-										<thead class="sticky top-0 bg-surface-sunken">
-											<tr>
-												<th class="p-2 text-left">Site</th>
-												<th class="p-2 text-left">p-value</th>
-												<th class="p-2 text-left">alpha</th>
-												<th class="p-2 text-left">beta</th>
-												<th class="p-2 text-left">Selection</th>
-											</tr>
-										</thead>
-										<tbody>
-											{#each resultData.tested.sites as site}
-												<tr class="border-b" class:bg-status-warning-bg={site.p <= 0.05}>
-													<td class="p-2">{site.site_index || site.site || 'N/A'}</td>
-													<td class="p-2">{site.p ? site.p.toExponential(2) : 'N/A'}</td>
-													<td class="p-2">{site.alpha ? site.alpha.toFixed(2) : 'N/A'}</td>
-													<td class="p-2">{site.beta ? site.beta.toFixed(2) : 'N/A'}</td>
-													<td class="p-2">
-														{#if site.p <= 0.05}
-															{#if site.beta > site.alpha}
-																<span class="font-bold text-status-error">Positive</span>
-															{:else}
-																<span class="font-bold text-brand-royal">Negative</span>
-															{/if}
-														{:else}
-															<span class="text-text-silver">Neutral</span>
-														{/if}
-													</td>
-												</tr>
-											{/each}
-										</tbody>
-									</table>
-								</div>
-							{/if}
-
-							{#if !resultData.tested && !resultData.fits}
-								<pre class="bg-surface-sunken p-2 text-sm">{JSON.stringify(
-										resultData,
-										null,
-										2
-									)}</pre>
-							{/if}
-
-						</div>
-					{:else}
-						<!-- Generic JSON display for other methods -->
+					{:else if !hyphyScopeComponent}
+						<!-- No visualisation exists for this method, so the raw result document IS the result view.
+						     The converse is the point: a method that has a visualisation never gets a megabyte <pre>
+						     stapled underneath it. This was a hardcoded list of method names, which both missed
+						     methods that do have one (AXOMEME, BGM, PRIME, B-STILL) and compared case-sensitively
+						     against a value the runners persist uppercased. NRM is the only method that lands here
+						     today. -->
 						<div class="json-display">
 							<h3 class="mb-2 text-lg font-bold">Analysis Results</h3>
 							<pre class="max-h-96 overflow-auto bg-surface-sunken p-2 text-sm">{JSON.stringify(
