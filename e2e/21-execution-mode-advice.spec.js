@@ -23,6 +23,13 @@ test.describe('Execution mode advice', () => {
 	test('warns that a slow browser run needs the tab, and agrees with the outlook panel', async ({
 		page
 	}) => {
+		// Block the backend explicitly rather than relying on there not being one. The rest of this
+		// suite assumes "no backend server in test" (see 11-backend-unavailable), but a developer
+		// running datamonkey-js-server locally makes that false, and this assertion depends on it:
+		// with a server reachable the advice takes its comparison branch and says "on the server".
+		// An e2e whose result depends on what happens to be listening on 7015 is not a test.
+		await page.route('**/socket.io/**', (route) => route.abort());
+
 		await freshStart(page);
 		// 20 taxa x 85 codons. BGM at that size is 'Slow' in the browser — the app has always known
 		// this and always defaulted to running it here anyway.
