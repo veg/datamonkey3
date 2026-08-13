@@ -13,8 +13,15 @@
 		}
 	});
 
+	// Callback prop rather than createEventDispatcher: this component is legacy syntax while
+	// +layout.svelte is runes-mode, and a callback prop is the form that works unambiguously across
+	// that boundary. The layout passes closeMobileMenu, so activating the pill from inside an open
+	// hamburger menu does not leave the menu covering the destination it just navigated to.
+	export let onNavigate = () => {};
+
 	// Function to navigate to the Results tab when clicked
 	function navigateToResults() {
+		onNavigate();
 		goto('/?tab=results');
 	}
 

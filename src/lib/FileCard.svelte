@@ -181,9 +181,12 @@
 	$: fileTypeLabel = getFileTypeLabel(file.filename, file.contentType);
 	$: timeAgo = getTimeAgo(file.createdAt);
 
-	// Toggle details visibility
-	function toggleDetails(event) {
-		event.stopPropagation();
+	// aria-controls target for the disclosure button. Per-file so several cards can be open at once.
+	$: detailsId = `file-details-${file.id}`;
+
+	// Toggle details visibility. No stopPropagation: the card body is no longer clickable, so there
+	// is nothing above this to stop.
+	function toggleDetails() {
 		showDetails = !showDetails;
 	}
 
@@ -193,8 +196,7 @@
 	}
 
 	// Delete the file
-	function deleteFile(event) {
-		event.stopPropagation();
+	function deleteFile() {
 		if (confirm(`Are you sure you want to delete "${file.filename}"?`)) {
 			dispatch('delete', { id: file.id });
 		}
@@ -207,9 +209,22 @@
 	class:ring-1={isActive}
 	class:ring-brand-muted={isActive}
 >
-	<div class="cursor-pointer p-3 sm:p-premium-md" on:click={selectFile}>
+	<div class="p-3 sm:p-premium-md">
 		<div class="flex items-center justify-between gap-2">
-			<div class="flex min-w-0 flex-1 items-center">
+			<!--
+				The whole card body used to be a `<div on:click>` — unfocusable, unlabelled, and invisible
+				to the keyboard. It cannot simply become a <button>, because it contains the details and
+				delete buttons and nested buttons are invalid HTML. So the icon + name block is the button
+				and the actions are its sibling: that also puts selection BEFORE the destructive Delete in
+				tab order, which the old DOM order got backwards.
+			-->
+			<button
+				type="button"
+				data-testid="file-select"
+				class="flex min-w-0 flex-1 items-center rounded-premium-sm text-left focus:outline-none focus:ring-2 focus:ring-brand-royal"
+				on:click={selectFile}
+				aria-current={isActive ? 'true' : undefined}
+			>
 				<!-- File icon based on type -->
 				<div
 					class="mr-2 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg sm:mr-premium-md sm:h-10 sm:w-10 sm:rounded-premium-sm {fileTypeColor}"
@@ -227,6 +242,14 @@
 							class="hidden flex-shrink-0 rounded-full bg-brand-whisper px-1.5 py-0.5 text-[10px] text-text-slate xs:inline sm:rounded-premium-xl sm:px-premium-sm sm:text-premium-caption"
 							>{fileTypeLabel}</span
 						>
+						<!-- Selected state was signalled by border colour alone; give it a text channel too. -->
+						{#if isActive}
+							<span
+								data-testid="file-selected-chip"
+								class="flex-shrink-0 rounded-full bg-brand-royal px-1.5 py-0.5 text-[10px] font-semibold text-white sm:rounded-premium-xl sm:px-premium-sm sm:text-premium-caption"
+								>Selected</span
+							>
+						{/if}
 					</div>
 					<div class="flex items-center text-[11px] text-text-silver sm:text-premium-caption">
 						<span>{formatFileSize(file.size)}</span>
@@ -234,7 +257,7 @@
 						<span title={formatDate(file.createdAt)}>{timeAgo}</span>
 					</div>
 				</div>
-			</div>
+			</button>
 
 			<!-- Actions -->
 			<div class="flex flex-shrink-0 items-center gap-0.5 sm:gap-1">
@@ -243,6 +266,8 @@
 					class="flex h-9 w-9 items-center justify-center rounded-lg text-text-slate transition-all duration-premium hover:bg-brand-whisper hover:text-brand-royal focus:outline-none focus:ring-2 focus:ring-brand-royal focus:ring-offset-1 sm:h-11 sm:w-11 sm:rounded-premium-sm"
 					title={showDetails ? 'Hide details' : 'Show details'}
 					aria-label={showDetails ? 'Hide details' : 'Show details'}
+					aria-expanded={showDetails}
+					aria-controls={detailsId}
 				>
 					{#if showDetails}
 						<ChevronUp class="h-4 w-4 sm:h-5 sm:w-5" />
@@ -264,7 +289,7 @@
 
 		<!-- Details panel (conditional) -->
 		{#if showDetails}
-			<div class="details-panel mt-premium-md rounded-premium bg-brand-whisper p-premium-md">
+			<div id={detailsId} class="details-panel mt-premium-md rounded-premium bg-brand-whisper p-premium-md">
 				<!-- File preview, if available -->
 				{#if preview}
 					<div class="mb-premium-md">

@@ -41,6 +41,41 @@
 	$: isAnalyzeDisabled = !hasFiles || currentFileFailedValidation;
 	$: isResultsDisabled = !hasAnalyses;
 
+	// Roving tabindex: the tab bar is ONE tab stop, and Arrow/Home/End move between tabs. This is
+	// the WAI-ARIA tabs pattern; without it a keyboard user cannot tell the three buttons form a
+	// group, and the gate reason was hover-only (a `title` tooltip), i.e. invisible to them entirely.
+	const TAB_ORDER = ['data', 'analyze', 'results'];
+
+	function focusTabAt(index) {
+		const name = TAB_ORDER[(index + TAB_ORDER.length) % TAB_ORDER.length];
+		const el = document.getElementById(`tab-${name}`);
+		el?.focus();
+	}
+
+	function handleTabKeydown(event) {
+		const currentIndex = TAB_ORDER.indexOf(activeTab);
+		const from = currentIndex === -1 ? 0 : currentIndex;
+
+		switch (event.key) {
+			case 'ArrowRight':
+				event.preventDefault();
+				focusTabAt(from + 1);
+				break;
+			case 'ArrowLeft':
+				event.preventDefault();
+				focusTabAt(from - 1);
+				break;
+			case 'Home':
+				event.preventDefault();
+				focusTabAt(0);
+				break;
+			case 'End':
+				event.preventDefault();
+				focusTabAt(TAB_ORDER.length - 1);
+				break;
+		}
+	}
+
 	// Function to handle tab clicks with context-aware behavior
 	function handleTabClick(tabName) {
 		// Data tab is always accessible
@@ -69,7 +104,7 @@
 
 <div class="mb-4 sm:mb-premium-xl">
 	<div class="rounded-premium bg-brand-ghost p-1 sm:p-premium-xs">
-		<div class="flex border-b border-border-platinum">
+		<div class="flex border-b border-border-platinum" role="tablist" aria-label="Analysis workflow">
 			<!-- Data Tab - Always Enabled -->
 			<button
 				class="relative min-h-[48px] flex-1 px-2 py-3 text-xs font-semibold transition-all duration-premium sm:flex-none sm:px-premium-xl sm:py-premium-lg sm:text-premium-brand"
@@ -79,6 +114,12 @@
 				class:hover:bg-brand-whisper={activeTab !== 'data'}
 				on:click={() => handleTabClick('data')}
 				title="Manage sequence data"
+				role="tab"
+				id="tab-data"
+				aria-selected={activeTab === 'data'}
+				aria-controls="tab-panel"
+				tabindex={activeTab === 'data' ? 0 : -1}
+				on:keydown={handleTabKeydown}
 			>
 				<span class="flex flex-col items-center gap-1 sm:flex-row sm:gap-2">
 					<div
@@ -113,6 +154,12 @@
 				on:click={() => handleTabClick('analyze')}
 				title={isAnalyzeDisabled ? 'Upload data first' : 'Run analysis on selected data'}
 				aria-disabled={isAnalyzeDisabled}
+				role="tab"
+				id="tab-analyze"
+				aria-selected={activeTab === 'analyze'}
+				aria-controls="tab-panel"
+				tabindex={activeTab === 'analyze' ? 0 : -1}
+				on:keydown={handleTabKeydown}
 			>
 				<span class="flex flex-col items-center gap-1 sm:flex-row sm:gap-2">
 					<div
@@ -150,6 +197,12 @@
 				on:click={() => handleTabClick('results')}
 				title={isResultsDisabled ? 'Run analysis first' : 'View analysis results'}
 				aria-disabled={isResultsDisabled}
+				role="tab"
+				id="tab-results"
+				aria-selected={activeTab === 'results'}
+				aria-controls="tab-panel"
+				tabindex={activeTab === 'results' ? 0 : -1}
+				on:keydown={handleTabKeydown}
 			>
 				<span class="flex flex-col items-center gap-1 sm:flex-row sm:gap-2">
 					<div
@@ -177,6 +230,27 @@
 				{/if}
 			</button>
 		</div>
+
+		<!--
+			Why a locked tab is locked, stated in the page rather than in a `title` tooltip: hover does
+			not exist on touch and is not reachable by keyboard. The three-way split matters —
+			isAnalyzeDisabled is true for two different reasons, and a file that failed validation must
+			NOT be told to load a file it has already loaded (issue #189).
+		-->
+		{#if currentFileFailedValidation || isAnalyzeDisabled || isResultsDisabled}
+			<p
+				data-testid="tab-gate-hint"
+				class="px-2 pt-2 text-xs text-text-slate sm:px-premium-xl sm:pt-premium-sm sm:text-premium-caption"
+			>
+				{#if currentFileFailedValidation}
+					This file could not be read — load a different alignment to unlock Analyze.
+				{:else if isAnalyzeDisabled}
+					Load a file on the Data tab to unlock Analyze.
+				{:else}
+					Run an analysis to unlock Results.
+				{/if}
+			</p>
+		{/if}
 	</div>
 </div>
 
