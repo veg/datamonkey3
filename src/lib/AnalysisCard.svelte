@@ -1,6 +1,7 @@
 <script>
 	import { createEventDispatcher, onMount } from 'svelte';
 	import { persistentFileStore } from '../stores/fileInfo';
+	import { isStaleRun } from './utils/fileIdentity.js';
 	import {
 		File,
 		Clock,
@@ -31,6 +32,10 @@
 	$: if (analysis && analysis.fileId && $persistentFileStore.files) {
 		file = $persistentFileStore.files.find((f) => f.id === analysis.fileId);
 	}
+
+	// A same-name re-upload replaces a file's contents in place and keeps its id, so every earlier
+	// run stays filed under a name that now means different bytes. Nothing distinguished them.
+	$: staleRun = isStaleRun(analysis, file);
 
 	// Format date for display
 	function formatDate(timestamp) {
@@ -278,6 +283,13 @@
 					<File class="mr-1 h-3 w-3" />
 					<span class="truncate">{file ? file.filename : 'Unknown file'}</span>
 				</div>
+
+				{#if staleRun}
+					<div class="mt-0.5 flex items-center text-amber-700" data-testid="stale-run-badge">
+						<AlertCircle class="mr-1 h-3 w-3 flex-shrink-0" />
+						<span>Run on an earlier version of this file</span>
+					</div>
+				{/if}
 
 				<div class="mt-0.5 flex items-center">
 					<Clock class="mr-1 h-3 w-3" />

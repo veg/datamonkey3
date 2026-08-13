@@ -1,14 +1,15 @@
 <script>
 	import { AliVibe } from 'alivibe';
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, createEventDispatcher } from 'svelte';
 	import { treeStore } from '../stores/tree';
-	import { alignmentFileStore } from '../stores/fileInfo';
-	import { persistentFileStore } from '../stores/fileInfo';
 	import { Save } from 'lucide-svelte';
 	import { trackEvent } from './utils/analytics.js';
+	import { buildEditedAlignmentFile } from './utils/alignmentEdits.js';
 
 	export let alignmentFile = null;
 	export let fileMetricsJSON = null;
+
+	const dispatch = createEventDispatcher();
 
 	let alivibe;
 	let mounted = false;
@@ -60,27 +61,18 @@
 
 		try {
 			const alignment = alivibe.getAlignment();
-			if (!alignment || !alignment.length) {
-				throw new Error('No alignment data to save');
-			}
-
-			// Build FASTA content
-			const fastaContent = alignment
-				.map(entry => `>${entry.name}\n${entry.seq}`)
-				.join('\n') + '\n';
-
-			// Create a new File object with the same name
 			const filename = alignmentFile.name || 'alignment.fasta';
-			const newFile = new File([fastaContent], filename, { type: 'text/plain' });
+			const newFile = buildEditedAlignmentFile(alignment, filename);
 
-			// Update the persistent store (handles overwriting by name)
-			await persistentFileStore.uploadFile(newFile);
-
-			// Update the in-memory alignment file store
-			alignmentFileStore.set(newFile);
-
-			saveMessage = 'saved';
-			setTimeout(() => { saveMessage = null; }, 2000);
+			// Hand the edited alignment to the parent instead of writing the stores here.
+			//
+			// Writing them here was the bug: it updated the bytes on disk and the viewer's own store
+			// while leaving fileMetricsStore — including canonicalFasta, the string every runner
+			// actually submits — describing the alignment before the edit. The parent re-runs the
+			// whole upload path, which regenerates all of it. There is no success message to set:
+			// that path clears alignmentFileStore, so this component is unmounted and remounted with
+			// the re-read alignment.
+			dispatch('editsSaved', { file: newFile, previous: alignmentFile });
 		} catch (err) {
 			console.error('Error saving alignment:', err);
 			saveMessage = 'error';
@@ -168,10 +160,11 @@
 			title="Save alignment edits back to file"
 		>
 			<Save size={14} />
+			<!-- No "Saved" state: a successful save unmounts this viewer while the edited alignment is
+			     re-read, and the old confirmation was the whole problem — it reported success for a
+			     save the analyses never saw. -->
 			{#if isSaving}
 				Saving...
-			{:else if saveMessage === 'saved'}
-				Saved
 			{:else if saveMessage === 'error'}
 				Save failed
 			{:else}

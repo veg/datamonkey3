@@ -9,7 +9,12 @@ export default defineConfig({
 	plugins: [sveltekit()],
 
 	resolve: {
-		dedupe: ['svelte']
+		dedupe: ['svelte'],
+		// Under Vitest, resolve packages to their BROWSER build. Without this, `svelte` resolves to
+		// its server entry and mount() throws "not available on the server", so no test can render a
+		// component — only reason it went unnoticed is that the one component test in the suite never
+		// actually called render(). Scoped to VITEST so dev and build are untouched.
+		...(process.env.VITEST ? { conditions: ['browser'] } : {})
 	},
 
 	test: {
