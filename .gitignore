@@ -78,3 +78,7 @@ coverage-e2e
 # onnxruntime-web WASM runtime, copied from node_modules at build time by
 # scripts/copy-ort-wasm.mjs. Pinned by package.json, not by git.
 static/ort/
+
+# Local working notes and agent definitions — not part of the app
+.claude/
+UX-QUALITY-OF-LIFE.md
