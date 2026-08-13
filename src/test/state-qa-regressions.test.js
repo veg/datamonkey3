@@ -166,6 +166,56 @@ describe('#166 backend socket events route strictly by jobId', () => {
 		expect(runner.activeAnalyses.size).toBe(2);
 	});
 
+	// ---------------------------------------------------------------------------------------
+	// #208 — the server does not send a jobId on `completed`, so strict routing completed nothing
+	// ---------------------------------------------------------------------------------------
+
+	it('completes the only in-flight analysis when the event carries no jobId', async () => {
+		// The server's `completed` packet is { results, type } -- no jobId, no id (verified against a
+		// live server). #166 made routing strict, which was right about the hazard and wrong about
+		// the data: it silently completed nothing for EVERY backend method, and a finished analysis
+		// only appeared after a page refresh.
+		runner.activeAnalyses.clear();
+		runner.activeAnalyses.set('job-only', 'analysis-only');
+
+		await handlers['completed']({ results: { ok: true } });
+
+		expect(completed.map((c) => c.analysisId)).toEqual(['analysis-only']);
+		expect(runner.activeAnalyses.size).toBe(0);
+	});
+
+	it('still refuses when there is no jobId and more than one job is in flight', async () => {
+		// Genuinely ambiguous. This is the case #166 existed for, and it must keep refusing.
+		await handlers['completed']({ results: { ok: true } });
+		expect(completed, 'guessed between two concurrent jobs').toEqual([]);
+		expect(runner.activeAnalyses.size).toBe(2);
+	});
+
+	it('does NOT fall back to the single job when an unmatched jobId is present', async () => {
+		// The subtle one. A jobId that does not match is positive evidence the event belongs to
+		// something else -- a stale job, another tab. Absence of an id is ambiguity; a wrong id is
+		// information, and falling back on it would reintroduce the misrouting #166 removed.
+		runner.activeAnalyses.clear();
+		runner.activeAnalyses.set('job-only', 'analysis-only');
+
+		await handlers['completed']({ jobId: 'job-SOMEONE-ELSE', results: { ok: true } });
+
+		expect(completed, 'attributed an event that named a different job').toEqual([]);
+		expect(runner.activeAnalyses.size).toBe(1);
+	});
+
+	it('fails the only in-flight analysis on an unattributed script error', async () => {
+		// Otherwise a failed run sits at "running" forever -- the #165 symptom by another route.
+		runner.activeAnalyses.clear();
+		runner.activeAnalyses.set('job-only', 'analysis-only');
+
+		await handlers['script error']({ message: 'boom' });
+
+		expect(completed).toHaveLength(1);
+		expect(completed[0].analysisId).toBe('analysis-only');
+		expect(completed[0].success).toBe(false);
+	});
+
 	it('fails only the analysis whose jobId matched', async () => {
 		await handlers['script error']({ jobId: 'job-A', message: 'boom' });
 		expect(completed).toHaveLength(1);

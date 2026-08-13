@@ -105,9 +105,14 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 	setupGlobalHandlers() {
 		// Generic handlers that work for all analysis methods
 		this.socket.on('status update', (status) => {
+			// The server sends the job id as `id`, not `jobId` (verified live). Reading both means
+			// progress routes correctly even with concurrent jobs, instead of falling through to the
+			// single-job heuristic below every time.
+			const statusJobId = status.jobId ?? status.id ?? null;
+
 			// Try to find the analysis ID for this status update
-			if (status.jobId && this.activeAnalyses.has(status.jobId)) {
-				const analysisId = this.activeAnalyses.get(status.jobId);
+			if (statusJobId && this.activeAnalyses.has(statusJobId)) {
+				const analysisId = this.activeAnalyses.get(statusJobId);
 				this.updateProgress(
 					analysisId,
 					'running',
@@ -140,15 +145,38 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 
 			const results = data.results || data;
 
-			// Route strictly by jobId. Completing the "first" active analysis on a
-			// missing/unmatched jobId would misroute results between concurrent jobs.
-			if (data.jobId && this.activeAnalyses.has(data.jobId)) {
-				const analysisId = this.activeAnalyses.get(data.jobId);
+			// ROUTING, and why it is not simply "by jobId".
+			//
+			// #166 made this route strictly by jobId, because completing "the first active analysis"
+			// on an unmatched id misroutes results between concurrent jobs. That was right about the
+			// hazard and wrong about the data: the server's `completed` packet carries only
+			// { results, type }. It has no jobId and no id -- verified against a live server, where
+			// `status update` packets DO carry `id` but `completed` does not
+			// (lib/clientsocket.js:60 forwards each redis packet whole, and that one lacks it).
+			//
+			// So strict routing silently completed nothing, for every backend method, and a finished
+			// analysis only appeared after a page refresh. The old fallback had been masking it.
+			//
+			// The rule below keeps the protection and restores the behaviour: attribute by jobId when
+			// one is present, otherwise attribute ONLY when exactly one analysis is in flight -- in
+			// which case the event cannot belong to anything else. With two or more and no id, there
+			// is genuinely no way to tell, so it refuses rather than guessing. That is strictly safer
+			// than pre-#166 (which completed the first of N) and strictly more useful than post-#166
+			// (which completed none of 1). See issue #208 for the server-side fix that removes the
+			// ambiguity entirely.
+			const jobId = data.jobId ?? data.id ?? null;
+
+			if (jobId && this.activeAnalyses.has(jobId)) {
+				const analysisId = this.activeAnalyses.get(jobId);
 				await this.completeAnalysis(analysisId, true, results);
-				this.activeAnalyses.delete(data.jobId);
+				this.activeAnalyses.delete(jobId);
+			} else if (!jobId && this.activeAnalyses.size === 1) {
+				const [onlyJobId, analysisId] = [...this.activeAnalyses.entries()][0];
+				await this.completeAnalysis(analysisId, true, results);
+				this.activeAnalyses.delete(onlyJobId);
 			} else {
-				console.warn('⚠️ Completed event without a matching jobId, ignoring to avoid misrouting:', {
-					receivedJobId: data.jobId,
+				console.warn('⚠️ Completed event cannot be attributed; ignoring to avoid misrouting:', {
+					receivedJobId: jobId,
 					activeAnalysesCount: this.activeAnalyses.size
 				});
 			}
@@ -177,9 +205,17 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 				const analysisId = this.activeAnalyses.get(errorJobId);
 				await this.completeAnalysis(analysisId, false, null, userFacingError);
 				this.activeAnalyses.delete(errorJobId);
+			} else if (!errorJobId && this.activeAnalyses.size === 1) {
+				// Same reasoning as the completed handler: with exactly one job in flight the error
+				// cannot belong to anything else, and refusing to attribute it leaves a failed run
+				// sitting at "running" forever. With two or more it is genuinely ambiguous, so the
+				// branch below still refuses rather than killing an innocent concurrent job.
+				const [onlyJobId, analysisId] = [...this.activeAnalyses.entries()][0];
+				await this.completeAnalysis(analysisId, false, null, userFacingError);
+				this.activeAnalyses.delete(onlyJobId);
 			} else {
 				console.warn(
-					'⚠️ Script error without a matching jobId, not failing any analysis to avoid killing concurrent jobs:',
+					'⚠️ Script error cannot be attributed, not failing any analysis to avoid killing concurrent jobs:',
 					{
 						receivedJobId: errorJobId,
 						activeAnalysesCount: this.activeAnalyses.size
