@@ -6,12 +6,6 @@
 	import FelVisualization from './FelVisualization.svelte';
 	import AxomemeResults from './AxomemeResults.svelte';
 	import AnalysisProgress from './AnalysisProgress.svelte';
-	import { FINAL_HYPHY_EYE_URL } from './config/env';
-	import {
-		shareWithHyphyEye,
-		isMethodSupported,
-		getHyphyEyeUrl
-	} from './utils/hyphyEyeIntegration';
 	import { safeParseJSON } from './utils/jsonUtils';
 	import { formatArguments, formatLogTail, buildDiagnostics } from './utils/analysisDiagnostics.js';
 	import {
@@ -30,7 +24,7 @@
 	import AbsrelVisualizationWrapper from './AbsrelVisualizationWrapper.svelte';
 	import FubarVisualizationWrapper from './FubarVisualizationWrapper.svelte';
 	import MultiHitVisualizationWrapper from './MultiHitVisualizationWrapper.svelte';
-	import { Server, Monitor, ExternalLink } from 'lucide-svelte';
+	import { Server, Monitor } from 'lucide-svelte';
 
 	export let analysisId = null;
 
@@ -419,42 +413,6 @@
 									)}</pre>
 							{/if}
 
-							<!-- HyPhy-eye integration with localStorage sharing -->
-							{#if isMethodSupported(analysis.method)}
-								<div class="mb-4 mt-4 rounded-lg bg-status-info-bg p-4 text-center shadow-sm">
-									<p class="mb-2 text-status-info-text">
-										View results with automatic data sharing:
-									</p>
-									<button
-										on:click={() => shareWithHyphyEye(resultData, analysis.method)}
-										class="inline-flex items-center rounded-md bg-brand-royal px-4 py-2 text-white transition-colors hover:bg-brand-deep"
-									>
-										View in HyPhy-eye
-										<ExternalLink class="ml-1 h-4 w-4" />
-									</button>
-									<p class="mt-2 text-sm text-brand-royal">
-										Analysis results will be automatically shared via localStorage.
-									</p>
-								</div>
-							{:else}
-								<div class="mb-4 mt-4 rounded-lg bg-surface-sunken p-4 text-center shadow-sm">
-									<p class="mb-2">Open results in a new tab:</p>
-									<a
-										href="{FINAL_HYPHY_EYE_URL}/pages/{analysis.method
-											.toLowerCase()
-											.replace('-', '')}"
-										target="_blank"
-										rel="noopener noreferrer"
-										class="inline-flex items-center rounded-md bg-brand-royal px-4 py-2 text-white transition-colors hover:bg-brand-deep"
-									>
-										Open {analysis.method.toUpperCase()} Results in hyphy-eye
-										<ExternalLink class="ml-1 h-4 w-4" />
-									</a>
-									<p class="mt-2 text-sm text-text-slate">
-										Note: You will need to upload your result JSON to hyphy-eye manually.
-									</p>
-								</div>
-							{/if}
 						</div>
 					{:else}
 						<!-- Generic JSON display for other methods -->
