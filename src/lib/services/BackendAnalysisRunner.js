@@ -8,6 +8,7 @@ import { DATAMONKEY_SERVER_URL } from '../config/env.ts';
 import { BaseAnalysisRunner } from './BaseAnalysisRunner.js';
 import { analysisStore } from '../../stores/analyses.js';
 import { sanitizeSequenceNames } from '../utils/fastaValidation.js';
+import { geneticCodeId } from '../config/geneticCodes.js';
 
 /**
  * Strip embedded trees from alignment data
@@ -426,24 +427,17 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 	}
 
 	/**
-	 * Map genetic code name to numeric ID (for backward compatibility)
+	 * Map genetic code name to the numeric ID the server expects.
+	 *
+	 * Delegates to the shared table, which resolves BOTH the identifiers the selector now emits
+	 * ('Vertebrate-mtDNA') and the spellings older builds stored ('Vertebrate mitochondrial').
+	 * That second half is not cosmetic: the fallback here is 0, so a name this fails to recognise
+	 * makes the server silently run the UNIVERSAL code while the UI still shows the code the user
+	 * picked — a wrong answer with no error anywhere. Keeping a second copy of the table in this
+	 * file is what made that possible; do not reintroduce one.
 	 */
 	mapGeneticCodeToId(geneticCode) {
-		const codeMap = {
-			Universal: 0,
-			'Vertebrate mitochondrial': 1,
-			'Yeast mitochondrial': 2,
-			'Mold mitochondrial': 3,
-			'Invertebrate mitochondrial': 4,
-			'Ciliate nuclear': 5,
-			'Echinoderm mitochondrial': 6,
-			'Euplotid nuclear': 7,
-			'Alternative yeast nuclear': 8,
-			'Ascidian mitochondrial': 9,
-			'Flatworm mitochondrial': 10,
-			'Blepharisma nuclear': 11
-		};
-		return codeMap[geneticCode] || 0;
+		return geneticCodeId(geneticCode);
 	}
 
 	/**

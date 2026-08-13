@@ -17,6 +17,7 @@
 	// callModes.js is a leaf (no imports) precisely so this line costs the main chunk nothing but the
 	// constants — see the note at the top of that file.
 	import { describeCallMode, CALL_DEFAULTS } from './services/axomeme/callModes.js';
+	import { GENETIC_CODES } from './config/geneticCodes.js';
 
 	export let methodConfig;
 	export let runMethod = null;
@@ -191,26 +192,6 @@
 		: localRunInFlight && wouldRunLocally
 			? 'Another analysis is running in this tab — only one can run here at a time'
 			: null;
-
-	// Genetic code mapping (HyPhy uses numeric IDs)
-	const GENETIC_CODES = [
-		{ id: 0, name: 'Universal', label: 'Universal code' },
-		{ id: 1, name: 'Vertebrate mitochondrial', label: 'Vertebrate mitochondrial DNA code' },
-		{ id: 2, name: 'Yeast mitochondrial', label: 'Yeast mitochondrial DNA code' },
-		{
-			id: 3,
-			name: 'Mold mitochondrial',
-			label: 'Mold, Protozoan and Coelenterate mt; Mycloplasma/Spiroplasma'
-		},
-		{ id: 4, name: 'Invertebrate mitochondrial', label: 'Invertebrate mitochondrial DNA code' },
-		{ id: 5, name: 'Ciliate nuclear', label: 'Ciliate, Dasycladacean and Hexamita Nuclear code' },
-		{ id: 6, name: 'Echinoderm mitochondrial', label: 'Echinoderm mitochondrial DNA code' },
-		{ id: 7, name: 'Euplotid nuclear', label: 'Euplotid Nuclear code' },
-		{ id: 8, name: 'Alternative yeast nuclear', label: 'Alternative Yeast Nuclear code' },
-		{ id: 9, name: 'Ascidian mitochondrial', label: 'Ascidian mitochondrial DNA code' },
-		{ id: 10, name: 'Flatworm mitochondrial', label: 'Flatworm mitochondrial DNA code' },
-		{ id: 11, name: 'Blepharisma nuclear', label: 'Blepharisma Nuclear code' }
-	];
 
 	// Method-specific advanced options configurations
 	const METHOD_ADVANCED_OPTIONS = {
@@ -1183,9 +1164,11 @@
 					})
 			: [];
 
-	// Update genetic code ID when name changes
+	// Update genetic code ID when name changes. The selector's VALUE is HyPhy's own identifier
+	// (what the browser path passes to --code); the id is what the server path and the codon
+	// validator use. Both come from the same row, so they cannot disagree.
 	$: {
-		const codeEntry = GENETIC_CODES.find((code) => code.name === geneticCode);
+		const codeEntry = GENETIC_CODES.find((code) => code.hyphy === geneticCode);
 		if (codeEntry) {
 			geneticCodeId = codeEntry.id;
 		}
@@ -1556,7 +1539,9 @@
 								Genetic Code:
 								<select bind:value={geneticCode} class="option-select">
 									{#each GENETIC_CODES as code}
-										<option value={code.name}>{code.label}</option>
+										<!-- value is HyPhy's own identifier, label is ours: the value is
+										     passed verbatim to `hyphy --code`, so it is not free text. -->
+										<option value={code.hyphy}>{code.label}</option>
 									{/each}
 								</select>
 							</label>

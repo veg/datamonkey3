@@ -884,7 +884,10 @@
 				'Analyzing file structure...'
 			);
 			currentStage = 'exec';
-			result = await cliObj.exec('hyphy LIBPATH=/res/ ' + inputFiles[1]);
+			// argv-array form: Aioli only splits on spaces when the second argument is null.
+			// The datareader takes no arguments with spaces today, but the array form is what a
+			// future `--code <name>` (see UX item 1.2) would need, and it costs nothing now.
+			result = await cliObj.exec('hyphy', ['LIBPATH=/res/', inputFiles[1]]);
 			hyphyOut = await result.stdout;
 
 			// Extract meaningful error from HyPhy stdout for better error reporting
