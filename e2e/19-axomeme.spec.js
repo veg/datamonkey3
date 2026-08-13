@@ -231,11 +231,22 @@ test.describe('AxoMEME', () => {
 		expect(body).toMatch(/cannot be changed for this method/i);
 		expect(body).not.toMatch(/Genetic Code:/i);
 
+		// While a demo is loaded and AxoMEME is selected: the pre-run copy has to state that the
+		// default calling mode ALWAYS flags a share of the variable sites, whether or not any of them
+		// is under selection. The results table says "Top 2%" afterwards; before the run, nothing did.
+		// Asserted on the testid rather than on body text — "percentile ... rank sites" is already on
+		// the page and would pass with this line removed.
+		const consequence = page.locator('[data-testid="axomeme-call-consequence"]');
+		await expect(consequence).toBeVisible();
+		await expect(consequence).toContainText(/top 2%/i);
+
 		// And the controls must come back for a method that does have them.
 		await selectMethod(page, 'FEL');
 		const felBody = await page.locator('body').innerText();
 		expect(felBody).toMatch(/Backend Server/i);
 		expect(felBody).toMatch(/Genetic Code/i);
+		// The consequence line belongs to AxoMEME only.
+		await expect(page.locator('[data-testid="axomeme-call-consequence"]')).toHaveCount(0);
 	});
 });
 
