@@ -86,9 +86,12 @@ test.describe('Method Selection & Configuration', () => {
 			has: page.locator('option:text("Universal")')
 		}).first();
 
-		await geneticCodeSelect.selectOption('Vertebrate mitochondrial');
-		// Verify the selection stuck
-		await expect(geneticCodeSelect).toHaveValue('Vertebrate mitochondrial');
+		// Pick by the human-readable label, then assert on the VALUE: the value is what gets
+		// passed to `hyphy --code`, and the engine only accepts its own hyphenated identifiers
+		// (see src/lib/config/geneticCodes.js). Asserting the label alone would still pass if the
+		// value drifted back to one of the spellings the engine rejects.
+		await geneticCodeSelect.selectOption({ label: 'Vertebrate mitochondrial DNA code' });
+		await expect(geneticCodeSelect).toHaveValue('Vertebrate-mtDNA');
 	});
 
 	test('timing estimate appears when method selected', async ({ page }) => {
