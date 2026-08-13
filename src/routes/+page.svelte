@@ -1424,44 +1424,48 @@
 			<SmartTabNavigation {activeTab} onChange={changeTab} />
 
 			<!-- Tab Content with Progressive Enhancement -->
-			{#if activeTab === 'data'}
-				<!-- Data Tab -->
-				<DataTab
-					{handleFileUpload}
-					{handleDemoFileSelect}
-					{validationError}
-					{fileMetricsJSON}
-					{handleValidated}
-					{handleUseRepaired}
-					{activeTab}
-					onChange={changeTab}
-				/>
-			{:else if activeTab === 'analyze'}
-				<!-- Analyze Tab -->
-				<AnalyzeTab
-					{methodConfig}
-					{runMethod}
-					{selectedMethod}
-					{hyphyOut}
-					{isStdOutVisible}
-					{toggleStdOut}
-					{showAllHistory}
-					{selectAnalysis}
-					{activeTab}
-					onChange={changeTab}
-				/>
-			{:else if activeTab === 'results'}
-				<!-- Results Tab -->
-				<ResultsTab
-					{selectedAnalysisId}
-					{selectAnalysis}
-					{showAllHistory}
-					{showBatchExport}
-					{toggleBatchExport}
-					{activeTab}
-					onChange={changeTab}
-				/>
-			{/if}
+			<!-- Single panel for all three tabs: only one is mounted at a time, so `aria-controls`
+			     on every tab resolves here and aria-labelledby tracks whichever tab is active. -->
+			<div id="tab-panel" role="tabpanel" aria-labelledby={'tab-' + activeTab}>
+				{#if activeTab === 'data'}
+					<!-- Data Tab -->
+					<DataTab
+						{handleFileUpload}
+						{handleDemoFileSelect}
+						{validationError}
+						{fileMetricsJSON}
+						{handleValidated}
+						{handleUseRepaired}
+						{activeTab}
+						onChange={changeTab}
+					/>
+				{:else if activeTab === 'analyze'}
+					<!-- Analyze Tab -->
+					<AnalyzeTab
+						{methodConfig}
+						{runMethod}
+						{selectedMethod}
+						{hyphyOut}
+						{isStdOutVisible}
+						{toggleStdOut}
+						{showAllHistory}
+						{selectAnalysis}
+						{activeTab}
+						onChange={changeTab}
+					/>
+				{:else if activeTab === 'results'}
+					<!-- Results Tab -->
+					<ResultsTab
+						{selectedAnalysisId}
+						{selectAnalysis}
+						{showAllHistory}
+						{showBatchExport}
+						{toggleBatchExport}
+						{activeTab}
+						onChange={changeTab}
+					/>
+				{/if}
+			</div>
 		</div>
 	{/if}
 </div>

@@ -1149,14 +1149,21 @@
 		});
 	}
 
-	// RELAX branch validation - requires TEST and REFERENCE branches to be tagged
+	// RELAX branch validation - requires TEST and REFERENCE branches to be tagged.
+	//
+	// Read through methodOptions[selectedMethod], NOT methodOptions.relax: this map is keyed by the
+	// method string exactly as the dropdown supplies it ('RELAX'), which initializeMethodOptions and
+	// handleBranchSelectionChange both use. The lowercase lookup was always undefined, so
+	// relaxHasTestBranches was permanently false and RELAX's Run button could never be enabled no
+	// matter what the user tagged. contrastFelBranchesValid below already uses the indexed form.
+	$: relaxOptions = selectedMethod ? methodOptions?.[selectedMethod] : null;
 	$: relaxHasTestBranches =
 		selectedMethod?.toLowerCase() === 'relax' &&
-		methodOptions?.relax?.interactiveTree?.includes('{TEST}');
+		relaxOptions?.interactiveTree?.includes('{TEST}');
 	$: relaxHasReferenceBranches =
 		selectedMethod?.toLowerCase() === 'relax' &&
-		(methodOptions?.relax?.interactiveTree?.includes('{REFERENCE}') ||
-			methodOptions?.relax?.referenceBranches === 'All');
+		(relaxOptions?.interactiveTree?.includes('{REFERENCE}') ||
+			relaxOptions?.referenceBranches === 'All');
 	$: relaxBranchesValid =
 		selectedMethod?.toLowerCase() !== 'relax' ||
 		(relaxHasTestBranches && relaxHasReferenceBranches);
@@ -1602,10 +1609,13 @@
 				{#if selectedTreeData}
 					<div class="tree-selector-wrapper">
 						{#key selectedMethod}
+							<!-- No `width`: BranchSelector measures its own pan box and draws at least
+							     minWidth, scrolling inside the box. The hard-coded 1000px used to push the
+							     PAGE 693px wider than a 393px phone. Do NOT widen this {#key} to include a
+							     width — every resize would remount and discard the current selection. -->
 							<BranchSelector
 								treeData={selectedTreeData}
 								height={500}
-								width={1000}
 								mode={selectedMethod?.toLowerCase() === 'contrast-fel' ||
 								selectedMethod?.toLowerCase() === 'relax'
 									? 'multi-set'
