@@ -647,6 +647,32 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 					'kill-zero-lengths': config.killZeroLengths || config['kill-zero-lengths'] || 'No'
 				};
 
+			case 'axomeme': {
+				// AxoMEME is a neural surrogate, not a HyPhy method, and the server descriptor
+				// (app/axomeme/descriptor.js) reflects that: no genetic code, no branch selection, no
+				// p-value. NOTE that `gencodeid` from baseParams is deliberately NOT spread in here --
+				// the server's validateParameters override WARNS when genetic_code is supplied for
+				// axomeme, because universal is baked into the model's tokenizer. Sending it would
+				// produce a warning on every single run for a value that cannot be honoured.
+				const maxSpecies = parseInt(config.maxSpecies, 10);
+				return {
+					analysis_type: 'axomeme',
+					// Whitelisted server-side to ["percentile","zscore","pvalue"]; anything else falls
+					// back to percentile there. Same default as the in-browser path, for the same
+					// reason: the model's predicted LRT rarely reaches the fixed chi-square gates that
+					// pvalue compares against, so pvalue makes the method silent.
+					call_mode: config.callMode || 'percentile',
+					// Clamped to [2, 512] server-side. Sent only when the user set it, so the server's
+					// own default stays the single source of truth.
+					...(Number.isFinite(maxSpecies) ? { max_species: maxSpecies } : {}),
+					// Dropped to "" (auto-pick) server-side unless it matches SAFE_SEQUENCE_NAME. That
+					// whitelist is a security control -- the value is interpolated into a comma-joined
+					// SLURM --export string -- so an unusual FASTA header is silently ignored rather
+					// than rewritten. Send only what the user actually chose.
+					...(config.referenceSequence ? { reference_sequence: config.referenceSequence } : {})
+				};
+			}
+
 			case 'prime':
 				return {
 					...baseParams,

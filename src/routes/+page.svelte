@@ -87,14 +87,20 @@
 		// binary. It is served by AxomemeAnalysisRunner, which evaluates an ONNX graph in the browser.
 		AxoMEME: {
 			command: null,
+			// Null for the in-browser path, which writes no HyPhy JSON. A backend run does produce a
+			// results file, under the server descriptor's AXOMEME suffix.
 			outputSuffix: null,
 			url: 'axomeme',
 			args: [],
 			runner: 'axomeme',
-			// Drives the UI: no execution-mode toggle (there is no server-side AxoMEME) and no genetic
-			// code selector (the model's tokenizer bakes in the universal table). A control that cannot
-			// reach the model is worse than no control, because it implies a capability.
-			browserOnly: true,
+			// There IS a server-side AxoMEME now (axomeme.sh runs a Node CLI through the standard job
+			// lifecycle), so the execution-mode toggle is real and `browserOnly` is gone.
+			//
+			// The genetic-code suppression stays, and is now its own flag rather than a side effect of
+			// browserOnly: the model's tokenizer bakes in the universal table, and the SERVER agrees --
+			// its descriptor hardcodes genetic_code "Universal" and warns if one is supplied. A control
+			// that cannot reach the model is worse than no control, because it implies a capability.
+			noGeneticCode: true,
 			description:
 				'Predicts what MEME would report for each site, in seconds rather than hours. A neural surrogate, not a substitute for the full analysis.'
 		},
