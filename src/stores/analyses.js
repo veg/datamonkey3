@@ -2,6 +2,54 @@ import { derived, writable } from 'svelte/store';
 import { analysisStorage } from '../lib/utils/indexedDBStorage';
 import { browser } from '$app/environment';
 
+/**
+ * LIVENESS, and why a local run needs a pulse.
+ *
+ * IndexedDB is shared by every tab of the origin, but `activeAnalyses` is per-tab memory. So a
+ * second tab opening while the first tab is mid-run used to read the first tab's record — which sits
+ * at 'pending'/'wasm' for the whole run, because progress updates are in-memory only — and mark it
+ * 'interrupted', throwing away hours of compute in a tab it does not own and offering a Re-run that
+ * would duplicate it.
+ *
+ * The owning tab therefore stamps `lastHeartbeatAt` while it is actually running, and the sweep only
+ * reaps records whose pulse has stopped.
+ */
+const HEARTBEAT_INTERVAL_MS = 10_000;
+
+/**
+ * How long a record may go unstamped before another tab may declare it dead.
+ *
+ * Six missed ticks, not three. AxoMEME runs on the main thread and only yields between batches
+ * (AxomemeAnalysisRunner.yieldToBrowser), so a healthy run can starve the interval for seconds at a
+ * time. A margin that is too tight reaps live work; one that is too loose only delays cleanup of a
+ * genuinely dead tab's record by a few seconds.
+ */
+const HEARTBEAT_STALE_MS = 60_000;
+
+/** Statuses the interrupted-sweep considers unfinished. */
+const REAPABLE_STATUSES = ['pending', 'initializing', 'running', 'processing', 'saving'];
+
+/** Statuses a run can stop in — a record in one of these is nobody's live work. */
+const TERMINAL_STATUSES = ['completed', 'error', 'cancelled', 'interrupted', 'connection_lost'];
+
+/**
+ * Is this stored record safe for THIS tab to mark interrupted?
+ *
+ * One function, used by both the filter and the map below, because when those were two copies of the
+ * same predicate they could drift apart silently.
+ *
+ * The `?? 0` is load-bearing twice: a record written before heartbeats existed has no pulse and is by
+ * definition from a session that is gone, so it must still be reaped — and that is also what keeps
+ * every pre-existing cleanup test meaningful without hand-editing fixtures.
+ */
+function isReapable(analysis) {
+	return (
+		analysis?.metadata?.executionMode === 'wasm' &&
+		REAPABLE_STATUSES.includes(analysis.status) &&
+		Date.now() - (analysis.lastHeartbeatAt ?? 0) > HEARTBEAT_STALE_MS
+	);
+}
+
 function createAnalysisStore() {
 	const { subscribe, set, update } = writable({
 		analyses: [],
@@ -11,6 +59,58 @@ function createAnalysisStore() {
 		// Single unified tracking for active analyses
 		activeAnalyses: [] // Array of active analysis objects with progress tracking
 	});
+
+	/** Interval that stamps this tab's live local runs. Null whenever there are none. */
+	let heartbeatTimer = null;
+
+	/** Read state synchronously. `update` with an unchanged return is the pattern used below. */
+	function readState() {
+		let snapshot;
+		update((state) => {
+			snapshot = state;
+			return state;
+		});
+		return snapshot;
+	}
+
+	function liveLocalRuns() {
+		return (readState().activeAnalyses || []).filter(
+			(a) => a?.metadata?.executionMode === 'wasm' && !TERMINAL_STATUSES.includes(a.status)
+		);
+	}
+
+	async function heartbeatTick() {
+		// Iterate activeAnalyses ONLY. Walking the full analyses list would rewrite completed records,
+		// which carry their whole result payload — megabytes, every ten seconds.
+		for (const entry of liveLocalRuns()) {
+			try {
+				const stored = await analysisStorage.getAnalysis(entry.id);
+				if (!stored) continue;
+				// Read-modify-write: a completion landing between this read and the write would be
+				// written back as unfinished, so never touch a record that has already stopped.
+				if (TERMINAL_STATUSES.includes(stored.status)) continue;
+				await analysisStorage.saveAnalysis({ ...stored, lastHeartbeatAt: Date.now() });
+			} catch (error) {
+				// A missed beat costs nothing; HEARTBEAT_STALE_MS allows for six of them.
+				console.error(`Error stamping heartbeat for ${entry.id}:`, error);
+			}
+		}
+	}
+
+	function startHeartbeat() {
+		if (!browser || heartbeatTimer) return;
+		heartbeatTimer = setInterval(() => {
+			heartbeatTick();
+		}, HEARTBEAT_INTERVAL_MS);
+	}
+
+	/** Stop the pulse once this tab has no local run left to vouch for. */
+	function stopHeartbeatIfIdle() {
+		if (!heartbeatTimer) return;
+		if (liveLocalRuns().length > 0) return;
+		clearInterval(heartbeatTimer);
+		heartbeatTimer = null;
+	}
 
 	return {
 		subscribe,
@@ -240,6 +340,8 @@ function createAnalysisStore() {
 					...state,
 					activeAnalyses: (state.activeAnalyses || []).filter((a) => a.id !== analysisId)
 				}));
+
+				stopHeartbeatIfIdle();
 			} catch (error) {
 				console.error('Error cancelling analysis:', error);
 				throw error;
@@ -347,6 +449,12 @@ function createAnalysisStore() {
 				};
 			});
 
+			// A local run must be protected from the instant it starts, not from the first tick ten
+			// seconds later — otherwise a tab opened in that window still reaps it.
+			if (metadata.executionMode === 'wasm') {
+				startHeartbeat();
+			}
+
 			// Persist metadata to IndexedDB (executionMode, jobId, etc.)
 			// This is critical for cleanupInterruptedAnalyses and backend reconnection to work
 			if (browser && metadata.executionMode) {
@@ -361,6 +469,12 @@ function createAnalysisStore() {
 							},
 							updatedAt: Date.now()
 						};
+
+						// Only local runs get a pulse. A server job's liveness is the server's to report,
+						// and the sweep never touches backend records.
+						if (metadata.executionMode === 'wasm') {
+							updatedAnalysis.lastHeartbeatAt = Date.now();
+						}
 						await analysisStorage.saveAnalysis(updatedAnalysis);
 						console.log(
 							`📊 [AnalysisStore] Persisted metadata (executionMode=${metadata.executionMode}, jobId=${metadata.jobId || 'n/a'}) for ${analysisId.slice(0, 8)}...`
@@ -603,6 +717,9 @@ function createAnalysisStore() {
 				};
 			});
 
+			// The entry is terminal now, so this tab may have nothing left to vouch for.
+			stopHeartbeatIfIdle();
+
 			// Persist to IndexedDB and server
 			const currentLogs = activeAnalysisData?.logs || [];
 			const currentResult = activeAnalysisData?.result || null;
@@ -656,6 +773,7 @@ function createAnalysisStore() {
 					activeAnalyses: newActiveAnalyses
 				};
 			});
+			stopHeartbeatIfIdle();
 		},
 
 		// Clear all analyses
@@ -703,12 +821,11 @@ function createAnalysisStore() {
 				return;
 			}
 
-			// Find WASM analyses that were running/pending (these were interrupted)
-			const interruptedAnalyses = analyses.filter(
-				(a) =>
-					a.metadata?.executionMode === 'wasm' &&
-					['pending', 'initializing', 'running', 'processing', 'saving'].includes(a.status)
-			);
+			// Find local runs that stopped without finishing.
+			//
+			// The heartbeat check is what keeps this tab out of another tab's business: IndexedDB is
+			// shared across tabs, so without it, opening a second tab reaped the first tab's live run.
+			const interruptedAnalyses = analyses.filter(isReapable);
 
 			if (interruptedAnalyses.length === 0) {
 				console.log('📊 [AnalysisStore] No interrupted analyses found');
@@ -720,25 +837,29 @@ function createAnalysisStore() {
 			);
 
 			// Update each interrupted analysis
+			const reapedIds = new Set(interruptedAnalyses.map((a) => a.id));
 			const updatedAnalyses = analyses.map((analysis) => {
-				if (
-					analysis.metadata?.executionMode === 'wasm' &&
-					['pending', 'initializing', 'running', 'processing', 'saving'].includes(analysis.status)
-				) {
+				if (isReapable(analysis)) {
 					return {
 						...analysis,
 						status: 'interrupted',
 						interruptedAt: new Date().getTime(),
-						error: 'Analysis was interrupted by page refresh',
+						// True of both causes. A reaped record is no longer necessarily a refresh — it may
+						// be a tab that was closed, or one whose heartbeat stopped.
+						error: 'This run stopped when its browser tab closed or reloaded.',
 						updatedAt: new Date().getTime()
 					};
 				}
 				return analysis;
 			});
 
-			// Persist updated analyses to IndexedDB
+			// Persist the records this sweep actually changed.
+			//
+			// Keyed on the ids reaped above, not on `status === 'interrupted'`: that test also matched
+			// records interrupted in some earlier session, so every page load rewrote them — whole
+			// objects, results and all — for no change.
 			for (const analysis of updatedAnalyses) {
-				if (analysis.status === 'interrupted') {
+				if (reapedIds.has(analysis.id)) {
 					try {
 						await analysisStorage.saveAnalysis(analysis);
 						console.log(

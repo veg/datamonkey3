@@ -16,6 +16,7 @@
 		activeAnalysisProgress,
 		activeAnalyses
 	} from '../stores/analyses';
+	import { analysisConfig } from '../stores/analysisConfig';
 	import { backendAnalysisRunner } from '../lib/services/BackendAnalysisRunner.js';
 	import { treeStore, addTree, updateTaggedTree, resetTrees } from '../stores/tree';
 	import { syncDescriptorStoresForFile as syncDescriptorStores } from '../lib/utils/descriptorSync.js';
@@ -57,7 +58,6 @@
 	let showAllHistory = false;
 	let activeTab = 'data'; // 'data', 'analyze', or 'results'
 	let selectedTree = 'nj';
-	let selectedMethod = 'FEL'; // Default selected method for configuration
 	let treeData = {};
 	let showBatchExport = false;
 	let analysisStartTime = null; // Track analysis start time for duration calculation
@@ -210,6 +210,10 @@
 			description: 'Estimation of selection pressure.'
 		}
 	};
+
+	// The dropdown's exact ids ('AxoMEME', 'aBSREL', ...). Analyses are stored upper-cased, so a
+	// restore has to be matched back to these or the <select> falls through to its placeholder.
+	const methodKeys = Object.keys(methodConfig);
 
 	// WHICH ANALYSIS THE DETAIL PANE SHOWS.
 	//
@@ -1241,12 +1245,16 @@
 				selectAnalysis(event.detail.analysisId);
 			}
 
-			// Handle re-run: set the method and file for the Analyze tab
+			// Handle re-run: restore the configuration that run was made with, not just its method.
 			if (event.detail.rerun && event.detail.tabName === 'analyze') {
-				// Set the method if provided
-				if (event.detail.method) {
-					selectedMethod = event.detail.method.toUpperCase();
-				}
+				// ONE source of truth for the configuration: the analysisConfig store. The page-level
+				// `selectedMethod` used to be a second one, and it never reached MethodSelector anyway
+				// (AnalyzeTab took the prop and did not forward it), which is how "Re-run" came to
+				// restore nothing at all.
+				const record = ($analysisStore.analyses ?? []).find(
+					(a) => a.id === event.detail.analysisId
+				);
+				analysisConfig.restoreFrom(record ?? { method: event.detail.method }, methodKeys);
 
 				// Set the current file if provided, and resync the descriptor stores so
 				// alignment/metrics/tree describe the re-run file rather than the
@@ -1447,7 +1455,6 @@
 					<AnalyzeTab
 						{methodConfig}
 						{runMethod}
-						{selectedMethod}
 						{hyphyOut}
 						{isStdOutVisible}
 						{toggleStdOut}
@@ -1468,8 +1475,7 @@
 						onChange={changeTab}
 					/>
 				{/if}
-			</div>
-		</div>
+			</div>		</div>
 	{/if}
 </div>
 

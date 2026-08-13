@@ -57,11 +57,28 @@ function stripEmbeddedTrees(alignmentData) {
 	return result;
 }
 
+/**
+ * How long a submission may sit with no word from the server before we go and ask about it.
+ *
+ * Generous on purpose. The server acknowledges a spawn as soon as the job row exists, but a busy
+ * scheduler can take a while to get there, and declaring a job lost that is merely queued is far
+ * worse than a minute of silence. Expiry does NOT fail the run — it triggers a probe (see
+ * probeSubmission), which is the only thing that can distinguish "queued" from "never accepted".
+ */
+const SUBMISSION_ACK_TIMEOUT_MS = 60000;
+
+/** Ack window on the job:status probe itself. Matches the reconnect path's timeout (issue #177). */
+const STATUS_PROBE_TIMEOUT_MS = 10000;
+
 class BackendAnalysisRunner extends BaseAnalysisRunner {
 	constructor() {
 		super();
 		this.socket = null;
 		this.serverUrl = DATAMONKEY_SERVER_URL;
+
+		// jobId -> timeoutId, for jobs submitted but not yet acknowledged by the server.
+		// Armed only by runAnalysis; reconnectToJobs has its own 10s ack and must not arm these.
+		this.submissionWatchdogs = new Map();
 	}
 
 	/**
@@ -114,6 +131,8 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 			// Try to find the analysis ID for this status update
 			if (statusJobId && this.activeAnalyses.has(statusJobId)) {
 				const analysisId = this.activeAnalyses.get(statusJobId);
+				// Any word from the server about this job is proof it was accepted.
+				this.clearSubmissionWatchdog(statusJobId);
 				this.updateProgress(
 					analysisId,
 					'running',
@@ -123,6 +142,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 			} else if (this.activeAnalyses.size === 1) {
 				// If only one analysis is running, we can safely assume it's for that one
 				const [jobId, analysisId] = this.activeAnalyses.entries().next().value;
+				this.clearSubmissionWatchdog(jobId);
 				this.updateProgress(
 					analysisId,
 					'running',
@@ -169,10 +189,12 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 
 			if (jobId && this.activeAnalyses.has(jobId)) {
 				const analysisId = this.activeAnalyses.get(jobId);
+				this.clearSubmissionWatchdog(jobId);
 				await this.completeAnalysis(analysisId, true, results);
 				this.activeAnalyses.delete(jobId);
 			} else if (!jobId && this.activeAnalyses.size === 1) {
 				const [onlyJobId, analysisId] = [...this.activeAnalyses.entries()][0];
+				this.clearSubmissionWatchdog(onlyJobId);
 				await this.completeAnalysis(analysisId, true, results);
 				this.activeAnalyses.delete(onlyJobId);
 			} else {
@@ -204,6 +226,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 			const errorJobId = error.jobId || error.id;
 			if (errorJobId && this.activeAnalyses.has(errorJobId)) {
 				const analysisId = this.activeAnalyses.get(errorJobId);
+				this.clearSubmissionWatchdog(errorJobId);
 				await this.completeAnalysis(analysisId, false, null, userFacingError);
 				this.activeAnalyses.delete(errorJobId);
 			} else if (!errorJobId && this.activeAnalyses.size === 1) {
@@ -212,6 +235,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 				// sitting at "running" forever. With two or more it is genuinely ambiguous, so the
 				// branch below still refuses rather than killing an innocent concurrent job.
 				const [onlyJobId, analysisId] = [...this.activeAnalyses.entries()][0];
+				this.clearSubmissionWatchdog(onlyJobId);
 				await this.completeAnalysis(analysisId, false, null, userFacingError);
 				this.activeAnalyses.delete(onlyJobId);
 			} else {
@@ -230,10 +254,183 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 			// This is handled per-analysis in runAnalysis method
 		});
 
-		this.socket.on('job queue', (jobs) => {
-			console.log('📋 Backend job queue:', jobs);
-			// Could update UI with queue information
+		// THE SUBMISSION ACKNOWLEDGEMENT. Not dead code — do not delete.
+		//
+		// The server already tells us it accepted a job; we used to throw that away. app/hyphyjob.js
+		// (262-299) publishes `{ type:'job created', id, torque_id, status, scheduler, created_time,
+		// sites, sequences }` on the redis channel keyed by the job id the moment the job row exists,
+		// and lib/clientsocket.js:60 forwards it to this socket verbatim. `job metadata` (hyphyjob.js
+		// 489-513) carries the same shape later in the job's life.
+		//
+		// `id` is the jobId WE generated and sent in `job.id` — analysis-factory.js:117-124 resolves
+		// `params.job.id || params.id` — so it routes exactly, with no single-job heuristic needed.
+		//
+		// This is the only positive confirmation a spawn was accepted, and it is what disarms the
+		// submission watchdog.
+		this.socket.on('job created', (packet) => this.handleServerAck(packet));
+		this.socket.on('job metadata', (packet) => this.handleServerAck(packet));
+
+		// DELIBERATELY NOT LISTENING FOR / EMITTING `job queue`.
+		//
+		// server.js:54-59 answers a `job queue` request with `socket.emit('job queue', jobs);
+		// socket.disconnect();` — asking the server where we are in the queue tears down the socket
+		// carrying every in-flight job's status stream. Queue position is not worth that.
+		//
+		// The `status` field on `job created` / `job metadata` above already reports whether this
+		// particular job is queued or running, which is the part the user actually needs, at no
+		// protocol cost.
+	}
+
+	/**
+	 * Handle `job created` / `job metadata` — the server confirming it took the job.
+	 *
+	 * Moves the run off the bare "Job submitted" state and onto what the scheduler says: Torque/PBS
+	 * reports 'Q' while queued and 'R' once it is running (some deployments spell them out). Anything
+	 * unrecognised is treated as queued, because a job that has been acknowledged but not started is
+	 * exactly that.
+	 */
+	handleServerAck(packet) {
+		const jobId = packet?.id ?? packet?.jobId;
+		if (!jobId || !this.activeAnalyses.has(jobId)) return;
+
+		const analysisId = this.activeAnalyses.get(jobId);
+		this.clearSubmissionWatchdog(jobId);
+
+		const reported = String(packet?.status ?? '').toLowerCase();
+		const isRunning = reported === 'r' || reported === 'running';
+
+		console.log(`📨 Server acknowledged job ${jobId} (status: ${packet?.status ?? 'unreported'})`);
+
+		this.updateProgress(
+			analysisId,
+			isRunning ? 'running' : 'pending',
+			10,
+			isRunning ? 'Running on the server' : 'Queued on the server'
+		);
+	}
+
+	/**
+	 * Start the clock on an unacknowledged submission.
+	 *
+	 * MUST be called only from runAnalysis. Jobs restored by reconnectToJobs already have their own
+	 * 10s job:status ack and arming this for them would double-probe.
+	 */
+	armSubmissionWatchdog(analysisId, jobId, submittedAt = Date.now()) {
+		this.clearSubmissionWatchdog(jobId);
+		const timer = setTimeout(() => {
+			this.submissionWatchdogs.delete(jobId);
+			this.probeSubmission(analysisId, jobId, submittedAt);
+		}, SUBMISSION_ACK_TIMEOUT_MS);
+		this.submissionWatchdogs.set(jobId, timer);
+	}
+
+	clearSubmissionWatchdog(jobId) {
+		const timer = this.submissionWatchdogs.get(jobId);
+		if (timer) {
+			clearTimeout(timer);
+			this.submissionWatchdogs.delete(jobId);
+		}
+	}
+
+	clearAllSubmissionWatchdogs() {
+		for (const timer of this.submissionWatchdogs.values()) {
+			clearTimeout(timer);
+		}
+		this.submissionWatchdogs.clear();
+	}
+
+	/**
+	 * The watchdog expired: ask the server whether it has this job, and DO NOT assume it does not.
+	 *
+	 * Silence is not loss. The spawn event is fire-and-forget (see the emit in runAnalysis for why it
+	 * must stay that way), and the ack we listen for rides a redis subscription that can attach a beat
+	 * late — so a perfectly healthy job can arrive here. `job:status` is genuinely ack-capable
+	 * (server.js:62 `socket.on('job:status', function (params, callback)`) and reads the persisted
+	 * hash, so it can answer for a job whose events we missed.
+	 */
+	probeSubmission(analysisId, jobId, submittedAt) {
+		// Completed, failed or cancelled while we were waiting — nothing to chase.
+		if (!this.activeAnalyses.has(jobId)) return;
+
+		if (!this.socket) {
+			this.markSubmissionLost(analysisId, jobId, 'The server never confirmed this job.');
+			return;
+		}
+
+		this.socket
+			.timeout(STATUS_PROBE_TIMEOUT_MS)
+			.emit('job:status', { jobId }, async (err, response) => {
+				try {
+					if (err || !response) {
+						// No answer at all: the socket is not carrying anything for this job.
+						await this.markSubmissionLost(
+							analysisId,
+							jobId,
+							'The server never confirmed this job.'
+						);
+						return;
+					}
+
+					if (response.status === 'not_found') {
+						// The one unambiguous negative. The server looked and has no such job.
+						await this.markSubmissionLost(
+							analysisId,
+							jobId,
+							'The server has no record of this job. It was never accepted.'
+						);
+						return;
+					}
+
+					if (response.status === 'completed' && response.results) {
+						// We missed the whole event stream for this job but the results are sitting there.
+						// Same recovery the reconnect path performs.
+						console.log(`✅ Job ${jobId} had already completed; collecting results from probe`);
+						this.clearSubmissionWatchdog(jobId);
+						this.activeAnalyses.delete(jobId);
+						await this.completeAnalysis(analysisId, true, response.results);
+						return;
+					}
+
+					// EVERYTHING ELSE MEANS KEEP WAITING — and 'unknown' above all.
+					//
+					// This is where this handler deliberately differs from reconnectToJobs, which treats an
+					// unrecognised status as connection_lost. app/hyphyjob.js:91 hSets the `params` field the
+					// instant init() runs, before any `status` field exists, so server.js:76 answers
+					// `status:'unknown'` for a perfectly healthy job sitting in the submit -> qsub window.
+					// Failing on that would kill good jobs on a busy scheduler.
+					const waitedMinutes = Math.max(1, Math.round((Date.now() - submittedAt) / 60000));
+					const running = response.status === 'running';
+					this.updateProgress(
+						analysisId,
+						running ? 'running' : 'pending',
+						running ? 10 : 5,
+						running
+							? 'Running on the server'
+							: `Waiting for the server to start this job (queued ${waitedMinutes} min)`
+					);
+					this.armSubmissionWatchdog(analysisId, jobId, submittedAt);
+				} catch (error) {
+					console.error(`Error probing submission for job ${jobId}:`, error);
+				}
+			});
+	}
+
+	/**
+	 * Resolve a job we can no longer account for.
+	 *
+	 * Reuses `connection_lost` rather than inventing a status: AnalysisCard and runStatusLine already
+	 * render it, and it already offers a Re-run.
+	 */
+	async markSubmissionLost(analysisId, jobId, message) {
+		console.warn(`⏱️ Submission for job ${jobId} unconfirmed: ${message}`);
+		this.clearSubmissionWatchdog(jobId);
+		await analysisStore.updateAnalysis(analysisId, {
+			status: 'connection_lost',
+			error: message,
+			updatedAt: Date.now()
 		});
+		this.activeAnalyses.delete(jobId);
+		analysisStore.removeFromActiveAnalyses(analysisId);
 	}
 
 	/**
@@ -304,10 +501,27 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 				}
 			};
 
+			// TWO ARGUMENTS, NEVER THREE. Do not "improve" this into
+			// `socket.timeout(ms).emit(eventName, submitData, cb)`.
+			//
+			// The server registers every spawn event through a stream wrapper: lib/router.js:26 is
+			// `socket.on(key, function (stream, data))`. A third argument makes socket.io deliver
+			// stream=submitData and data=<ack function>, the adjustment guard at router.js:29
+			// (`data === undefined`) does not fire, and analysis-routes.js:47-51 then reads `params` as
+			// the ack function — so `!params.job` is true and EVERY submission is answered with
+			// 'Invalid job parameters'. The server never calls the ack either, so the timeout would
+			// also fire on every healthy run.
+			//
+			// The acknowledgement therefore cannot ride the emit. It arrives as the `job created`
+			// event (see setupGlobalHandlers), and armSubmissionWatchdog below covers its absence.
 			this.socket.emit(eventName, submitData);
 
 			// Update progress
 			this.updateProgress(analysisId, 'pending', 5, `Job submitted - ID: ${jobId}`);
+
+			// Nothing else ever revisited this state before: a job the server silently dropped sat at
+			// "pending" until the user gave up. Start the clock.
+			this.armSubmissionWatchdog(analysisId, jobId);
 
 			return {
 				analysisId,
@@ -316,6 +530,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 			};
 		} catch (error) {
 			console.error('❌ Backend analysis submission failed:', error);
+			this.clearSubmissionWatchdog(jobId);
 			await this.completeAnalysis(analysisId, false, null, `Submission failed: ${error.message}`);
 			this.activeAnalyses.delete(jobId);
 			throw error;
@@ -720,6 +935,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 				if (this.socket && this.socket.connected) {
 					this.socket.emit('cancel', { jobId });
 				}
+				this.clearSubmissionWatchdog(jobId);
 				this.activeAnalyses.delete(jobId);
 				break;
 			}
@@ -764,6 +980,9 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 			this.socket.disconnect();
 			this.socket = null;
 		}
+		// Drop the timers with the socket. Left armed they would fire against a dead connection —
+		// and in a test suite that reuses this singleton they leak across cases.
+		this.clearAllSubmissionWatchdogs();
 		this.activeAnalyses.clear();
 	}
 

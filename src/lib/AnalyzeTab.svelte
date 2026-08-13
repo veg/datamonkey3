@@ -28,7 +28,8 @@
 	// Props
 	export let methodConfig = {};
 	export let runMethod = () => {};
-	export let selectedMethod = 'FEL'; // Default method for configuration
+	// No `selectedMethod` prop. It was accepted here and never forwarded to MethodSelector, which is
+	// why a Re-run preselected nothing; the analysisConfig store is now the single channel for it.
 	export let hyphyOut = '';
 	export let isStdOutVisible = false;
 	export let toggleStdOut = () => {};
