@@ -10,6 +10,7 @@ import { get } from 'svelte/store';
 import { getCachedOrCompute, generateAnalysisKey } from '../utils/cacheUtils.js';
 import { sanitizeSequenceNames } from '../utils/fastaValidation.js';
 import { safeParseJSON } from '../utils/jsonUtils.js';
+import { canonicalGeneticCodeName } from '../config/geneticCodes.js';
 
 /**
  * hyphy-analyses custom analyses that are NOT packed into the WASM /res/ image.
@@ -234,20 +235,23 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 
 		this.updateProgress(analysisId, 'running', 20, 'Building analysis command...');
 
-		// Build arguments
+		// Build arguments as an argv ARRAY — one shell token per element, never
+		// "--flag value" in a single string. Aioli's exec() only splits on spaces when it is
+		// handed a command string, so under the old form any value containing a space was torn
+		// apart before HyPhy saw it. See the exec() call below for the full mechanism.
 		const args = [];
-		args.push(`--alignment ${inputFiles[0]}`);
+		args.push('--alignment', inputFiles[0]);
 
 		// Add tree argument if tree data was provided
 		if (sanitizedTree && sanitizedTree.trim()) {
-			args.push(`--tree ${inputFiles[1]}`);
+			args.push('--tree', inputFiles[1]);
 		}
 
 		// NRM (nucleotide non-reversibility) writes its JSON to <alignment>.NRM.json by
 		// default; pass --output explicitly so the result path matches what we download
 		// below, regardless of how the batch file derives its default.
 		if (method.toLowerCase() === 'nrm') {
-			args.push(`--output ${inputFiles[0]}.NRM.json`);
+			args.push('--output', `${inputFiles[0]}.NRM.json`);
 		}
 
 		// Map configuration parameters to HyPhy command line arguments
@@ -263,7 +267,11 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 				key !== 'branchSet2' &&
 				key !== 'testBranches' &&
 				key !== 'referenceBranches' &&
-				key !== 'variant'
+				key !== 'variant' &&
+				// UI-side companion of geneticCode. HyPhy's CLI takes the NAME, not the id;
+				// without this skip the generic branch below emitted a bogus
+				// '--genetic-code-id 0' on every local run.
+				key !== 'geneticCodeId'
 			) {
 				// Handle specific FEL parameter mappings
 				if (key === 'branchesToTest') {
@@ -282,79 +290,78 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 							// Skip - RELAX uses --test and --reference parameters
 						} else {
 							console.log('🌳 WASM - Converting Interactive to FG for HyPhy');
-							args.push(`--branches FG`);
+							args.push('--branches', 'FG');
 						}
 					} else {
 						// Always pass --branches explicitly (including 'All') to avoid
 						// stale state issues with Emscripten's callMain between invocations
-						args.push(`--branches ${value || 'All'}`);
+						args.push('--branches', String(value || 'All'));
 					}
 				} else if (key === 'propertySet') {
 					// PRIME property set parameter
-					args.push(`--property-set ${value}`);
+					args.push('--property-set', String(value));
 				} else if (key === 'imputeStates') {
 					// PRIME impute states parameter
-					args.push(`--impute-states ${value}`);
+					args.push('--impute-states', String(value));
 				} else if (key === 'geneticCode') {
-					// Pass the descriptive string value (HyPhy WASM does not accept the
-					// numeric code id on the CLI). Known limitation: aioli's exec() does
-					// a plain command.split(' '), so multi-word names like
-					// 'Vertebrate mitochondrial' get split into '--code Vertebrate' +
-					// stray 'mitochondrial' and HyPhy rejects the truncated value. The
-					// proper fix is to refactor args into an array passed to
-					// cliObj.exec(cmd, argsArray) — tracked separately.
-					console.log('🧬 WASM - Using genetic code:', value);
-					args.push(`--code ${value}`);
+					// HyPhy's CLI takes the code's NAME, not the numeric id, and the shipped engine
+					// accepts only the identifiers it declares — hyphenated ones like
+					// 'Vertebrate-mtDNA'. Normalise the spellings older builds stored so a saved
+					// config keeps running the code it names instead of being rejected outright.
+					// See src/lib/config/geneticCodes.js for where that list comes from.
+					const codeName = canonicalGeneticCodeName(String(value));
+					console.log('🧬 WASM - Using genetic code:', codeName);
+					args.push('--code', codeName);
 				} else if (key === 'srv') {
 					// Synonymous rate variation
-					args.push(`--srv ${value}`);
+					args.push('--srv', String(value));
 				} else if (key === 'multipleHits') {
 					// Multiple hits parameter
 					if (value !== 'None') {
-						args.push(`--multiple-hits ${value}`);
+						args.push('--multiple-hits', String(value));
 					}
 				} else if (key === 'siteMultihit') {
 					// Site multihit parameter (only when multiple hits enabled)
 					if (config.multipleHits && config.multipleHits !== 'None') {
-						args.push(`--site-multihit ${value}`);
+						args.push('--site-multihit', String(value));
 					}
 				} else if (key === 'resample' && value > 0) {
 					// Bootstrap resampling
-					args.push(`--resample ${value}`);
+					args.push('--resample', String(value));
 				} else if (key === 'confidenceIntervals') {
 					// Confidence intervals
-					args.push(`--ci ${value ? 'Yes' : 'No'}`);
+					args.push('--ci', value ? 'Yes' : 'No');
 				} else if (key === 'blb') {
 					// Bag of Little Bootstrap parameter for aBSREL
-					args.push(`--blb ${value}`);
+					args.push('--blb', String(value));
 				} else if (key === 'pValueThreshold') {
 					// P-value threshold (custom parameter, not standard HyPhy)
 					// This would be handled post-processing
 					continue;
 				} else if (key === 'steps') {
 					// BGM chain length steps
-					args.push(`--steps ${value}`);
+					args.push('--steps', String(value));
 				} else if (key === 'burnIn') {
 					// BGM burn-in samples
-					args.push(`--burn-in ${value}`);
+					args.push('--burn-in', String(value));
 				} else if (key === 'samples') {
 					// BGM samples
-					args.push(`--samples ${value}`);
+					args.push('--samples', String(value));
 				} else if (key === 'maxParents') {
 					// BGM maximum parents per node
-					args.push(`--max-parents ${value}`);
+					args.push('--max-parents', String(value));
 				} else if (key === 'minSubs') {
 					// BGM minimum substitutions per site
-					args.push(`--min-subs ${value}`);
+					args.push('--min-subs', String(value));
 				} else if (key === 'rates') {
 					// Multi-Hit rate classes parameter
-					args.push(`--rates ${value}`);
+					args.push('--rates', String(value));
 				} else if (key === 'rate_classes') {
 					// NRM rate classes parameter (convert underscore to hyphen)
-					args.push(`--rate-classes ${value}`);
+					args.push('--rate-classes', String(value));
 				} else if (key === 'triple_islands') {
 					// Multi-Hit triple islands parameter (convert underscore to hyphen)
-					args.push(`--triple-islands ${value}`);
+					args.push('--triple-islands', String(value));
 				} else if (key === 'mode') {
 					// RELAX mode parameter - skip if default value to avoid space-in-value issues
 					// "Classic mode" is the default, so we only need to pass it if different
@@ -365,11 +372,11 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 					// Skip passing --mode parameter
 				} else if (typeof value === 'boolean') {
 					// Boolean parameters
-					args.push(`--${key.replace(/([A-Z])/g, '-$1').toLowerCase()} ${value ? 'Yes' : 'No'}`);
+					args.push(`--${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`, value ? 'Yes' : 'No');
 				} else if (value !== null && value !== undefined && value !== '') {
-					// All other parameters (including strings with spaces)
-					// Don't add quotes - HyPhy WASM doesn't parse them correctly
-					args.push(`--${key.replace(/([A-Z])/g, '-$1').toLowerCase()} ${value}`);
+					// All other parameters. Values containing spaces are safe now that each
+					// argv token is its own array element.
+					args.push(`--${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`, String(value));
 				}
 			}
 		}
@@ -402,15 +409,17 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 			}
 		}
 
-		// Add method-specific default arguments for BGM
+		// Add method-specific default arguments for BGM.
+		// Flags are their own argv tokens now, so an exact match is both correct and cheaper
+		// than the substring scan this used to do.
 		if (method.toLowerCase() === 'bgm') {
 			// BGM requires explicit data type specification
-			if (!args.some((arg) => arg.includes('--type'))) {
-				args.push('--type codon');
+			if (!args.includes('--type')) {
+				args.push('--type', 'codon');
 			}
 			// BGM requires branches specification
-			if (!args.some((arg) => arg.includes('--branches'))) {
-				args.push('--branches All');
+			if (!args.includes('--branches')) {
+				args.push('--branches', 'All');
 			}
 		}
 
@@ -444,18 +453,29 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 				? `/res/TemplateBatchFiles/${batchFile}`
 				: methodKey;
 
-		// Build and execute the command
-		const fullHyphyCommand = `hyphy LIBPATH=/res/ ${hyphyCommand} ${args.join(' ')}`;
-		console.log(`Executing HyPhy command: ${fullHyphyCommand}`);
+		// Build and execute the command.
+		//
+		// The argv array is passed to exec() as its SECOND argument. Aioli's worker only does
+		// `command.split(' ')` when that second argument is null; given an array it hands the
+		// tokens to Emscripten's callMain untouched, so a value keeps whatever characters it has.
+		// In this form the first argument must be the bare program name and must NOT be repeated
+		// inside the array — the worker looks the tool up by `program == 'hyphy'` and throws
+		// 'Program ... not found' otherwise.
+		//
+		// displayCommand is for humans (logs, the stored arguments record) only. It is NOT what
+		// runs, and it is ambiguous for any value containing a space; do not feed it back to exec.
+		const argv = ['LIBPATH=/res/', hyphyCommand, ...args];
+		const displayCommand = ['hyphy', ...argv].join(' ');
+		console.log(`Executing HyPhy command: ${displayCommand}`);
 
 		this.updateProgress(analysisId, 'running', 40, `Executing ${method} analysis...`);
 
 		// Run the analysis
-		const cmdResult = await cliObj.exec(fullHyphyCommand);
+		const cmdResult = await cliObj.exec('hyphy', argv);
 		const stdout = await cmdResult.stdout;
 
 		// Add command execution details to stdout for debugging
-		const commandInfo = `\n=== HyPhy Command Execution ===\nCommand: ${fullHyphyCommand}\nFiles mounted: ${filesToMount.map((f) => f.name).join(', ')}\nTree data provided: ${sanitizedTree && sanitizedTree.trim() ? 'Yes' : 'No'}\n================================\n\n`;
+		const commandInfo = `\n=== HyPhy Command Execution ===\nCommand: ${displayCommand}\nFiles mounted: ${filesToMount.map((f) => f.name).join(', ')}\nTree data provided: ${sanitizedTree && sanitizedTree.trim() ? 'Yes' : 'No'}\n================================\n\n`;
 		const enhancedStdout = commandInfo + stdout;
 
 		// Check for common HyPhy errors
@@ -527,12 +547,15 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 	 * Build arguments preview for database storage (before actual execution)
 	 */
 	buildArgumentsPreview(method, config, treeData) {
+		// Same argv-array tokenisation as executeWasmAnalysis — see the comments there. The two
+		// must stay in step: this is the record a user reads when an analysis fails, and a preview
+		// that differs from what actually ran is worse than no preview.
 		const args = [];
-		args.push(`--alignment user.nex`);
+		args.push('--alignment', 'user.nex');
 
 		// Add tree argument if tree data was provided
 		if (treeData && treeData.trim()) {
-			args.push(`--tree user.tree`);
+			args.push('--tree', 'user.tree');
 		}
 
 		// Map configuration parameters to HyPhy command line arguments
@@ -548,7 +571,9 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 				key !== 'branchSet2' &&
 				key !== 'testBranches' &&
 				key !== 'referenceBranches' &&
-				key !== 'variant'
+				key !== 'variant' &&
+				// See executeWasmAnalysis: the id is UI state, the CLI takes the name.
+				key !== 'geneticCodeId'
 			) {
 				// Handle specific FEL parameter mappings
 				if (key === 'branchesToTest') {
@@ -560,76 +585,71 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 						} else if (method.toLowerCase() === 'relax') {
 							// Skip - RELAX uses --test and --reference parameters
 						} else {
-							args.push(`--branches FG`);
+							args.push('--branches', 'FG');
 						}
 					} else {
 						// Always pass --branches explicitly (including 'All') to avoid
 						// stale state issues with Emscripten's callMain between invocations
-						args.push(`--branches ${value || 'All'}`);
+						args.push('--branches', String(value || 'All'));
 					}
 				} else if (key === 'propertySet') {
 					// PRIME property set parameter
-					args.push(`--property-set ${value}`);
+					args.push('--property-set', String(value));
 				} else if (key === 'imputeStates') {
 					// PRIME impute states parameter
-					args.push(`--impute-states ${value}`);
+					args.push('--impute-states', String(value));
 				} else if (key === 'geneticCode') {
-					// Pass the descriptive string value (HyPhy WASM does not accept the
-					// numeric code id on the CLI). Known limitation: aioli's exec() does
-					// a plain command.split(' '), so multi-word names like
-					// 'Vertebrate mitochondrial' get split into '--code Vertebrate' +
-					// stray 'mitochondrial' and HyPhy rejects the truncated value. The
-					// proper fix is to refactor args into an array passed to
-					// cliObj.exec(cmd, argsArray) — tracked separately.
-					console.log('🧬 WASM - Using genetic code:', value);
-					args.push(`--code ${value}`);
+					// Normalised to the HyPhy identifier, exactly as the executed command does.
+					const codeName = canonicalGeneticCodeName(String(value));
+					console.log('🧬 WASM - Using genetic code:', codeName);
+					args.push('--code', codeName);
 				} else if (key === 'srv') {
 					// Synonymous rate variation
-					args.push(`--srv ${value}`);
+					args.push('--srv', String(value));
 				} else if (key === 'multipleHits') {
 					// Multiple hits parameter
 					if (value !== 'None') {
-						args.push(`--multiple-hits ${value}`);
+						args.push('--multiple-hits', String(value));
 					}
 				} else if (key === 'siteMultihit') {
 					// Site multihit parameter (only when multiple hits enabled)
 					if (config.multipleHits && config.multipleHits !== 'None') {
-						args.push(`--site-multihit ${value}`);
+						args.push('--site-multihit', String(value));
 					}
 				} else if (key === 'resample' && value > 0) {
 					// Bootstrap resampling
-					args.push(`--resample ${value}`);
+					args.push('--resample', String(value));
 				} else if (key === 'confidenceIntervals') {
 					// Confidence intervals
-					args.push(`--ci ${value ? 'Yes' : 'No'}`);
+					args.push('--ci', value ? 'Yes' : 'No');
 				} else if (key === 'blb') {
 					// Bag of Little Bootstrap parameter for aBSREL
-					args.push(`--blb ${value}`);
+					args.push('--blb', String(value));
 				} else if (key === 'pValueThreshold') {
 					// P-value threshold (custom parameter, not standard HyPhy)
 					// This would be handled post-processing
 					continue;
 				} else if (key === 'steps') {
 					// BGM chain length steps
-					args.push(`--steps ${value}`);
+					args.push('--steps', String(value));
 				} else if (key === 'burnIn') {
 					// BGM burn-in samples
-					args.push(`--burn-in ${value}`);
+					args.push('--burn-in', String(value));
 				} else if (key === 'samples') {
 					// BGM samples
-					args.push(`--samples ${value}`);
+					args.push('--samples', String(value));
 				} else if (key === 'maxParents') {
 					// BGM maximum parents per node
-					args.push(`--max-parents ${value}`);
+					args.push('--max-parents', String(value));
 				} else if (key === 'minSubs') {
 					// BGM minimum substitutions per site
-					args.push(`--min-subs ${value}`);
+					args.push('--min-subs', String(value));
 				} else if (key === 'rates') {
 					// Multi-Hit rate classes parameter
-					args.push(`--rates ${value}`);
+					args.push('--rates', String(value));
 				} else if (key === 'triple_islands') {
 					// Multi-Hit triple islands parameter (convert underscore to hyphen)
-					args.push(`--triple-islands ${value}`);
+					args.push('--triple-islands', String(value));
 				} else if (key === 'mode') {
 					// RELAX mode parameter - skip if default value to avoid space-in-value issues
 					if (value !== 'Classic mode') {
@@ -638,11 +658,11 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 					// Skip passing --mode parameter
 				} else if (typeof value === 'boolean') {
 					// Boolean parameters
-					args.push(`--${key.replace(/([A-Z])/g, '-$1').toLowerCase()} ${value ? 'Yes' : 'No'}`);
+					args.push(`--${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`, value ? 'Yes' : 'No');
 				} else if (value !== null && value !== undefined && value !== '') {
-					// All other parameters (including strings with spaces)
-					// Don't add quotes - HyPhy WASM doesn't parse them correctly
-					args.push(`--${key.replace(/([A-Z])/g, '-$1').toLowerCase()} ${value}`);
+					// All other parameters. Values containing spaces are safe now that each
+					// argv token is its own array element.
+					args.push(`--${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`, String(value));
 				}
 			}
 		}
@@ -673,17 +693,23 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 		// Add method-specific default arguments for BGM (preview version)
 		if (method.toLowerCase() === 'bgm') {
 			// BGM requires explicit data type specification
-			if (!args.some((arg) => arg.includes('--type'))) {
-				args.push('--type codon');
+			if (!args.includes('--type')) {
+				args.push('--type', 'codon');
 			}
 			// BGM requires branches specification
-			if (!args.some((arg) => arg.includes('--branches'))) {
-				args.push('--branches All');
+			if (!args.includes('--branches')) {
+				args.push('--branches', 'All');
 			}
 		}
 
+		// Preview shows the method name rather than the batch-file path, for readability.
+		// `argv` is the exact token list; `command` is the same thing joined for display, and is
+		// ambiguous wherever a value contains a space — which is why both are stored.
+		const argv = ['LIBPATH=/res/', method.toLowerCase(), ...args];
+
 		return {
-			command: `hyphy LIBPATH=/res/ ${method.toLowerCase()} ${args.join(' ')}`, // Preview shows method name for readability
+			command: ['hyphy', ...argv].join(' '),
+			argv,
 			method: method.toUpperCase(),
 			parameters: config,
 			treeData: treeData

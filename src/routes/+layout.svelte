@@ -97,42 +97,53 @@
 				<span class="rounded bg-accent-copper px-1.5 py-0.5 text-xs font-semibold text-white">BETA</span>
 			</a>
 
-			<!-- Mobile menu button -->
-			<button
-				type="button"
-				class="inline-flex h-11 w-11 items-center justify-center rounded-premium-sm text-text-slate hover:bg-brand-whisper hover:text-brand-royal focus:outline-none focus:ring-2 focus:ring-brand-royal sm:hidden"
-				aria-controls="mobile-menu"
-				aria-expanded={mobileMenuOpen}
-				onclick={toggleMobileMenu}
-			>
-				<span class="sr-only">Open main menu</span>
-				{#if mobileMenuOpen}
-					<X class="h-6 w-6" />
-				{:else}
-					<Menu class="h-6 w-6" />
-				{/if}
-			</button>
+			<div class="flex items-center gap-2 sm:gap-premium-lg">
+				<!--
+					Analysis Status Indicator — deliberately NOT width-gated, and deliberately a single
+					instance. It used to live only inside the `hidden … sm:flex` group, so on a phone the
+					one cross-tab signal that an analysis had finished (or failed) was display:none and
+					reachable only by opening the hamburger. It also has to stay a single instance at every
+					width: e2e/fixtures/helpers.js and 07-wasm-analysis.spec.js count
+					`button[aria-label="View all analyses"]` and its colour spans, so a mobile copy alongside
+					the desktop one would break them. It self-hides when there is nothing to report, so the
+					first-visit header is unchanged.
+				-->
+				<AnalysisStatusIndicator onNavigate={closeMobileMenu} />
 
-			<!-- Desktop navigation -->
-			<div class="hidden items-center space-x-premium-lg sm:flex">
-				<ul class="flex items-center space-x-premium-lg">
-					<li>
-						<a
-							class="rounded-premium-sm px-3 py-2 text-premium-brand font-medium text-text-rich transition-colors duration-premium hover:bg-brand-whisper hover:text-brand-royal"
-							href="http://help.datamonkey.org"
-							target="_blank"
-							rel="noopener noreferrer"
-						>
-							Help
-						</a>
-					</li>
-				</ul>
+				<!-- Desktop navigation -->
+				<div class="hidden items-center space-x-premium-lg sm:flex">
+					<ul class="flex items-center space-x-premium-lg">
+						<li>
+							<a
+								class="rounded-premium-sm px-3 py-2 text-premium-brand font-medium text-text-rich transition-colors duration-premium hover:bg-brand-whisper hover:text-brand-royal"
+								href="http://help.datamonkey.org"
+								target="_blank"
+								rel="noopener noreferrer"
+							>
+								Help
+							</a>
+						</li>
+					</ul>
 
-				<!-- Analysis Status Indicator -->
-				<AnalysisStatusIndicator />
+					<!-- Backend Connectivity Indicator -->
+					<BackendConnectivityIndicator />
+				</div>
 
-				<!-- Backend Connectivity Indicator -->
-				<BackendConnectivityIndicator />
+				<!-- Mobile menu button -->
+				<button
+					type="button"
+					class="inline-flex h-11 w-11 items-center justify-center rounded-premium-sm text-text-slate hover:bg-brand-whisper hover:text-brand-royal focus:outline-none focus:ring-2 focus:ring-brand-royal sm:hidden"
+					aria-controls="mobile-menu"
+					aria-expanded={mobileMenuOpen}
+					onclick={toggleMobileMenu}
+				>
+					<span class="sr-only">Open main menu</span>
+					{#if mobileMenuOpen}
+						<X class="h-6 w-6" />
+					{:else}
+						<Menu class="h-6 w-6" />
+					{/if}
+				</button>
 			</div>
 		</div>
 
@@ -153,7 +164,7 @@
 					<div class="flex items-center justify-between">
 						<span class="text-sm text-text-slate">Status</span>
 						<div class="flex items-center space-x-3">
-							<AnalysisStatusIndicator />
+							<!-- No AnalysisStatusIndicator here: it now sits in the header at every width. -->
 							<BackendConnectivityIndicator />
 						</div>
 					</div>

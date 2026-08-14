@@ -9,17 +9,17 @@ type = "string"
 default = "Universal"
 choices = [
     { value = "Universal", description = "Universal code" },
-    { value = "Vertebrate mtDNA", description = "Vertebrate mitochondrial DNA code" },
-    { value = "Yeast mtDNA", description = "Yeast mitochondrial DNA code" },
-    { value = "Mold/Protozoan mtDNA", description = "Mold, Protozoan and Coelenterate mt; Mycoplasma/Spiroplasma" },
-    { value = "Invertebrate mtDNA", description = "Invertebrate mitochondrial DNA code" },
-    { value = "Ciliate Nuclear", description = "Ciliate, Dasycladacean and Hexamita Nuclear code" },
-    { value = "Echinoderm mtDNA", description = "Echinoderm mitochondrial DNA code" },
-    { value = "Euplotid Nuclear", description = "Euplotid Nuclear code" },
-    { value = "Alt. Yeast Nuclear", description = "Alternative Yeast Nuclear code" },
-    { value = "Ascidian mtDNA", description = "Ascidian mitochondrial DNA code" },
-    { value = "Flatworm mtDNA", description = "Flatworm mitochondrial DNA code" },
-    { value = "Blepharisma Nuclear", description = "Blepharisma Nuclear code" },
+    { value = "Vertebrate-mtDNA", description = "Vertebrate mitochondrial DNA code" },
+    { value = "Yeast-mtDNA", description = "Yeast mitochondrial DNA code" },
+    { value = "Mold-Protozoan-mtDNA", description = "Mold, Protozoan and Coelenterate mt; Mycoplasma/Spiroplasma" },
+    { value = "Invertebrate-mtDNA", description = "Invertebrate mitochondrial DNA code" },
+    { value = "Ciliate-Nuclear", description = "Ciliate, Dasycladacean and Hexamita Nuclear code" },
+    { value = "Echinoderm-mtDNA", description = "Echinoderm mitochondrial DNA code" },
+    { value = "Euplotid-Nuclear", description = "Euplotid Nuclear code" },
+    { value = "Alt-Yeast-Nuclear", description = "Alternative Yeast Nuclear code" },
+    { value = "Ascidian-mtDNA", description = "Ascidian mitochondrial DNA code" },
+    { value = "Flatworm-mtDNA", description = "Flatworm mitochondrial DNA code" },
+    { value = "Blepharisma-Nuclear", description = "Blepharisma Nuclear code" },
 ]
 
 [[fel.options]]
@@ -140,17 +140,17 @@ type = "string"
 default = "Universal"
 choices = [
     { value = "Universal", description = "Universal code" },
-    { value = "Vertebrate mtDNA", description = "Vertebrate mitochondrial DNA code" },
-    { value = "Yeast mtDNA", description = "Yeast mitochondrial DNA code" },
-    { value = "Mold/Protozoan mtDNA", description = "Mold, Protozoan and Coelenterate mt; Mycoplasma/Spiroplasma" },
-    { value = "Invertebrate mtDNA", description = "Invertebrate mitochondrial DNA code" },
-    { value = "Ciliate Nuclear", description = "Ciliate, Dasycladacean and Hexamita Nuclear code" },
-    { value = "Echinoderm mtDNA", description = "Echinoderm mitochondrial DNA code" },
-    { value = "Euplotid Nuclear", description = "Euplotid Nuclear code" },
-    { value = "Alt. Yeast Nuclear", description = "Alternative Yeast Nuclear code" },
-    { value = "Ascidian mtDNA", description = "Ascidian mitochondrial DNA code" },
-    { value = "Flatworm mtDNA", description = "Flatworm mitochondrial DNA code" },
-    { value = "Blepharisma Nuclear", description = "Blepharisma Nuclear code" },
+    { value = "Vertebrate-mtDNA", description = "Vertebrate mitochondrial DNA code" },
+    { value = "Yeast-mtDNA", description = "Yeast mitochondrial DNA code" },
+    { value = "Mold-Protozoan-mtDNA", description = "Mold, Protozoan and Coelenterate mt; Mycoplasma/Spiroplasma" },
+    { value = "Invertebrate-mtDNA", description = "Invertebrate mitochondrial DNA code" },
+    { value = "Ciliate-Nuclear", description = "Ciliate, Dasycladacean and Hexamita Nuclear code" },
+    { value = "Echinoderm-mtDNA", description = "Echinoderm mitochondrial DNA code" },
+    { value = "Euplotid-Nuclear", description = "Euplotid Nuclear code" },
+    { value = "Alt-Yeast-Nuclear", description = "Alternative Yeast Nuclear code" },
+    { value = "Ascidian-mtDNA", description = "Ascidian mitochondrial DNA code" },
+    { value = "Flatworm-mtDNA", description = "Flatworm mitochondrial DNA code" },
+    { value = "Blepharisma-Nuclear", description = "Blepharisma Nuclear code" },
 ]
 
 [[slac.options]]
@@ -317,17 +317,17 @@ type = "string"
 default = "Universal"
 choices = [
     { value = "Universal", description = "Universal code" },
-    { value = "Vertebrate mtDNA", description = "Vertebrate mitochondrial DNA code" },
-    { value = "Yeast mtDNA", description = "Yeast mitochondrial DNA code" },
-    { value = "Mold/Protozoan mtDNA", description = "Mold, Protozoan and Coelenterate mt; Mycoplasma/Spiroplasma" },
-    { value = "Invertebrate mtDNA", description = "Invertebrate mitochondrial DNA code" },
-    { value = "Ciliate Nuclear", description = "Ciliate, Dasycladacean and Hexamita Nuclear code" },
-    { value = "Echinoderm mtDNA", description = "Echinoderm mitochondrial DNA code" },
-    { value = "Euplotid Nuclear", description = "Euplotid Nuclear code" },
-    { value = "Alt. Yeast Nuclear", description = "Alternative Yeast Nuclear code" },
-    { value = "Ascidian mtDNA", description = "Ascidian mitochondrial DNA code" },
-    { value = "Flatworm mtDNA", description = "Flatworm mitochondrial DNA code" },
-    { value = "Blepharisma Nuclear", description = "Blepharisma Nuclear code" },
+    { value = "Vertebrate-mtDNA", description = "Vertebrate mitochondrial DNA code" },
+    { value = "Yeast-mtDNA", description = "Yeast mitochondrial DNA code" },
+    { value = "Mold-Protozoan-mtDNA", description = "Mold, Protozoan and Coelenterate mt; Mycoplasma/Spiroplasma" },
+    { value = "Invertebrate-mtDNA", description = "Invertebrate mitochondrial DNA code" },
+    { value = "Ciliate-Nuclear", description = "Ciliate, Dasycladacean and Hexamita Nuclear code" },
+    { value = "Echinoderm-mtDNA", description = "Echinoderm mitochondrial DNA code" },
+    { value = "Euplotid-Nuclear", description = "Euplotid Nuclear code" },
+    { value = "Alt-Yeast-Nuclear", description = "Alternative Yeast Nuclear code" },
+    { value = "Ascidian-mtDNA", description = "Ascidian mitochondrial DNA code" },
+    { value = "Flatworm-mtDNA", description = "Flatworm mitochondrial DNA code" },
+    { value = "Blepharisma-Nuclear", description = "Blepharisma Nuclear code" },
 ]
 
 [[contrast-fel.options]]
@@ -410,17 +410,17 @@ type = "string"
 default = "Universal"
 choices = [
     { value = "Universal", description = "Universal code" },
-    { value = "Vertebrate mtDNA", description = "Vertebrate mitochondrial DNA code" },
-    { value = "Yeast mtDNA", description = "Yeast mitochondrial DNA code" },
-    { value = "Mold/Protozoan mtDNA", description = "Mold, Protozoan and Coelenterate mt; Mycoplasma/Spiroplasma" },
-    { value = "Invertebrate mtDNA", description = "Invertebrate mitochondrial DNA code" },
-    { value = "Ciliate Nuclear", description = "Ciliate, Dasycladacean and Hexamita Nuclear code" },
-    { value = "Echinoderm mtDNA", description = "Echinoderm mitochondrial DNA code" },
-    { value = "Euplotid Nuclear", description = "Euplotid Nuclear code" },
-    { value = "Alt. Yeast Nuclear", description = "Alternative Yeast Nuclear code" },
-    { value = "Ascidian mtDNA", description = "Ascidian mitochondrial DNA code" },
-    { value = "Flatworm mtDNA", description = "Flatworm mitochondrial DNA code" },
-    { value = "Blepharisma Nuclear", description = "Blepharisma Nuclear code" },
+    { value = "Vertebrate-mtDNA", description = "Vertebrate mitochondrial DNA code" },
+    { value = "Yeast-mtDNA", description = "Yeast mitochondrial DNA code" },
+    { value = "Mold-Protozoan-mtDNA", description = "Mold, Protozoan and Coelenterate mt; Mycoplasma/Spiroplasma" },
+    { value = "Invertebrate-mtDNA", description = "Invertebrate mitochondrial DNA code" },
+    { value = "Ciliate-Nuclear", description = "Ciliate, Dasycladacean and Hexamita Nuclear code" },
+    { value = "Echinoderm-mtDNA", description = "Echinoderm mitochondrial DNA code" },
+    { value = "Euplotid-Nuclear", description = "Euplotid Nuclear code" },
+    { value = "Alt-Yeast-Nuclear", description = "Alternative Yeast Nuclear code" },
+    { value = "Ascidian-mtDNA", description = "Ascidian mitochondrial DNA code" },
+    { value = "Flatworm-mtDNA", description = "Flatworm mitochondrial DNA code" },
+    { value = "Blepharisma-Nuclear", description = "Blepharisma Nuclear code" },
 ]
 
 [[gard.options]]
@@ -510,17 +510,17 @@ type = "string"
 default = "Universal"
 choices = [
     { value = "Universal", description = "Universal code" },
-    { value = "Vertebrate mtDNA", description = "Vertebrate mitochondrial DNA code" },
-    { value = "Yeast mtDNA", description = "Yeast mitochondrial DNA code" },
-    { value = "Mold/Protozoan mtDNA", description = "Mold, Protozoan and Coelenterate mt; Mycoplasma/Spiroplasma" },
-    { value = "Invertebrate mtDNA", description = "Invertebrate mitochondrial DNA code" },
-    { value = "Ciliate Nuclear", description = "Ciliate, Dasycladacean and Hexamita Nuclear code" },
-    { value = "Echinoderm mtDNA", description = "Echinoderm mitochondrial DNA code" },
-    { value = "Euplotid Nuclear", description = "Euplotid Nuclear code" },
-    { value = "Alt. Yeast Nuclear", description = "Alternative Yeast Nuclear code" },
-    { value = "Ascidian mtDNA", description = "Ascidian mitochondrial DNA code" },
-    { value = "Flatworm mtDNA", description = "Flatworm mitochondrial DNA code" },
-    { value = "Blepharisma Nuclear", description = "Blepharisma Nuclear code" },
+    { value = "Vertebrate-mtDNA", description = "Vertebrate mitochondrial DNA code" },
+    { value = "Yeast-mtDNA", description = "Yeast mitochondrial DNA code" },
+    { value = "Mold-Protozoan-mtDNA", description = "Mold, Protozoan and Coelenterate mt; Mycoplasma/Spiroplasma" },
+    { value = "Invertebrate-mtDNA", description = "Invertebrate mitochondrial DNA code" },
+    { value = "Ciliate-Nuclear", description = "Ciliate, Dasycladacean and Hexamita Nuclear code" },
+    { value = "Echinoderm-mtDNA", description = "Echinoderm mitochondrial DNA code" },
+    { value = "Euplotid-Nuclear", description = "Euplotid Nuclear code" },
+    { value = "Alt-Yeast-Nuclear", description = "Alternative Yeast Nuclear code" },
+    { value = "Ascidian-mtDNA", description = "Ascidian mitochondrial DNA code" },
+    { value = "Flatworm-mtDNA", description = "Flatworm mitochondrial DNA code" },
+    { value = "Blepharisma-Nuclear", description = "Blepharisma Nuclear code" },
 ]
 
 [[multi-hit.options]]
@@ -584,17 +584,17 @@ type = "string"
 default = "Universal"
 choices = [
     { value = "Universal", description = "Universal code" },
-    { value = "Vertebrate mtDNA", description = "Vertebrate mitochondrial DNA code" },
-    { value = "Yeast mtDNA", description = "Yeast mitochondrial DNA code" },
-    { value = "Mold/Protozoan mtDNA", description = "Mold, Protozoan and Coelenterate mt; Mycoplasma/Spiroplasma" },
-    { value = "Invertebrate mtDNA", description = "Invertebrate mitochondrial DNA code" },
-    { value = "Ciliate Nuclear", description = "Ciliate, Dasycladacean and Hexamita Nuclear code" },
-    { value = "Echinoderm mtDNA", description = "Echinoderm mitochondrial DNA code" },
-    { value = "Euplotid Nuclear", description = "Euplotid Nuclear code" },
-    { value = "Alt. Yeast Nuclear", description = "Alternative Yeast Nuclear code" },
-    { value = "Ascidian mtDNA", description = "Ascidian mitochondrial DNA code" },
-    { value = "Flatworm mtDNA", description = "Flatworm mitochondrial DNA code" },
-    { value = "Blepharisma Nuclear", description = "Blepharisma Nuclear code" },
+    { value = "Vertebrate-mtDNA", description = "Vertebrate mitochondrial DNA code" },
+    { value = "Yeast-mtDNA", description = "Yeast mitochondrial DNA code" },
+    { value = "Mold-Protozoan-mtDNA", description = "Mold, Protozoan and Coelenterate mt; Mycoplasma/Spiroplasma" },
+    { value = "Invertebrate-mtDNA", description = "Invertebrate mitochondrial DNA code" },
+    { value = "Ciliate-Nuclear", description = "Ciliate, Dasycladacean and Hexamita Nuclear code" },
+    { value = "Echinoderm-mtDNA", description = "Echinoderm mitochondrial DNA code" },
+    { value = "Euplotid-Nuclear", description = "Euplotid Nuclear code" },
+    { value = "Alt-Yeast-Nuclear", description = "Alternative Yeast Nuclear code" },
+    { value = "Ascidian-mtDNA", description = "Ascidian mitochondrial DNA code" },
+    { value = "Flatworm-mtDNA", description = "Flatworm mitochondrial DNA code" },
+    { value = "Blepharisma-Nuclear", description = "Blepharisma Nuclear code" },
 ]
 
 [[nrm.options]]
@@ -651,17 +651,17 @@ type = "string"
 default = "Universal"
 choices = [
     { value = "Universal", description = "Universal code" },
-    { value = "Vertebrate mtDNA", description = "Vertebrate mitochondrial DNA code" },
-    { value = "Yeast mtDNA", description = "Yeast mitochondrial DNA code" },
-    { value = "Mold/Protozoan mtDNA", description = "Mold, Protozoan and Coelenterate mt; Mycoplasma/Spiroplasma" },
-    { value = "Invertebrate mtDNA", description = "Invertebrate mitochondrial DNA code" },
-    { value = "Ciliate Nuclear", description = "Ciliate, Dasycladacean and Hexamita Nuclear code" },
-    { value = "Echinoderm mtDNA", description = "Echinoderm mitochondrial DNA code" },
-    { value = "Euplotid Nuclear", description = "Euplotid Nuclear code" },
-    { value = "Alt. Yeast Nuclear", description = "Alternative Yeast Nuclear code" },
-    { value = "Ascidian mtDNA", description = "Ascidian mitochondrial DNA code" },
-    { value = "Flatworm mtDNA", description = "Flatworm mitochondrial DNA code" },
-    { value = "Blepharisma Nuclear", description = "Blepharisma Nuclear code" },
+    { value = "Vertebrate-mtDNA", description = "Vertebrate mitochondrial DNA code" },
+    { value = "Yeast-mtDNA", description = "Yeast mitochondrial DNA code" },
+    { value = "Mold-Protozoan-mtDNA", description = "Mold, Protozoan and Coelenterate mt; Mycoplasma/Spiroplasma" },
+    { value = "Invertebrate-mtDNA", description = "Invertebrate mitochondrial DNA code" },
+    { value = "Ciliate-Nuclear", description = "Ciliate, Dasycladacean and Hexamita Nuclear code" },
+    { value = "Echinoderm-mtDNA", description = "Echinoderm mitochondrial DNA code" },
+    { value = "Euplotid-Nuclear", description = "Euplotid Nuclear code" },
+    { value = "Alt-Yeast-Nuclear", description = "Alternative Yeast Nuclear code" },
+    { value = "Ascidian-mtDNA", description = "Ascidian mitochondrial DNA code" },
+    { value = "Flatworm-mtDNA", description = "Flatworm mitochondrial DNA code" },
+    { value = "Blepharisma-Nuclear", description = "Blepharisma Nuclear code" },
 ]
 
 [[prime.options]]
@@ -740,17 +740,17 @@ type = "string"
 default = "Universal"
 choices = [
     { value = "Universal", description = "Universal code" },
-    { value = "Vertebrate mtDNA", description = "Vertebrate mitochondrial DNA code" },
-    { value = "Yeast mtDNA", description = "Yeast mitochondrial DNA code" },
-    { value = "Mold/Protozoan mtDNA", description = "Mold, Protozoan and Coelenterate mt; Mycoplasma/Spiroplasma" },
-    { value = "Invertebrate mtDNA", description = "Invertebrate mitochondrial DNA code" },
-    { value = "Ciliate Nuclear", description = "Ciliate, Dasycladacean and Hexamita Nuclear code" },
-    { value = "Echinoderm mtDNA", description = "Echinoderm mitochondrial DNA code" },
-    { value = "Euplotid Nuclear", description = "Euplotid Nuclear code" },
-    { value = "Alt. Yeast Nuclear", description = "Alternative Yeast Nuclear code" },
-    { value = "Ascidian mtDNA", description = "Ascidian mitochondrial DNA code" },
-    { value = "Flatworm mtDNA", description = "Flatworm mitochondrial DNA code" },
-    { value = "Blepharisma Nuclear", description = "Blepharisma Nuclear code" },
+    { value = "Vertebrate-mtDNA", description = "Vertebrate mitochondrial DNA code" },
+    { value = "Yeast-mtDNA", description = "Yeast mitochondrial DNA code" },
+    { value = "Mold-Protozoan-mtDNA", description = "Mold, Protozoan and Coelenterate mt; Mycoplasma/Spiroplasma" },
+    { value = "Invertebrate-mtDNA", description = "Invertebrate mitochondrial DNA code" },
+    { value = "Ciliate-Nuclear", description = "Ciliate, Dasycladacean and Hexamita Nuclear code" },
+    { value = "Echinoderm-mtDNA", description = "Echinoderm mitochondrial DNA code" },
+    { value = "Euplotid-Nuclear", description = "Euplotid Nuclear code" },
+    { value = "Alt-Yeast-Nuclear", description = "Alternative Yeast Nuclear code" },
+    { value = "Ascidian-mtDNA", description = "Ascidian mitochondrial DNA code" },
+    { value = "Flatworm-mtDNA", description = "Flatworm mitochondrial DNA code" },
+    { value = "Blepharisma-Nuclear", description = "Blepharisma Nuclear code" },
 ]
 
 [[relax.options]]

@@ -2,10 +2,22 @@ import { writable, derived } from 'svelte/store';
 import { fileStorage } from '../lib/utils/indexedDBStorage';
 import { browser } from '$app/environment';
 import { trackEvent } from '../lib/utils/analytics.js';
+import { uniqueFilename } from '../lib/utils/fileIdentity.js';
 
 // Basic stores for immediate usage
 export const alignmentFileStore = writable(null);
 export const fileMetricsStore = writable(null);
+
+/**
+ * The id of the file currently being re-read after an in-place edit, or null.
+ *
+ * In-memory on purpose. The obvious alternative — gate the Run button on a 'pending' datareader
+ * record — wedges the button forever if that record is orphaned: cleanupInterruptedAnalyses
+ * (stores/analyses.js) only reconciles records whose metadata.executionMode is 'wasm', and
+ * datareader records carry no metadata at all. A flag that dies with the tab cannot outlive the
+ * work it describes.
+ */
+export const revalidatingFileId = writable(null);
 
 // Persistent file store
 function createPersistentFileStore() {
@@ -34,8 +46,19 @@ function createPersistentFileStore() {
 			}
 		},
 
-		// Upload a file to browser storage
-		async uploadFile(file) {
+		/**
+		 * Upload a file to browser storage.
+		 *
+		 * @param {File} file
+		 * @param {Object} metadata - persisted alongside the record (demo provenance, etc). This used
+		 *   to be dropped on the floor: +page.svelte has always passed it, uploadFile has always
+		 *   taken one parameter, so demo files were indistinguishable from user uploads on disk.
+		 * @param {{onConflict?: (ctx: {existing: Object, incoming: File}) => Promise<'replace'|'keep-both'>}} hooks
+		 *   Optional. When a same-name record exists AND a hook is supplied, the caller decides.
+		 *   With no hook the behaviour is exactly what it was (silent in-place replace), which is
+		 *   what FileManager, the demo loader and the alignment-edit save all want.
+		 */
+		async uploadFile(file, metadata = {}, { onConflict } = {}) {
 			if (!browser) return; // Only run in browser
 
 			update((state) => ({ ...state, isLoading: true, error: null }));
@@ -43,15 +66,35 @@ function createPersistentFileStore() {
 			try {
 				// Check if a file with the same name already exists
 				let existingFileId = null;
+				let existingRecord = null;
+				let takenNames = [];
 
 				update((state) => {
 					// Check current state for a file with the same name
 					const existing = state.files.find((f) => f.filename === file.name);
 					if (existing) {
 						existingFileId = existing.id;
+						existingRecord = existing;
 					}
+					takenNames = state.files.map((f) => f.filename);
 					return state;
 				});
+
+				let fileToSave = file;
+				let effectiveMetadata = metadata;
+
+				if (existingFileId && typeof onConflict === 'function') {
+					const choice = await onConflict({ existing: existingRecord, incoming: file });
+					if (choice === 'keep-both') {
+						// Uniquify BEFORE forceNew reaches saveFile — see uniqueFilename's note. A new
+						// name means a new id, which means the new file starts with no analyses. That is
+						// the point: the old runs describe the old contents.
+						const uniqueName = uniqueFilename(file.name, takenNames);
+						fileToSave = new File([file], uniqueName, { type: file.type });
+						effectiveMetadata = { ...metadata, forceNew: true };
+						existingFileId = null;
+					}
+				}
 
 				let fileId;
 
@@ -73,7 +116,8 @@ function createPersistentFileStore() {
 						content: arrayBuffer,
 						size: file.size,
 						type: file.type,
-						updatedAt: new Date().getTime()
+						updatedAt: new Date().getTime(),
+						...effectiveMetadata
 					};
 
 					// Save updated file
@@ -81,7 +125,7 @@ function createPersistentFileStore() {
 					fileId = existingFileId;
 				} else {
 					// Save as new file
-					fileId = await fileStorage.saveFile(file);
+					fileId = await fileStorage.saveFile(fileToSave, effectiveMetadata);
 				}
 
 				// Get the file metadata (without content)

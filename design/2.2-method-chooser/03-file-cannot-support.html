@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>03 — The file cannot support the method</title>
+		<link rel="stylesheet" href="_wf.css" />
+	</head>
+	<body>
+		<div class="sheet">
+			<div class="hdr">
+				<h1>State 03 · requirements</h1>
+				<p>When the uploaded file cannot support a method</p>
+				<div class="sub">
+					The audit proposes a per&#8209;method codon&#8209;alignment requirement line driven by
+					<code>CODON_AWARE_METHODS</code>. I checked what that predicate is actually worth in this
+					product, and it is worth nothing. Panel A is overruled. Panels B and C are the correct
+					design.
+				</div>
+			</div>
+
+			<div>
+				<div class="screen rejected">
+					<div class="panel-hd">A &mdash; proposed: requirement text per method</div>
+					<div class="body">
+						<div class="grp">
+							<div class="q">Which sites are under selection?</div>
+							<div class="row off">
+								<i class="rb"></i><span class="nm">FEL</span
+								><span class="ds">Needs a codon alignment &mdash; your file is a nucleotide alignment.</span>
+							</div>
+							<div class="row off">
+								<i class="rb"></i><span class="nm">MEME</span
+								><span class="ds">Needs a codon alignment &mdash; your file is a nucleotide alignment.</span>
+							</div>
+							<div class="row off">
+								<i class="rb"></i><span class="nm">FUBAR</span
+								><span class="ds">Needs a codon alignment &mdash; your file is a nucleotide alignment.</span>
+							</div>
+							<div class="row off">
+								<i class="rb"></i><span class="nm">SLAC</span
+								><span class="ds">Needs a codon alignment &mdash; your file is a nucleotide alignment.</span>
+							</div>
+						</div>
+						<div class="grp">
+							<div class="q">Which branches are under selection?</div>
+							<div class="row off">
+								<i class="rb"></i><span class="nm">aBSREL</span
+								><span class="ds">Needs a codon alignment &mdash; your file is a nucleotide alignment.</span>
+							</div>
+						</div>
+						<p class="caption">…and the same sentence eight more times.</p>
+					</div>
+				</div>
+				<p class="caption">
+					Twelve of fifteen methods, all saying the same thing, about a condition that is true of
+					every file the app can hold.
+				</p>
+
+				<div class="screen">
+					<div class="panel-hd">B &mdash; correct: one statement, about the file</div>
+					<div class="body">
+						<div class="warn">
+							<b>hiv&#8209;env.fasta was not read as an alignment of codons.</b>
+							3,241 columns is not a multiple of three. Every analysis on this page reads codons, so
+							none can run until this is fixed.
+							<span class="fix">Open in Data &rarr;</span>
+						</div>
+						<p class="caption" style="margin-top: 12px">
+							The chooser is not rendered. There is no choice to make.
+						</p>
+					</div>
+				</div>
+
+				<div class="screen">
+					<div class="panel-hd">C &mdash; correct: the check that actually varies</div>
+					<div class="body">
+						<div class="summary">
+							<div>
+								<div class="q2">Which sites are under selection?</div>
+								<div class="nm2">FEL <span class="full">· Fixed Effects Likelihood</span></div>
+							</div>
+							<div class="acts"><a href="#">Change</a><a href="#">Method docs &#8599;</a></div>
+						</div>
+						<div class="stub">Execution mode &mdash; Local (Browser)</div>
+						<div
+							class="stub"
+							style="border-style: solid; border-color: #18181b; color: #18181b; background: #fff"
+						>
+							Genetic code &mdash; Vertebrate mitochondrial &#9662;
+						</div>
+						<div class="warn quiet" style="margin-top: 8px">
+							<b>3 stop codons under the vertebrate mitochondrial code.</b>
+							Columns 145, 148 and 302. Your file was read as codons under the universal code, where
+							these are AGA/AGG. FEL will refuse this combination.
+						</div>
+						<div class="runbtn dead">&#9654;&nbsp; Run FEL Analysis</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="notes">
+				<h3>Why A is overruled</h3>
+
+				<div class="note accent">
+					<b>The app cannot hold a non&#8209;codon alignment.</b>
+					<code>datareader.bf:189</code> sets <code>genCodeID = 0</code> and nothing overrides it —
+					<code>+page.svelte:886</code> runs the script with no arguments. So
+					<code>:255</code> rejects any alignment whose column count is not divisible by three,
+					<code>:238&ndash;244</code> rejects anything that is not four&#8209;state, and
+					<code>:262</code> rejects an all&#8209;stop&#8209;codon file. Upload fails; the file never
+					becomes current.
+				</div>
+
+				<div class="note accent">
+					<b>Therefore <code>FILE_INFO.gencodeid</code> is always 0.</b>
+					The &minus;1/&minus;2 branches are unreachable. Which also means the GARD datatype
+					auto&#8209;detect at <code>MethodSelector.svelte:1082&ndash;1092</code> always resolves to
+					<code>'codon'</code> — a third dead path in this component, alongside the priority sort and
+					<code>browserOnly</code>.
+				</div>
+
+				<div class="note">
+					<b>A predicate that never varies is not information.</b>
+					Twelve identical lines would cost twelve rows of attention to say something that is true by
+					construction. Principle 10: this is not annotation, it is noise with a citation.
+				</div>
+
+				<div class="note">
+					<b>Do not sort unsupported methods into a trailing group either.</b>
+					The audit proposes that. It would move a method to a different place depending on the file,
+					so FEL is in a different position on different days — and it blames the method for a
+					problem that belongs to the file.
+				</div>
+
+				<h3>What B and C fix</h3>
+
+				<div class="note accent">
+					<b>B closes a real hole.</b>
+					<code>+page.svelte:804</code> persists the upload <em>before</em> datareader runs, and the
+					<code>catch</code> at <code>:1058</code> never removes it. A rejected file stays in the file
+					list and can be made current later, at which point
+					<code>MethodSelector</code> renders normally over metrics that were never produced. One
+					statement, above the chooser, naming the file and the actual number.
+				</div>
+
+				<div class="note accent">
+					<b>C is the check the audit was reaching for, in the right place.</b>
+					<code>BaseAnalysisRunner.js:291&ndash;297</code> re&#8209;validates against
+					<code>config.geneticCodeId</code>, <em>not</em> the universal code datareader used. A file
+					that uploaded cleanly can fail under vertebrate mitochondrial, where AGA/AGG are stops.
+					That is the only pre&#8209;run codon failure a user can still reach — and it is caused by a
+					control on this screen, so it belongs beside that control, not in the method list.
+				</div>
+
+				<div class="note">
+					<b>It is already computable, cheaply.</b>
+					<code>findStopCodons</code> and <code>formatStopCodonReport</code>
+					(<code>fastaValidation.js:591&ndash;593</code>) report alignment columns, and
+					<code>canonicalFasta</code> is in the store. Run it on genetic-code change, not on every
+					keystroke.
+				</div>
+
+				<div class="note">
+					<b>Hand C to audit item 1.2.</b>
+					Genetic code is that item's surface. Stating it here so the requirement is not lost is
+					correct; building it inside the method chooser is scope creep. The chooser's obligation
+					ends at panel B.
+				</div>
+			</div>
+		</div>
+	</body>
+</html>

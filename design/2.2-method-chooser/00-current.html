@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>00 — What ships today</title>
+		<link rel="stylesheet" href="_wf.css" />
+	</head>
+	<body>
+		<div class="sheet">
+			<div class="hdr">
+				<h1>State 00 · baseline</h1>
+				<p>What ships today</p>
+				<div class="sub">
+					Drawn from <code>MethodSelector.svelte:1351&ndash;1359</code> (the
+					<code>&lt;select&gt;</code>), <code>:1005&ndash;1020</code> (the sort) and
+					<code>:1716&ndash;1723</code> (the hint). The list order below is not a guess: it is
+					<code>Array.sort((a,b) =&gt; a.info.name.localeCompare(b.info.name))</code> run over the
+					sixteen <code>METHOD_INFO</code> names.
+				</div>
+			</div>
+
+			<div>
+				<div class="screen">
+					<div class="panel-hd">Analysis <span class="chev">&#9650;</span></div>
+					<div class="body">
+						<div class="selbox">
+							<span>Select an analysis method</span><span class="chev">&#9662;</span>
+						</div>
+						<div class="optlist">
+							<div>aBSREL - adaptive Branch-Site Random Effects Likelihood</div>
+							<div>AxoMEME - AxoMEME 2.0 — neural surrogate for MEME (Beta)</div>
+							<div>B-STILL - Bayesian Significance Test of Invariant Low Likelihoods</div>
+							<div>BGM - Bayesian Graphical Model</div>
+							<div>BUSTED - Branch-site Unrestricted Statistical Test for Episodic Diversification</div>
+							<div>Contrast-FEL - Contrast Fixed Effects Likelihood</div>
+							<div class="dim">FADE - FUBAR Approach to Directional Evolution (Coming Soon)</div>
+							<div class="mark">FEL - Fixed Effects Likelihood</div>
+							<div class="mark">FUBAR - Fast Unconstrained Bayesian AppRoximation</div>
+							<div>GARD - Genetic Algorithm for Recombination Detection</div>
+							<div class="mark">MEME - Mixed Effects Model of Evolution</div>
+							<div>MULTI-HIT - Multiple Hit Model</div>
+							<div>NRM - Non-Reversible Model</div>
+							<div>PRIME - PRoperty Informed Models of Evolution</div>
+							<div>RELAX - Relaxation Test</div>
+							<div class="mark">SLAC - Single-Likelihood Ancestor Counting</div>
+						</div>
+						<div class="hint">
+							<span>?</span>
+							<span
+								>For detecting selection at sites, try FEL or MEME. For recombination detection, use
+								GARD.</span
+							>
+						</div>
+						<p class="caption">
+							Highlighted rows are the four methods the code <em>intends</em> to float to the top.
+							They sit at positions 8, 9, 11 and 16.
+						</p>
+					</div>
+				</div>
+			</div>
+
+			<div class="notes">
+				<h3>What is actually wrong</h3>
+
+				<div class="note accent">
+					<b>The prioritisation has never run.</b>
+					<code>:1013</code> declares <code>priority = ['fel','meme','slac','fubar']</code> and looks
+					up <code>priority.indexOf(a.id)</code>. But <code>a.id</code> is a
+					<code>methodConfig</code> key — <code>'FEL'</code>, <code>'MEME'</code> — so every lookup
+					returns &minus;1 and the whole branch is dead. Verified by running the real comparator:
+					FEL lands 8th, MEME 11th, SLAC last.
+				</div>
+
+				<div class="note">
+					<b>Full names are not differentiators.</b>
+					"Fixed Effects Likelihood" and "Mixed Effects Model of Evolution" are equally opaque to
+					someone who does not already know which to use. The strings that would actually help —
+					<code>shortDescription</code> — exist at <code>:43&ndash;147</code> and render only
+					<em>after</em> selection (<code>:1363</code>).
+				</div>
+
+				<div class="note">
+					<b>The one orienting sentence is gated on not having chosen.</b>
+					<code>{#if !selectedMethod}</code> at <code>:1716</code>. It disappears at the exact moment
+					a user might want to reconsider, and never returns.
+				</div>
+
+				<div class="note">
+					<b>Four kinds of thing are shown as one kind.</b>
+					A per-site test (FEL), a per-branch test (aBSREL), a gene-wide test (BUSTED), a
+					recombination screen you run <em>before</em> any of them (GARD) and a neural surrogate for
+					one of the others (AxoMEME) are sixteen equal rows in an alphabetical list.
+				</div>
+
+				<div class="note">
+					<b>FADE has been "Coming Soon" indefinitely.</b>
+					It is in <code>methodConfig</code> (<code>+page.svelte:137</code>) but not in
+					<code>SUPPORTED_METHODS</code> (<code>:24&ndash;40</code>), so it renders permanently
+					disabled. A promise with no date is not a promise.
+				</div>
+
+				<div class="note">
+					<b>Vertical cost today: 111&nbsp;px.</b>
+					39&nbsp;px select + 12&nbsp;px gap + 60&nbsp;px description block. Remember this number —
+					every proposal has to be measured against it, not against zero.
+				</div>
+			</div>
+		</div>
+	</body>
+</html>

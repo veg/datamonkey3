@@ -209,9 +209,18 @@ export async function getCompletedCount(page) {
  * Seed a completed analysis into IndexedDB for fast Results tab testing.
  * Uses the same DB schema as the app: 'datamonkey-db' version 2 with 'files' and 'analyses' stores.
  * Returns the analysis ID.
+ *
+ * `storedMethod` overrides the exact string written to the `method` column. It exists because the
+ * default lowercases, and NO runner does: WasmAnalysisRunner writes method.toUpperCase(),
+ * BackendAnalysisRunner writes method.toUpperCase(), AxomemeAnalysisRunner writes 'AXOMEME'. Any
+ * assertion about markup gated on the method string therefore has to opt into the production casing
+ * or it exercises a branch users never reach. Defaults to null so existing callers are unaffected.
  */
-export async function seedCompletedAnalysis(page, { resultJson, method = 'FEL', fileName = 'bglobin.nex' } = {}) {
-	return await page.evaluate(async ({ resultJson, method, fileName, dbName, dbVersion }) => {
+export async function seedCompletedAnalysis(
+	page,
+	{ resultJson, method = 'FEL', storedMethod = null, fileName = 'bglobin.nex' } = {}
+) {
+	return await page.evaluate(async ({ resultJson, method, storedMethod, fileName, dbName, dbVersion }) => {
 		function openDB() {
 			return new Promise((resolve, reject) => {
 				const req = indexedDB.open(dbName, dbVersion);
@@ -252,7 +261,7 @@ export async function seedCompletedAnalysis(page, { resultJson, method = 'FEL', 
 		analysisTx.objectStore('analyses').put({
 			id: analysisId,
 			fileId: fileId,
-			method: method.toLowerCase(),
+			method: storedMethod ?? method.toLowerCase(),
 			status: 'completed',
 			result: resultJson,
 			createdAt: now - 60000,
@@ -263,5 +272,5 @@ export async function seedCompletedAnalysis(page, { resultJson, method = 'FEL', 
 
 		db.close();
 		return analysisId;
-	}, { resultJson, method, fileName, dbName: DB_NAME, dbVersion: DB_VERSION });
+	}, { resultJson, method, storedMethod, fileName, dbName: DB_NAME, dbVersion: DB_VERSION });
 }

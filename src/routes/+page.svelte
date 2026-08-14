@@ -8,14 +8,18 @@
 		alignmentFileStore,
 		fileMetricsStore,
 		persistentFileStore,
-		currentFile
+		currentFile,
+		revalidatingFileId
 	} from '../stores/fileInfo';
+	import { uniqueFilename, resetFileInput } from '../lib/utils/fileIdentity.js';
+	import { applyAlignmentEdits } from '../lib/utils/alignmentEdits.js';
 	import {
 		analysisStore,
 		currentAnalysis,
 		activeAnalysisProgress,
 		activeAnalyses
 	} from '../stores/analyses';
+	import { analysisConfig } from '../stores/analysisConfig';
 	import { backendAnalysisRunner } from '../lib/services/BackendAnalysisRunner.js';
 	import { treeStore, addTree, updateTaggedTree, resetTrees } from '../stores/tree';
 	import { syncDescriptorStoresForFile as syncDescriptorStores } from '../lib/utils/descriptorSync.js';
@@ -25,6 +29,7 @@
 	import Aioli from '@biowasm/aioli';
 	import TreeSelector from '../lib/TreeSelector.svelte';
 	import ErrorHandler from '../lib/ErrorHandler.svelte';
+	import FileConflictPrompt from '../lib/FileConflictPrompt.svelte';
 	import DemoFileSelector from '../lib/DemoFileSelector.svelte';
 	import { X, FlaskConical, ExternalLink } from 'lucide-svelte';
 
@@ -57,7 +62,6 @@
 	let showAllHistory = false;
 	let activeTab = 'data'; // 'data', 'analyze', or 'results'
 	let selectedTree = 'nj';
-	let selectedMethod = 'FEL'; // Default selected method for configuration
 	let treeData = {};
 	let showBatchExport = false;
 	let analysisStartTime = null; // Track analysis start time for duration calculation
@@ -210,6 +214,10 @@
 			description: 'Estimation of selection pressure.'
 		}
 	};
+
+	// The dropdown's exact ids ('AxoMEME', 'aBSREL', ...). Analyses are stored upper-cased, so a
+	// restore has to be matched back to these or the <select> falls through to its placeholder.
+	const methodKeys = Object.keys(methodConfig);
 
 	// WHICH ANALYSIS THE DETAIL PANE SHOWS.
 	//
@@ -688,6 +696,35 @@
 	let file;
 	let isStdOutVisible = false; // State for toggling stdout visibility
 	let validationError = null;
+	// Actions offered on the validation-error card. Currently only the alignment-edit restore.
+	let validationErrorActions = [];
+
+	// Same-name upload conflict, resolved by FileConflictPrompt.
+	let fileConflict = null;
+	let resolveFileConflict = null;
+
+	/**
+	 * The onConflict hook handed to persistentFileStore.uploadFile for genuine uploads.
+	 * Resolves to 'replace' or 'keep-both' once the user answers the modal.
+	 */
+	function promptForFileConflict({ existing, incoming }) {
+		const takenNames = ($persistentFileStore.files ?? []).map((f) => f.filename);
+		const analysisCount = ($analysisStore.analyses ?? []).filter(
+			(a) => a.fileId === existing?.id && a.method !== 'datareader'
+		).length;
+		fileConflict = {
+			filename: incoming.name,
+			keepBothName: uniqueFilename(incoming.name, takenNames),
+			analysisCount
+		};
+		return new Promise((resolve) => {
+			resolveFileConflict = (choice) => {
+				fileConflict = null;
+				resolveFileConflict = null;
+				resolve(choice);
+			};
+		});
+	}
 
 	async function handleFileUpload(event) {
 		// Track which entry point fired this call and which awaited step we're on,
@@ -698,7 +735,12 @@
 				? 'demo'
 				: event.isRepaired
 					? 'repair'
-					: 'upload';
+					: event.isEdited
+						? 'edit'
+						: 'upload';
+		// Captured before the first await: the reset in `finally` needs the element even on the
+		// failure path, and by then `event` may be long gone from the caller's scope.
+		const inputEvent = event;
 		let currentStage = 'init';
 		try {
 			// CLEAR THE PREVIOUS FILE'S ERROR FIRST, before any branch that can return early.
@@ -709,6 +751,7 @@
 			// screen beside the newly selected one. Same shape as the descriptorSync bug (#168): a
 			// reset placed after something that can exit early is not a reset. Issue #205.
 			validationError = null;
+			validationErrorActions = [];
 			// Errors no longer auto-dismiss (#187), which is right for someone who stepped away --
 			// but it means a stale error toast would otherwise outlive the file it describes.
 			// Successes are left alone: they link to a result that still exists.
@@ -801,7 +844,19 @@
 				// Pass any metadata from demo files
 				const metadata = event.isDemo ? event.metadata : {};
 				currentStage = 'storage';
-				fileId = await persistentFileStore.uploadFile(file, metadata);
+				// The conflict prompt is for GENUINE uploads only. A demo file, a repaired file and an
+				// edited alignment are all deliberate in-place replacements of a file the user just
+				// acted on — prompting there is noise, and for the edit case it would ask the user to
+				// confirm the replace they explicitly requested one click earlier.
+				const hooks = source === 'upload' ? { onConflict: promptForFileConflict } : {};
+				fileId = await persistentFileStore.uploadFile(file, metadata, hooks);
+
+				// 'Keep both' files the bytes under a new name. Keep the in-memory File in step so the
+				// alignment viewer and the export panel show the name it is actually stored under.
+				const storedRecord = ($persistentFileStore.files ?? []).find((f) => f.id === fileId);
+				if (storedRecord && storedRecord.filename !== file.name) {
+					file = new File([file], storedRecord.filename, { type: file.type });
+				}
 			} else {
 				fileId = event.fileId;
 			}
@@ -884,7 +939,10 @@
 				'Analyzing file structure...'
 			);
 			currentStage = 'exec';
-			result = await cliObj.exec('hyphy LIBPATH=/res/ ' + inputFiles[1]);
+			// argv-array form: Aioli only splits on spaces when the second argument is null.
+			// The datareader takes no arguments with spaces today, but the array form is what a
+			// future `--code <name>` (see UX item 1.2) would need, and it costs nothing now.
+			result = await cliObj.exec('hyphy', ['LIBPATH=/res/', inputFiles[1]]);
 			hyphyOut = await result.stdout;
 
 			// Extract meaningful error from HyPhy stdout for better error reporting
@@ -1132,7 +1190,51 @@
 					message: isTreeError ? 'Tree parsing issue' : 'File processing error'
 				}
 			};
+
+			// An edit that the reader rejects is a dead end otherwise: the edited bytes are already in
+			// IndexedDB under the same id, so there is nothing left on screen holding the pre-edit
+			// alignment. Offer to put it back — as an action, never automatically. Auto-restoring
+			// would silently discard work the user just did.
+			if (event.isEdited && event.previous instanceof File) {
+				const previous = event.previous;
+				validationErrorActions = [
+					{
+						id: 'restore-pre-edit',
+						label: 'Restore the alignment from before these edits',
+						run: () => handleFileUpload({ target: { files: [previous] }, isEdited: true, previous })
+					}
+				];
+			}
+		} finally {
+			// MUST be in finally. Re-selecting the same path fires no change event, so a file that
+			// failed could not be retried after the user corrected it outside the browser — and the
+			// failure loop is exactly the case this exists for.
+			resetFileInput(inputEvent);
+			// The Run gate is cleared however the re-read ended: success, rejection or throw.
+			revalidatingFileId.set(null);
 		}
+	}
+
+	/**
+	 * "Save edits" in the alignment viewer. The viewer now hands the edited alignment back rather
+	 * than writing the stores itself, because writing them left `fileMetricsStore.canonicalFasta`
+	 * — the exact bytes every runner submits — describing the PRE-edit alignment. Re-entering the
+	 * normal upload path is the whole fix: it clears the descriptor stores, re-runs datareader,
+	 * regenerates canonicalFasta and files a fresh datareader analysis.
+	 */
+	function handleAlignmentEdited(event) {
+		const { file: editedFile, previous } = event.detail ?? {};
+		if (!editedFile) return;
+
+		validationErrorActions = [];
+		file = editedFile;
+		return applyAlignmentEdits(editedFile, {
+			// uploadFile replaces the same-name record in place, so the id does not change and the
+			// analysis history stays attached.
+			fileId: $currentFile?.id ?? null,
+			setRevalidating: (id) => revalidatingFileId.set(id),
+			revalidate: (f) => handleFileUpload({ target: { files: [f] }, isEdited: true, previous })
+		});
 	}
 
 	// Toggle the stdout visibility
@@ -1238,12 +1340,16 @@
 				selectAnalysis(event.detail.analysisId);
 			}
 
-			// Handle re-run: set the method and file for the Analyze tab
+			// Handle re-run: restore the configuration that run was made with, not just its method.
 			if (event.detail.rerun && event.detail.tabName === 'analyze') {
-				// Set the method if provided
-				if (event.detail.method) {
-					selectedMethod = event.detail.method.toUpperCase();
-				}
+				// ONE source of truth for the configuration: the analysisConfig store. The page-level
+				// `selectedMethod` used to be a second one, and it never reached MethodSelector anyway
+				// (AnalyzeTab took the prop and did not forward it), which is how "Re-run" came to
+				// restore nothing at all.
+				const record = ($analysisStore.analyses ?? []).find(
+					(a) => a.id === event.detail.analysisId
+				);
+				analysisConfig.restoreFrom(record ?? { method: event.detail.method }, methodKeys);
 
 				// Set the current file if provided, and resync the descriptor stores so
 				// alignment/metrics/tree describe the re-run file rather than the
@@ -1424,47 +1530,53 @@
 			<SmartTabNavigation {activeTab} onChange={changeTab} />
 
 			<!-- Tab Content with Progressive Enhancement -->
-			{#if activeTab === 'data'}
-				<!-- Data Tab -->
-				<DataTab
-					{handleFileUpload}
-					{handleDemoFileSelect}
-					{validationError}
-					{fileMetricsJSON}
-					{handleValidated}
-					{handleUseRepaired}
-					{activeTab}
-					onChange={changeTab}
-				/>
-			{:else if activeTab === 'analyze'}
-				<!-- Analyze Tab -->
-				<AnalyzeTab
-					{methodConfig}
-					{runMethod}
-					{selectedMethod}
-					{hyphyOut}
-					{isStdOutVisible}
-					{toggleStdOut}
-					{showAllHistory}
-					{selectAnalysis}
-					{activeTab}
-					onChange={changeTab}
-				/>
-			{:else if activeTab === 'results'}
-				<!-- Results Tab -->
-				<ResultsTab
-					{selectedAnalysisId}
-					{selectAnalysis}
-					{showAllHistory}
-					{showBatchExport}
-					{toggleBatchExport}
-					{activeTab}
-					onChange={changeTab}
-				/>
-			{/if}
-		</div>
-	{/if}
+			<!-- Single panel for all three tabs: only one is mounted at a time, so `aria-controls`
+			     on every tab resolves here and aria-labelledby tracks whichever tab is active. -->
+			<div id="tab-panel" role="tabpanel" aria-labelledby={'tab-' + activeTab}>
+				{#if activeTab === 'data'}
+					<!-- Data Tab -->
+					<DataTab
+						{handleFileUpload}
+						{handleDemoFileSelect}
+						{validationError}
+						{validationErrorActions}
+						{fileMetricsJSON}
+						{handleValidated}
+						{handleUseRepaired}
+						{handleAlignmentEdited}
+						{activeTab}
+						onChange={changeTab}
+					/>
+				{:else if activeTab === 'analyze'}
+					<!-- Analyze Tab -->
+					<AnalyzeTab
+						{methodConfig}
+						{runMethod}
+						{hyphyOut}
+						{isStdOutVisible}
+						{toggleStdOut}
+						{showAllHistory}
+						{selectAnalysis}
+						{activeTab}
+						onChange={changeTab}
+					/>
+				{:else if activeTab === 'results'}
+					<!-- Results Tab -->
+					<ResultsTab
+						{selectedAnalysisId}
+						{selectAnalysis}
+						{showAllHistory}
+						{showBatchExport}
+						{toggleBatchExport}
+						{activeTab}
+						onChange={changeTab}
+					/>
+				{/if}
+			</div>		</div>	{/if}
 </div>
+
+<!-- Rendered at the page root so it overlays whichever tab is open. -->
+<FileConflictPrompt conflict={fileConflict} on:choose={(e) => resolveFileConflict?.(e.detail)} />
 
 <style>
 	.loader {

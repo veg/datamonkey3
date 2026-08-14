@@ -1,18 +1,25 @@
 <!-- src/lib/MethodSelector.svelte -->
 <script>
-	import { createEventDispatcher } from 'svelte';
+	import { createEventDispatcher, onMount } from 'svelte';
 	import { backendConnectivity } from '../stores/backendConnectivity.js';
+	import { analysisConfig } from '../stores/analysisConfig.js';
+	import { METHOD_ADVANCED_OPTIONS } from './config/methodAdvancedOptions.js';
 	import { fileMetricsStore } from '../stores/fileInfo';
 	import { treeStore } from '../stores/tree';
 	import BranchSelector from './BranchSelector.svelte';
 	import RunOutlook from './RunOutlook.svelte';
 	import RunStrip from './RunStrip.svelte';
 	import { analysisStore } from '../stores/analyses';
-	import { currentFile } from '../stores/fileInfo';
+	import { currentFile, revalidatingFileId } from '../stores/fileInfo';
 	import { treeHasBranchLengths } from './services/prescreen/scope.js';
 	import { AlertTriangle, Play, Loader2 } from 'lucide-svelte';
 	import { trackEvent } from './utils/analytics.js';
 	import { countBranchGroups, contrastFelHasEnoughGroups } from './utils/branchGroupValidation.js';
+	import { executionAdvice } from './utils/executionAdvice.js';
+	// callModes.js is a leaf (no imports) precisely so this line costs the main chunk nothing but the
+	// constants — see the note at the top of that file.
+	import { describeCallMode, CALL_DEFAULTS } from './services/axomeme/callModes.js';	// Shared with the Data tab, which needs to turn datareader's gencodeid back into a name.
+	import { GENETIC_CODES } from './config/geneticCodes.js';
 
 	export let methodConfig;
 	export let runMethod = null;
@@ -151,6 +158,11 @@
 	let geneticCode = 'Universal';
 	let geneticCodeId = 0; // For matching HyPhy numeric codes
 	let executionMode = 'local'; // 'local' or 'backend'
+	// Has the user touched the execution-mode radios for the method+file currently on screen? The
+	// advice below may move the radio, but only until someone disagrees with it: an estimate is a
+	// curve fitted at R² ≈ 0.63, a click is a decision, and the decision wins.
+	let executionModeTouched = false;
+	let lastAdvisedFor = null;
 	let isSubmitting = false; // Track submission state for button feedback
 
 	// WHY THE RUN BUTTON IS BLOCKED, derived from the analysis store rather than a timer.
@@ -177,823 +189,82 @@
 	);
 	$: localRunInFlight = liveRuns.some((a) => a.metadata?.executionMode !== 'backend');
 	$: wouldRunLocally = executionMode !== 'backend';
-	$: runBlockedReason = sameMethodRunning
-		? `${selectedMethod?.toUpperCase()} is already running on this file`
-		: localRunInFlight && wouldRunLocally
-			? 'Another analysis is running in this tab — only one can run here at a time'
-			: null;
-
-	// Genetic code mapping (HyPhy uses numeric IDs)
-	const GENETIC_CODES = [
-		{ id: 0, name: 'Universal', label: 'Universal code' },
-		{ id: 1, name: 'Vertebrate mitochondrial', label: 'Vertebrate mitochondrial DNA code' },
-		{ id: 2, name: 'Yeast mitochondrial', label: 'Yeast mitochondrial DNA code' },
-		{
-			id: 3,
-			name: 'Mold mitochondrial',
-			label: 'Mold, Protozoan and Coelenterate mt; Mycloplasma/Spiroplasma'
-		},
-		{ id: 4, name: 'Invertebrate mitochondrial', label: 'Invertebrate mitochondrial DNA code' },
-		{ id: 5, name: 'Ciliate nuclear', label: 'Ciliate, Dasycladacean and Hexamita Nuclear code' },
-		{ id: 6, name: 'Echinoderm mitochondrial', label: 'Echinoderm mitochondrial DNA code' },
-		{ id: 7, name: 'Euplotid nuclear', label: 'Euplotid Nuclear code' },
-		{ id: 8, name: 'Alternative yeast nuclear', label: 'Alternative Yeast Nuclear code' },
-		{ id: 9, name: 'Ascidian mitochondrial', label: 'Ascidian mitochondrial DNA code' },
-		{ id: 10, name: 'Flatworm mitochondrial', label: 'Flatworm mitochondrial DNA code' },
-		{ id: 11, name: 'Blepharisma nuclear', label: 'Blepharisma Nuclear code' }
-	];
-
-	// Method-specific advanced options configurations
-	const METHOD_ADVANCED_OPTIONS = {
-		// AxoMEME exposes almost nothing on purpose. It is a fitted model with one set of weights:
-		// there are no branch sets to select (it consumes the whole tree as a distance matrix), no
-		// rate-variation switch, and no genetic code choice — the code table is baked into the
-		// model's tokenizer as the universal one. Offering knobs that do not reach the model would be
-		// worse than offering none. Calling mode is the one real choice, because it is a threshold
-		// applied AFTER inference and genuinely changes what gets reported.
-		axomeme: {
-			callMode: {
-				type: 'select',
-				label: 'How to rank sites',
-				// percentile, not the reference driver's pvalue default. The model's predicted LRT does
-				// not reach the chi-square gates pvalue compares against — measured across 12 real
-				// submissions, one site in 662 cleared 3.12 and none cleared 4.45 — so pvalue makes the
-				// method silent. See CALL_DEFAULTS in postprocess.js.
-				default: 'percentile',
-				options: ['percentile', 'zscore', 'pvalue'],
-				description:
-					'percentile and zscore rank sites within this alignment, which is what the model is built to do. pvalue compares against fixed LRT gates (4.45 / 3.12) that its scores rarely reach — it will usually report nothing.'
-			}
-		},
-		fel: {
-			// Branch selection options
-			branchesToTest: {
-				type: 'select',
-				label: 'Branches to Test',
-				default: 'All',
-				options: ['All', 'Internal', 'Leaves', 'Unlabeled', 'Custom', 'Interactive'],
-				description: 'Which branches to test for positive selection'
-			},
-			customBranches: {
-				type: 'text',
-				label: 'Custom branches (comma-separated or regex)',
-				default: '',
-				placeholder: 'e.g. Node1,Node2 or /^human/i',
-				dependsOn: 'branchesToTest',
-				enabledWhen: ['Custom'],
-				description: 'Comma-separated branch names or regex pattern'
-			},
-			interactiveTree: {
-				type: 'interactive-tree',
-				label: 'Select branches on tree',
-				default: '',
-				dependsOn: 'branchesToTest',
-				enabledWhen: ['Interactive'],
-				description: 'Click on tree branches to select them for testing'
-			},
-			// Core FEL parameters
-			srv: {
-				type: 'select',
-				label: 'Synonymous rate variation (recommended)',
-				default: 'Yes',
-				options: ['Yes', 'No']
-			},
-			multipleHits: {
-				type: 'select',
-				label: 'Multiple Hits',
-				default: 'None',
-				options: ['None', 'Double', 'Double+Triple']
-			},
-			siteMultihit: {
-				type: 'select',
-				label: 'Site Multihit',
-				default: 'Estimate',
-				options: ['Estimate', 'Global'],
-				dependsOn: 'multipleHits',
-				enabledWhen: ['Double', 'Double+Triple']
-			},
-			// Advanced parameters (matching the form structure)
-			resample: {
-				type: 'number',
-				label: 'Resample (parametric bootstrap replicates)',
-				default: 0,
-				min: 0,
-				max: 1000,
-				step: 1,
-				description:
-					'Advanced setting - will result in MUCH SLOWER run time. Recommended for small to medium (<30 sequences) datasets.'
-			},
-			confidenceIntervals: {
-				type: 'boolean',
-				label: 'Compute confidence intervals',
-				default: false,
-				description: 'Compute profile likelihood confidence intervals for each variable site'
-			},
-			// Keep existing parameters for backward compatibility
-			pValueThreshold: {
-				type: 'number',
-				label: 'P-value threshold',
-				default: 0.1,
-				min: 0.001,
-				max: 1,
-				step: 0.001
-			}
-		},
-		meme: {
-			pvalue: {
-				type: 'number',
-				label: 'P-value threshold',
-				default: 0.1,
-				min: 0.001,
-				max: 1,
-				step: 0.001,
-				description: 'P-value threshold for calling a site under selection'
-			},
-			rates: {
-				type: 'number',
-				label: 'Rate classes',
-				default: 2,
-				min: 2,
-				max: 10,
-				step: 1,
-				description: 'Number of site rate classes'
-			},
-			multiple_hits: {
-				type: 'select',
-				label: 'Multiple hits',
-				default: 'None',
-				options: ['None', 'Double', 'Triple', 'Double+Triple'],
-				description: 'Include support for multiple nucleotide substitutions'
-			},
-			site_multihit: {
-				type: 'select',
-				label: 'Site multiple hits',
-				default: 'Estimate',
-				options: ['Estimate', 'None'],
-				description: 'How to handle multiple hits per site'
-			},
-			impute_states: {
-				type: 'select',
-				label: 'Impute states',
-				default: 'No',
-				options: ['No', 'Yes'],
-				description: 'Impute ancestral states for internal nodes'
-			}
-		},
-		slac: {
-			// Branch selection options (similar to FEL)
-			branchesToTest: {
-				type: 'select',
-				label: 'Branches to Test',
-				default: 'All',
-				options: ['All', 'Internal', 'Leaves', 'Unlabeled', 'Custom', 'Interactive'],
-				description: 'Which branches to test for positive selection'
-			},
-			customBranches: {
-				type: 'text',
-				label: 'Custom branches (comma-separated or regex)',
-				default: '',
-				placeholder: 'e.g. Node1,Node2 or /^human/i',
-				dependsOn: 'branchesToTest',
-				enabledWhen: ['Custom'],
-				description: 'Comma-separated branch names or regex pattern'
-			},
-			interactiveTree: {
-				type: 'interactive-tree',
-				label: 'Select branches on tree',
-				default: '',
-				dependsOn: 'branchesToTest',
-				enabledWhen: ['Interactive'],
-				description: 'Click on tree branches to select them for testing'
-			},
-			// SLAC-specific parameters
-			samples: {
-				type: 'number',
-				label: 'Ancestral reconstruction samples',
-				default: 100,
-				min: 1,
-				max: 1000,
-				step: 1,
-				description: 'Number of samples for ancestral reconstruction uncertainty'
-			},
-			pvalue: {
-				type: 'number',
-				label: 'P-value threshold',
-				default: 0.1,
-				min: 0.001,
-				max: 1,
-				step: 0.001,
-				description: 'The p-value threshold to use when testing for selection'
-			}
-		},
-		fubar: {
-			grid: {
-				type: 'number',
-				label: 'Number of grid points',
-				default: 20,
-				min: 5,
-				max: 50,
-				description: 'Specifies the number of grid points for the Bayesian analysis'
-			},
-			concentration_parameter: {
-				type: 'number',
-				label: 'Concentration parameter',
-				default: 0.5,
-				min: 0.001,
-				max: 1,
-				step: 0.001,
-				description:
-					'The concentration parameter for the Dirichlet prior in the Bayesian estimation'
-			},
-			posteriorThreshold: {
-				type: 'number',
-				label: 'Posterior probability threshold',
-				default: 0.9,
-				min: 0.5,
-				max: 0.99,
-				step: 0.01,
-				description:
-					'Sites with posterior probability above this threshold are considered under positive selection'
-			}
-		},
-		'b-still': {
-			grid: {
-				type: 'number',
-				label: 'Number of grid points',
-				default: 20,
-				min: 5,
-				max: 50,
-				description: 'Grid points per dimension (total grid = D²)'
-			},
-			concentration_parameter: {
-				type: 'number',
-				label: 'Concentration parameter',
-				default: 0.5,
-				min: 0.001,
-				max: 1,
-				step: 0.001,
-				description: 'Dirichlet prior concentration parameter'
-			},
-			method: {
-				type: 'select',
-				label: 'Posterior estimation method',
-				default: 'Variational-Bayes',
-				options: ['Variational-Bayes', 'Collapsed-Gibbs', 'Metropolis-Hastings'],
-				description: 'Method for estimating the posterior distribution'
-			},
-			ebf: {
-				type: 'number',
-				label: 'EBF threshold',
-				default: 10,
-				min: 1,
-				max: 1000,
-				step: 1,
-				description: 'Empirical Bayes Factor threshold for reporting invariant sites'
-			},
-			radius_threshold: {
-				type: 'number',
-				label: 'Radius threshold',
-				default: 0.5,
-				min: 0,
-				max: 10,
-				step: 0.1,
-				description: 'Expected substitution multiplier for near-zero regime'
-			}
-		},
-		'b-still': {
-			grid: {
-				type: 'number',
-				label: 'Number of grid points',
-				default: 20,
-				min: 5,
-				max: 50,
-				description: 'Grid points per dimension (total grid = D²)'
-			},
-			concentration_parameter: {
-				type: 'number',
-				label: 'Concentration parameter',
-				default: 0.5,
-				min: 0.001,
-				max: 1,
-				step: 0.001,
-				description: 'Dirichlet prior concentration parameter'
-			},
-			method: {
-				type: 'select',
-				label: 'Posterior estimation method',
-				default: 'Variational-Bayes',
-				options: ['Variational-Bayes', 'Collapsed-Gibbs', 'Metropolis-Hastings'],
-				description: 'Method for estimating the posterior distribution'
-			},
-			ebf: {
-				type: 'number',
-				label: 'EBF threshold',
-				default: 10,
-				min: 1,
-				max: 1000,
-				step: 1,
-				description: 'Empirical Bayes Factor threshold for reporting invariant sites'
-			},
-			radius_threshold: {
-				type: 'number',
-				label: 'Radius threshold',
-				default: 0.5,
-				min: 0,
-				max: 10,
-				step: 0.1,
-				description: 'Expected substitution multiplier for near-zero regime'
-			}
-		},
-		absrel: {
-			// Branch selection options
-			branchesToTest: {
-				type: 'select',
-				label: 'Branches to Test',
-				default: 'All',
-				options: ['All', 'Internal', 'Leaves', 'Unlabeled', 'Custom', 'Interactive'],
-				description: 'Which branches to test (default: All)'
-			},
-			customBranches: {
-				type: 'text',
-				label: 'Custom branches (comma-separated or regex)',
-				default: '',
-				placeholder: 'e.g. Node1,Node2 or /^human/i',
-				dependsOn: 'branchesToTest',
-				enabledWhen: ['Custom'],
-				description: 'Comma-separated branch names or regex pattern'
-			},
-			interactiveTree: {
-				type: 'interactive-tree',
-				label: 'Select branches on tree',
-				default: '',
-				dependsOn: 'branchesToTest',
-				enabledWhen: ['Interactive'],
-				description: 'Click on tree branches to select them for testing'
-			},
-			// Core aBSREL parameters
-			multipleHits: {
-				type: 'select',
-				label: 'Multiple Hits',
-				default: 'None',
-				options: ['None', 'Double', 'Double+Triple'],
-				description: 'Include support for multiple nucleotide substitutions'
-			},
-			srv: {
-				type: 'select',
-				label: 'Synonymous Rate Variation',
-				default: 'Yes',
-				options: ['Yes', 'No'],
-				description: 'Include synonymous rate variation'
-			},
-			// Advanced parameters
-			blb: {
-				type: 'number',
-				label: 'Bag of Little Bootstrap (BLB) Rate',
-				default: 1.0,
-				min: 0.0,
-				max: 1.0,
-				step: 0.1,
-				description: '[Advanced] Bag of little bootstrap alignment resampling rate'
-			}
-		},
-		busted: {
-			// Branch selection options
-			branchesToTest: {
-				type: 'select',
-				label: 'Foreground Branches',
-				default: 'All',
-				options: ['All', 'Internal', 'Leaves', 'Unlabeled', 'Custom', 'Interactive'],
-				description:
-					'Select foreground branches to test for positive selection. All other branches will be treated as background.'
-			},
-			customBranches: {
-				type: 'text',
-				label: 'Custom foreground branches (comma-separated or regex)',
-				default: '',
-				placeholder: 'e.g. Node1,Node2 or /^human/i',
-				dependsOn: 'branchesToTest',
-				enabledWhen: ['Custom'],
-				description: 'Comma-separated branch names or regex pattern for foreground branches'
-			},
-			interactiveTree: {
-				type: 'interactive-tree',
-				label: 'Select foreground branches on tree',
-				default: '',
-				dependsOn: 'branchesToTest',
-				enabledWhen: ['Interactive'],
-				description: 'Click on tree branches to select them as foreground branches for testing'
-			},
-			// Core BUSTED parameters
-			srv: {
-				type: 'select',
-				label: 'Synonymous rate variation (BUSTED-S)',
-				default: 'Yes',
-				options: ['Yes', 'No', 'Branch-site'],
-				description: 'Include variations in synonymous substitution rates'
-			},
-			errorSink: {
-				type: 'select',
-				label: 'Error protection (BUSTED-E)',
-				default: 'No',
-				options: ['Yes', 'No'],
-				description: 'Enhance robustness against alignment errors'
-			},
-			multipleHits: {
-				type: 'select',
-				label: 'Multiple Hits',
-				default: 'None',
-				options: ['None', 'Double', 'Double+Triple'],
-				description: 'Support for handling multiple nucleotide substitutions'
-			},
-			// Advanced parameters
-			rates: {
-				type: 'number',
-				label: 'Omega rate classes',
-				default: 3,
-				min: 2,
-				max: 10,
-				step: 1,
-				description: 'Number of omega rate classes in the model'
-			},
-			synRates: {
-				type: 'number',
-				label: 'Synonymous rate classes',
-				default: 3,
-				min: 2,
-				max: 10,
-				step: 1,
-				description: 'Number of synonymous rate classes in the model'
-			},
-			gridSize: {
-				type: 'number',
-				label: 'Grid size',
-				default: 250,
-				min: 50,
-				max: 1000,
-				step: 50,
-				description: 'Number of points in initial distributional guess for likelihood fitting'
-			},
-			startingPoints: {
-				type: 'number',
-				label: 'Starting points',
-				default: 1,
-				min: 1,
-				max: 10,
-				step: 1,
-				description: 'Number of initial random guesses to seed rate values optimization'
-			}
-		},
-		gard: {
-			datatype: {
-				type: 'select',
-				label: 'Data type',
-				default: 'nucleotide',
-				options: ['codon', 'nucleotide', 'protein'],
-				description: 'Type of data to analyze for recombination'
-			},
-			model: {
-				type: 'select',
-				label: 'Substitution model',
-				default: 'GTR',
-				options: ['JTT', 'WAG', 'LG', 'Dayhoff', 'GTR', 'HKY85', 'TN93', 'JC69'],
-				filteredOptionsBy: 'datatype',
-				filteredOptions: {
-					codon: ['GTR', 'HKY85', 'TN93', 'JC69'],
-					nucleotide: ['GTR', 'HKY85', 'TN93', 'JC69'],
-					protein: ['JTT', 'WAG', 'LG', 'Dayhoff']
-				},
-				filteredDefaults: {
-					codon: 'GTR',
-					nucleotide: 'GTR',
-					protein: 'JTT'
-				},
-				description: 'Substitution model to use for the analysis'
-			},
-			mode: {
-				type: 'select',
-				label: 'Run mode',
-				default: 'Normal',
-				options: ['Normal', 'Faster'],
-				description: 'Normal: thorough analysis; Faster: quicker but less comprehensive'
-			},
-			rv: {
-				type: 'select',
-				label: 'Site-to-site rate variation',
-				default: 'None',
-				options: ['None', 'GDD', 'Gamma'],
-				description: 'Model for rate variation among sites (None, General Discrete, Beta-Gamma)'
-			},
-			rate_classes: {
-				type: 'number',
-				label: 'Rate classes',
-				default: 4,
-				min: 2,
-				max: 10,
-				description: 'Number of discrete rate classes for rate variation'
-			}
-		},
-		bgm: {
-			steps: {
-				type: 'number',
-				label: 'Chain length steps',
-				default: 10000,
-				min: 1000,
-				max: 100000000,
-				step: 1000,
-				description: 'Length of each MCMC chain'
-			},
-			burnIn: {
-				type: 'number',
-				label: 'Burn-in samples',
-				default: 1000,
-				min: 100,
-				max: 100000,
-				step: 100,
-				description: 'Number of burn-in samples to discard'
-			},
-			samples: {
-				type: 'number',
-				label: 'Samples',
-				default: 100,
-				min: 10,
-				max: 10000,
-				step: 10,
-				description: 'Number of samples to collect'
-			},
-			maxParents: {
-				type: 'number',
-				label: 'Maximum parents per node',
-				default: 1,
-				min: 0,
-				max: 10,
-				step: 1,
-				description: 'Maximum number of parents allowed per node in the graphical model'
-			},
-			minSubs: {
-				type: 'number',
-				label: 'Minimum substitutions per site',
-				default: 1,
-				min: 1,
-				max: 100,
-				step: 1,
-				description: 'Minimum number of substitutions required per site'
-			}
-		},
-		fade: {
-			pValueThreshold: {
-				type: 'number',
-				label: 'P-value threshold',
-				default: 0.1,
-				min: 0.001,
-				max: 1,
-				step: 0.001
-			},
-			gridPoints: { type: 'number', label: 'Grid points', default: 20, min: 5, max: 50 },
-			mcmcChains: { type: 'number', label: 'MCMC chains', default: 5, min: 2, max: 20 },
-			mcmcSamples: {
-				type: 'number',
-				label: 'MCMC samples',
-				default: 2000000,
-				min: 100000,
-				max: 10000000,
-				step: 100000
-			}
-		},
-		relax: {
-			// Branch selection options
-			branchesToTest: {
-				type: 'select',
-				label: 'Branch Selection Mode',
-				default: 'Interactive',
-				options: ['Interactive'],
-				description: 'Select TEST and REFERENCE branches interactively on the tree'
-			},
-			interactiveTree: {
-				type: 'interactive-tree',
-				label: 'Select TEST and REFERENCE branches on tree',
-				default: '',
-				dependsOn: 'branchesToTest',
-				enabledWhen: ['Interactive'],
-				description: 'Click on tree branches to assign them to TEST or REFERENCE sets'
-			},
-			// RELAX-specific parameters
-			models: {
-				type: 'select',
-				label: 'Analysis models',
-				default: 'All',
-				options: ['All', 'Minimal'],
-				description: 'All: descriptive models and RELAX test; Minimal: RELAX test only'
-			},
-			rates: {
-				type: 'number',
-				label: 'Omega rate classes',
-				default: 3,
-				min: 2,
-				max: 10,
-				step: 1,
-				description: 'Number of omega rate classes'
-			},
-			mode: {
-				type: 'select',
-				label: 'Run mode',
-				default: 'Classic mode',
-				options: ['Classic mode'],
-				description: 'RELAX analysis mode'
-			},
-			killZeroLengths: {
-				type: 'select',
-				label: 'Kill zero-length branches',
-				default: 'No',
-				options: ['No', 'Yes'],
-				description: 'How to handle zero-length branches'
-			}
-		},
-		'multi-hit': {
-			rates: {
-				type: 'number',
-				label: 'Rate classes',
-				default: 3,
-				min: 1,
-				max: 10,
-				step: 1,
-				description: 'Number of omega rate classes to include in the model'
-			},
-			triple_islands: {
-				type: 'select',
-				label: 'Triple islands',
-				default: 'No',
-				options: ['No', 'Yes'],
-				description: 'Use separate rate parameter for synonymous triple-hit substitutions'
-			}
-		},
-		nrm: {
-			rate_classes: {
-				type: 'number',
-				label: 'Rate classes',
-				default: 1,
-				min: 1,
-				max: 10,
-				step: 1,
-				description: 'Number of rate classes for the analysis'
-			},
-			triple_islands: {
-				type: 'select',
-				label: 'Triple islands',
-				default: 'No',
-				options: ['No', 'Yes'],
-				description: 'Use triple islands for the analysis'
-			}
-		},
-		prime: {
-			// PRIME variant selection
-			variant: {
-				type: 'select',
-				label: 'PRIME Variant',
-				default: 'S-PRIME',
-				options: [
-					'S-PRIME',
-					{ value: 'G-PRIME', label: 'G-PRIME (coming soon)', disabled: true },
-					{ value: 'E-PRIME', label: 'E-PRIME (coming soon)', disabled: true }
-				],
-				description: 'S-PRIME: site-level property-informed model'
-			},
-			// Branch selection options
-			branchesToTest: {
-				type: 'select',
-				label: 'Branches to Test',
-				default: 'All',
-				options: ['All', 'Internal', 'Leaves', 'Unlabeled', 'Interactive'],
-				description: 'Which branches to test for property-dependent selection'
-			},
-			interactiveTree: {
-				type: 'interactive-tree',
-				label: 'Select branches on tree',
-				default: '',
-				dependsOn: 'branchesToTest',
-				enabledWhen: ['Interactive'],
-				description: 'Click on tree branches to select them for testing'
-			},
-			// Property set selection
-			propertySet: {
-				type: 'select',
-				label: 'Amino Acid Property Set',
-				default: '5PROP',
-				options: ['5PROP', '4PROP', '3PROP', '2PROP', 'Atchley', 'LCAP'],
-				description:
-					'Set of amino acid properties to model (5PROP: hydrophobicity, polarity, volume, charge, iso-electric point)'
-			},
-			// P-value threshold
-			pValueThreshold: {
-				type: 'number',
-				label: 'P-value threshold',
-				default: 0.1,
-				min: 0.001,
-				max: 1,
-				step: 0.001,
-				description: 'The p-value threshold to use when testing for property-dependent selection'
-			},
-			// Impute states
-			imputeStates: {
-				type: 'select',
-				label: 'Impute states',
-				default: 'No',
-				options: ['No', 'Yes'],
-				description: 'Use site-level model fits to impute likely character states'
-			}
-		},
-		'contrast-fel': {
-			// Branch selection options
-			branchesToTest: {
-				type: 'select',
-				label: 'Branch Selection Mode',
-				default: 'Interactive',
-				options: ['Custom', 'Interactive'],
-				description: 'How to specify branch sets for comparison'
-			},
-			// Custom branch set configuration (when not using Interactive)
-			branchSet1: {
-				type: 'text',
-				label: 'Branch Set 1 (Source)',
-				default: 'Source',
-				placeholder: 'e.g. Source, Internal, Leaves',
-				dependsOn: 'branchesToTest',
-				enabledWhen: ['Custom'],
-				description: 'First group of branches to compare'
-			},
-			branchSet2: {
-				type: 'text',
-				label: 'Branch Set 2 (Test)',
-				default: 'Test',
-				placeholder: 'e.g. Test, Unlabeled, Custom',
-				dependsOn: 'branchesToTest',
-				enabledWhen: ['Custom'],
-				description: 'Second group of branches to compare'
-			},
-			branchSet3: {
-				type: 'text',
-				label: 'Branch Set 3 (optional)',
-				default: '',
-				placeholder: 'e.g. Reference, Background',
-				dependsOn: 'branchesToTest',
-				enabledWhen: ['Custom'],
-				description: 'Optional third group of branches for comparison'
-			},
-			// Interactive tree selection
-			interactiveTree: {
-				type: 'interactive-tree',
-				label: 'Select branch sets on tree',
-				default: '',
-				dependsOn: 'branchesToTest',
-				enabledWhen: ['Interactive'],
-				description: 'Click on tree branches to assign them to different sets for comparison'
-			},
-			// Core Contrast-FEL parameters
-			srv: {
-				type: 'select',
-				label: 'Synonymous rate variation (recommended)',
-				default: 'Yes',
-				options: ['Yes', 'No'],
-				description: 'Include synonymous rate variation in the model'
-			},
-			permutations: {
-				type: 'select',
-				label: 'Perform permutation tests',
-				default: 'Yes',
-				options: ['Yes', 'No'],
-				description: 'Use permutation tests to evaluate significance'
-			},
-			// Statistical thresholds
-			pvalue: {
-				type: 'number',
-				label: 'P-value threshold',
-				default: 0.05,
-				min: 0.001,
-				max: 1,
-				step: 0.001,
-				description: 'Significance value for site tests'
-			},
-			qvalue: {
-				type: 'number',
-				label: 'Q-value threshold (FDR)',
-				default: 0.2,
-				min: 0.001,
-				max: 1,
-				step: 0.001,
-				description: 'False Discovery Rate threshold for reporting'
-			},
-			// Output options
-			output: {
-				type: 'text',
-				label: 'Output file name (optional)',
-				default: '',
-				placeholder: 'e.g. contrast_results.json',
-				description: 'Custom name for output file (defaults to automatic naming)'
-			}
-		}
-	};
+	//   - The current file is being re-read after an alignment edit -> block. This one is not in
+	//     liveRuns: MethodSelector filters datareader out of it (a file's own validation must never
+	//     look like a running analysis), so the re-read is invisible here without its own flag. For
+	//     the seconds it takes, fileMetricsStore is null and canonicalFasta does not exist, so a Run
+	//     started now would submit the user's original blob — the alignment they just edited away.
+	$: revalidatingThisFile =
+		Boolean($revalidatingFileId) && $revalidatingFileId === $currentFile?.id;
+	$: runBlockedReason = revalidatingThisFile
+		? 'Re-checking your edited alignment…'
+		: sameMethodRunning
+			? `${selectedMethod?.toUpperCase()} is already running on this file`
+			: localRunInFlight && wouldRunLocally
+				? 'Another analysis is running in this tab — only one can run here at a time'
+				: null;
 
 	// Method-specific advanced options state
 	let methodOptions = {};
+
+	// SURVIVING A TAB SWITCH.
+	//
+	// This component is mounted inside {#if activeTab === 'analyze'} in +page.svelte, so Svelte
+	// destroys it — and every local below — the moment the user looks at Results. The five values are
+	// kept as plain locals because ~60 references and two bind:value depend on them; they are hydrated
+	// from the store here and mirrored back on every change.
+	//
+	// Hydration happens in onMount rather than at declaration ON PURPOSE. The reactive block that
+	// initialises a method's option bag is gated on the bag being ABSENT
+	// (`if (selectedMethod && !methodOptions[selectedMethod])`) because initializeMethodOptions
+	// overwrites it wholesale with defaults. Restoring before that block first runs is what lets the
+	// restored options survive it. Keep that gate.
+	let restoredNotice = null;
+	let hydrated = false;
+
+	onMount(() => {
+		const saved = analysisConfig.current();
+		if (saved.selectedMethod) selectedMethod = saved.selectedMethod;
+		if (saved.geneticCode) geneticCode = saved.geneticCode;
+		if (Number.isFinite(saved.geneticCodeId)) geneticCodeId = saved.geneticCodeId;
+		// Restoring 'backend' onto a session where the server is unreachable would arm a run that
+		// fails at submission. Clamp it; the radio is still there for the user to change back.
+		if (saved.executionMode) {
+			executionMode =
+				saved.executionMode === 'backend' && !$backendConnectivity?.isConnected
+					? 'local'
+					: saved.executionMode;
+		}
+		if (saved.methodOptions) methodOptions = { ...saved.methodOptions };
+
+		if (saved.restoredFromAnalysisId && saved.selectedMethod) {
+			// AxoMEME records carry no arguments at all, so there is nothing to claim was restored.
+			// Say what is true and no more.
+			restoredNotice = saved.restoredSummary
+				? `Restored your ${saved.selectedMethod.toUpperCase()} settings — ${saved.restoredSummary}.`
+				: `Selected ${saved.selectedMethod.toUpperCase()}.`;
+		}
+
+		// Announce a restore once, not on every subsequent tab switch.
+		analysisConfig.update((state) => ({ ...state, restoredFromAnalysisId: null }));
+		hydrated = true;
+	});
+
+	// Mirror back. One assignment, so the store can never hold half a configuration.
+	//
+	// Gated on `hydrated` because reactive statements run during the FIRST render, before onMount:
+	// ungated, this would write the component's blank defaults over the very state it is about to
+	// read back, and the feature would silently do nothing.
+	$: if (hydrated) {
+		analysisConfig.update((state) => ({
+			...state,
+			selectedMethod,
+			geneticCode,
+			geneticCodeId,
+			executionMode,
+			methodOptions
+		}));
+	}
 
 	// Tree data from store (auto-subscription; Svelte cleans it up on destroy)
 	$: trees = $treeStore;
@@ -1060,6 +331,50 @@
 		executionMode = executionModeBeforeBrowserOnly;
 		executionModeBeforeBrowserOnly = null;
 	}
+
+	// WHERE THIS RUN SHOULD GO, and why the default is no longer always Local.
+	//
+	// executionMode was hard-coded to 'local' and nothing ever moved it, including for datasets this
+	// app's own estimator calls Very Slow: BGM on 20x255 reads "~2h 15m" in the panel three rows below
+	// these radios while Local sits selected, and a local run dies with the tab. The advice comes from
+	// the same estimator the panel prints, so the two can never contradict each other.
+	//
+	// The counts are read WITHOUT AnalysisTimingEstimate's `|| 10` / `|| 1000` fallbacks. Those exist
+	// so the panel can show its shape before a file is parsed; borrowing them here would let a
+	// fabricated dataset move a radio with nothing loaded.
+	$: seqCount = $fileMetricsStore?.FILE_INFO?.sequences ?? $currentFile?.sequences ?? 0;
+	$: siteCount = $fileMetricsStore?.FILE_INFO?.sites ?? $currentFile?.sites ?? 0;
+	$: advice = executionAdvice({
+		method: selectedMethod,
+		sequences: seqCount,
+		sites: siteCount,
+		methodOptions: methodOptions[selectedMethod] || {},
+		serverConnected: $backendConnectivity.isConnected
+	});
+
+	// A different method, or a different file, is a different question — so the advice gets to answer
+	// it again. Within one method+file, a click is final.
+	$: adviceKey = `${selectedMethod ?? ''}|${$currentFile?.id ?? ''}`;
+	$: if (adviceKey !== lastAdvisedFor) {
+		lastAdvisedFor = adviceKey;
+		executionModeTouched = false;
+	}
+
+	// ORDERED AFTER the browserOnly restore above, deliberately. Both write executionMode; if a
+	// browser-only method ever returns, the restore must have the last word or the two ping-pong.
+	$: if (!executionModeTouched && advice.recommend === 'backend' && executionMode !== 'backend') {
+		executionMode = 'backend';
+	}
+	// Safety rail, and it fixes something older than the advice: pick Backend, lose the socket, and
+	// the radio greys out while executionMode stays 'backend' — the run then throws "Backend server is
+	// not connected" (AnalyzeTab.svelte:215-217) with a disabled radio still claiming to be selected.
+	$: if (!$backendConnectivity.isConnected && executionMode === 'backend') {
+		executionMode = 'local';
+	}
+	// Only true while the recommendation is actually in force. The advice sentence itself never claims
+	// which radio is selected, because the user may have clicked Local a second ago.
+	$: autoSelectedBackend =
+		advice.recommend === 'backend' && !executionModeTouched && executionMode === 'backend';
 
 	// Get current method's advanced options
 	$: currentMethodOptions = selectedMethod
@@ -1130,9 +445,11 @@
 					})
 			: [];
 
-	// Update genetic code ID when name changes
+	// Update genetic code ID when name changes. The selector's VALUE is HyPhy's own identifier
+	// (what the browser path passes to --code); the id is what the server path and the codon
+	// validator use. Both come from the same row, so they cannot disagree.
 	$: {
-		const codeEntry = GENETIC_CODES.find((code) => code.name === geneticCode);
+		const codeEntry = GENETIC_CODES.find((code) => code.hyphy === geneticCode);
 		if (codeEntry) {
 			geneticCodeId = codeEntry.id;
 		}
@@ -1149,14 +466,21 @@
 		});
 	}
 
-	// RELAX branch validation - requires TEST and REFERENCE branches to be tagged
+	// RELAX branch validation - requires TEST and REFERENCE branches to be tagged.
+	//
+	// Read through methodOptions[selectedMethod], NOT methodOptions.relax: this map is keyed by the
+	// method string exactly as the dropdown supplies it ('RELAX'), which initializeMethodOptions and
+	// handleBranchSelectionChange both use. The lowercase lookup was always undefined, so
+	// relaxHasTestBranches was permanently false and RELAX's Run button could never be enabled no
+	// matter what the user tagged. contrastFelBranchesValid below already uses the indexed form.
+	$: relaxOptions = selectedMethod ? methodOptions?.[selectedMethod] : null;
 	$: relaxHasTestBranches =
 		selectedMethod?.toLowerCase() === 'relax' &&
-		methodOptions?.relax?.interactiveTree?.includes('{TEST}');
+		relaxOptions?.interactiveTree?.includes('{TEST}');
 	$: relaxHasReferenceBranches =
 		selectedMethod?.toLowerCase() === 'relax' &&
-		(methodOptions?.relax?.interactiveTree?.includes('{REFERENCE}') ||
-			methodOptions?.relax?.referenceBranches === 'All');
+		(relaxOptions?.interactiveTree?.includes('{REFERENCE}') ||
+			relaxOptions?.referenceBranches === 'All');
 	$: relaxBranchesValid =
 		selectedMethod?.toLowerCase() !== 'relax' ||
 		(relaxHasTestBranches && relaxHasReferenceBranches);
@@ -1260,10 +584,10 @@
 		}
 	}
 
-	// Smart default: suggest backend for larger datasets
-	function getSmartDefault(fileSequenceCount = 0) {
-		return fileSequenceCount > 1000 ? 'backend' : 'local';
-	}
+	// getSmartDefault(fileSequenceCount > 1000 ? 'backend' : 'local') used to live here. It was never
+	// called by anything, and a second, contradicting threshold — sequence count alone, ignoring
+	// sites and the method — would now disagree with executionAdvice() on exactly the datasets this
+	// panel is about (BGM on 20 sequences is hours; FEL on 900 is not).
 
 	// Handle branch selection from interactive tree
 	function handleBranchSelectionChange(event) {
@@ -1359,6 +683,20 @@
 			</select>
 		</div>
 
+		<!-- What a Re-run actually brought back. Built from the restored values, never from a fixed
+		     field list, so it cannot claim to have restored something it did not. -->
+		{#if restoredNotice}
+			<div class="restored-notice" data-testid="restored-settings-notice">
+				<span>{restoredNotice}</span>
+				<button
+					type="button"
+					class="restored-dismiss"
+					aria-label="Dismiss"
+					on:click={() => (restoredNotice = null)}>×</button
+				>
+			</div>
+		{/if}
+
 		<!-- Method Description -->
 		{#if currentMethod}
 			<div class="method-description">
@@ -1400,10 +738,18 @@
 							bind:group={executionMode}
 							value="local"
 							class="execution-mode-radio"
+							on:change={() => (executionModeTouched = true)}
 						/>
 						<div class="execution-mode-content">
 							<div class="execution-mode-name">Local (Browser)</div>
-							<div class="execution-mode-desc">Fast • Small datasets</div>
+							<!-- "Fast • Small datasets" was a claim about the dataset the app had already
+							     measured and disagreed with. Where there is a fitted equation, say the number;
+							     where there is not, say the consequence, which is true either way. -->
+							<div class="execution-mode-desc">
+								{advice.local
+									? `${advice.local.description} in this tab`
+									: 'Runs in this tab — it must stay open'}
+							</div>
 						</div>
 					</label>
 					<label class="execution-mode-option">
@@ -1413,12 +759,15 @@
 							value="backend"
 							class="execution-mode-radio"
 							disabled={!$backendConnectivity.isConnected}
+							on:change={() => (executionModeTouched = true)}
 						/>
 						<div class="execution-mode-content">
 							<div class="execution-mode-name">Backend Server</div>
 							<div class="execution-mode-desc">
 								{#if $backendConnectivity.isConnected}
-									Powerful • Large datasets
+									{advice.server
+										? `${advice.server.description} on the server`
+										: 'Runs on the server — you can close the tab'}
 								{:else}
 									Server unavailable
 								{/if}
@@ -1426,10 +775,26 @@
 						</div>
 					</label>
 				</div>
+				{#if $backendConnectivity.isConnected && advice.advice}
+					<p class="execution-mode-advice" data-testid="execution-mode-advice">
+						{advice.advice}{#if autoSelectedBackend}
+							The server is selected; choose Local to run it here anyway.{/if}
+					</p>
+				{/if}
 				{#if !$backendConnectivity.isConnected}
 					<div class="backend-status-warning">
 						<AlertTriangle class="warning-icon" />
-						<span>Server temporarily unavailable. Please use Local mode.</span>
+						<!-- The slow-run sentence extends the existing warning rather than opening a second,
+						     competing box next to it. The two branches are mutually exclusive, so the testid
+						     stays unique on the page. -->
+						<div class="warning-lines">
+							<span>Server temporarily unavailable. Please use Local mode.</span>
+							{#if advice.advice}
+								<p class="execution-mode-advice" data-testid="execution-mode-advice">
+									{advice.advice}
+								</p>
+							{/if}
+						</div>
 					</div>
 				{/if}
 			</div>
@@ -1476,7 +841,9 @@
 								Genetic Code:
 								<select bind:value={geneticCode} class="option-select">
 									{#each GENETIC_CODES as code}
-										<option value={code.name}>{code.label}</option>
+										<!-- value is HyPhy's own identifier, label is ours: the value is
+										     passed verbatim to `hyphy --code`, so it is not free text. -->
+										<option value={code.hyphy}>{code.label}</option>
 									{/each}
 								</select>
 							</label>
@@ -1562,6 +929,17 @@
 									{/if}
 								</div>
 							{/each}
+							<!-- What the SELECTED mode will actually do, which the option renderer above cannot
+							     say: it prints one static `config.description` for all three modes, and the
+							     consequence that matters here is specific to one of them. percentile always
+							     calls a fixed share of the variable sites, whether or not any site is under
+							     selection — the results table says so afterwards ("Top 2%"), and before the run
+							     nothing did. -->
+							{#if selectedMethod?.toLowerCase() === 'axomeme'}
+								<p class="call-mode-consequence" data-testid="axomeme-call-consequence">
+									{describeCallMode(methodOptions[selectedMethod]?.callMode ?? CALL_DEFAULTS.mode)}
+								</p>
+							{/if}
 						{:else}
 							<div class="no-options">
 								<span class="no-options-text">This method uses default parameters</span>
@@ -1602,10 +980,13 @@
 				{#if selectedTreeData}
 					<div class="tree-selector-wrapper">
 						{#key selectedMethod}
+							<!-- No `width`: BranchSelector measures its own pan box and draws at least
+							     minWidth, scrolling inside the box. The hard-coded 1000px used to push the
+							     PAGE 693px wider than a 393px phone. Do NOT widen this {#key} to include a
+							     width — every resize would remount and discard the current selection. -->
 							<BranchSelector
 								treeData={selectedTreeData}
 								height={500}
-								width={1000}
 								mode={selectedMethod?.toLowerCase() === 'contrast-fel' ||
 								selectedMethod?.toLowerCase() === 'relax'
 									? 'multi-set'
@@ -1696,7 +1077,11 @@
 					Starting Analysis...
 				{:else if runBlockedReason}
 					<Loader2 class="run-icon spinning" />
-					{sameMethodRunning ? `${currentMethod?.info.name ?? ''} running` : 'Analysis running'}
+					{revalidatingThisFile
+						? 'Re-checking alignment…'
+						: sameMethodRunning
+							? `${currentMethod?.info.name ?? ''} running`
+							: 'Analysis running'}
 				{:else if currentMethod?.info.supported}
 					<Play class="run-icon" />
 					Run {currentMethod?.info.name || ''} Analysis
@@ -1760,6 +1145,30 @@
 		font-size: 0.8125rem;
 		line-height: 1.4;
 		color: #475569;
+	}
+
+	.restored-notice {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		margin-top: 8px;
+		padding: 6px 10px;
+		border: 1px solid #cbd5e0;
+		border-radius: 6px;
+		background: #f7fafc;
+		color: #2d3748;
+		font-size: 13px;
+	}
+
+	.restored-dismiss {
+		border: none;
+		background: none;
+		color: #4a5568;
+		cursor: pointer;
+		font-size: 16px;
+		line-height: 1;
+		padding: 0 2px;
 	}
 
 	.method-dropdown {
@@ -1907,9 +1316,19 @@
 		color: #718096;
 	}
 
+	/* Sits directly under the two radios and reads as their caption, not as an alert: it is a
+	   comparison of two durations the user can act on, and colouring it would make an ordinary
+	   large-dataset run look like an error. */
+	.execution-mode-advice {
+		margin: 8px 0 0;
+		font-size: 12px;
+		line-height: 1.45;
+		color: #4a5568;
+	}
+
 	.backend-status-warning {
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
 		gap: 8px;
 		margin-top: 12px;
 		padding: 8px 12px;
@@ -1918,6 +1337,19 @@
 		border-radius: 4px;
 		font-size: 12px;
 		color: #92400e;
+	}
+
+	.warning-lines {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	/* Inside the warning it is a second line of the same message, so it takes the warning's colour
+	   and drops its own top margin. */
+	.backend-status-warning .execution-mode-advice {
+		margin: 0;
+		color: inherit;
 	}
 
 	.warning-icon {
@@ -2163,6 +1595,16 @@
 		margin-top: 4px;
 		line-height: 1.4;
 		font-style: italic;
+	}
+
+	/* Upright, unlike .option-description above it: that one compares the three modes, this one states
+	   what the chosen mode will do to this alignment. Different job, so it should not look like more
+	   of the same caption. */
+	.call-mode-consequence {
+		margin: 8px 0 0;
+		font-size: 12px;
+		line-height: 1.45;
+		color: #4a5568;
 	}
 
 	.option-group.disabled {

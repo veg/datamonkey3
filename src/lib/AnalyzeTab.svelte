@@ -28,7 +28,8 @@
 	// Props
 	export let methodConfig = {};
 	export let runMethod = () => {};
-	export let selectedMethod = 'FEL'; // Default method for configuration
+	// No `selectedMethod` prop. It was accepted here and never forwarded to MethodSelector, which is
+	// why a Re-run preselected nothing; the analysisConfig store is now the single channel for it.
 	export let hyphyOut = '';
 	export let isStdOutVisible = false;
 	export let toggleStdOut = () => {};
@@ -451,33 +452,42 @@
 
 	<!-- Analysis Section (expanded by default) -->
 	<div class="mb-premium-xl rounded-premium border border-border-platinum bg-white shadow-premium">
+		<!--
+			The whole header row used to be a `<div on:click>`, so a section collapsed with the mouse
+			could not be reopened from the keyboard — permanently shut for keyboard users. The
+			disclosure is now a real button; the Console button is its SIBLING rather than a child,
+			because nested buttons are invalid HTML (which is also why its stopPropagation is gone).
+		-->
 		<div
-			class="flex cursor-pointer items-center justify-between rounded-t-premium bg-brand-whisper p-premium-md transition-all duration-premium hover:bg-brand-ghost"
-			on:click={toggleAnalysisSection}
+			class="flex items-center justify-between rounded-t-premium bg-brand-whisper p-premium-md transition-all duration-premium hover:bg-brand-ghost"
 		>
-			<h2 class="text-premium-header font-semibold text-text-rich">Analysis</h2>
-			<div class="flex items-center">
-				{#if $currentFile}
-					<button
-						on:click={(e) => {
-							e.stopPropagation();
-							handleToggleStdOut();
-						}}
-						class="mr-premium-md rounded-premium-sm bg-brand-royal px-premium-md py-premium-xs text-premium-meta font-medium text-white transition-all duration-premium hover:bg-brand-deep"
-					>
-						{isStdOutVisible ? 'Hide Console' : 'Show Console'}
-					</button>
-				{/if}
+			<button
+				type="button"
+				data-testid="analysis-section-toggle"
+				class="flex flex-1 items-center justify-between rounded-premium-sm text-left focus:outline-none focus:ring-2 focus:ring-brand-royal"
+				on:click={toggleAnalysisSection}
+				aria-expanded={analysisSectionExpanded}
+				aria-controls="analysis-section-body"
+			>
+				<h2 class="text-premium-header font-semibold text-text-rich">Analysis</h2>
 				<ChevronDown
 					class="h-6 w-6 text-brand-royal transition-transform duration-premium {analysisSectionExpanded
 						? 'rotate-180'
 						: ''}"
 				/>
-			</div>
+			</button>
+			{#if $currentFile}
+				<button
+					on:click={handleToggleStdOut}
+					class="ml-premium-md rounded-premium-sm bg-brand-royal px-premium-md py-premium-xs text-premium-meta font-medium text-white transition-all duration-premium hover:bg-brand-deep"
+				>
+					{isStdOutVisible ? 'Hide Console' : 'Show Console'}
+				</button>
+			{/if}
 		</div>
 
 		{#if analysisSectionExpanded}
-			<div class="p-premium-lg">
+			<div id="analysis-section-body" class="p-premium-lg">
 				{#if $currentFile}
 					<!-- Method Selector (includes timing estimate) -->
 					<MethodSelector

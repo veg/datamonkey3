@@ -34,7 +34,11 @@ export default defineConfig({
 
 	// 50% of logical cores. Deliberately not higher: several specs run WASM/ONNX inference under
 	// wall-clock timeouts, and oversubscribing turns those into timeout flakes rather than speed.
-	workers: process.env.CI ? 1 : '50%',
+	// Lowered from 50% when the suite grew from 109 to 129 tests. The new specs are WASM- and
+	// ONNX-heavy, and at 7 workers the AxoMEME spec failed seven ways under contention while passing
+	// 9/9 in isolation — a resource limit reported as test failures. 3 workers is the measured point
+	// where that stops.
+	workers: process.env.CI ? 1 : 3,
 
 	reporter:
 		process.env.E2E_COVERAGE === '1'

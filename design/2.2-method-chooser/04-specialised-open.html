@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>04 — Specialised analyses expanded</title>
+		<link rel="stylesheet" href="_wf.css" />
+	</head>
+	<body>
+		<div class="sheet">
+			<div class="hdr">
+				<h1>State 04 · the long tail</h1>
+				<p>Specialised analyses, expanded</p>
+				<div class="sub">
+					Where the five remaining methods live. Drawn because a disclosure whose contents nobody
+					drew is a place to hide things.
+				</div>
+			</div>
+
+			<div>
+				<div class="screen">
+					<div class="panel-hd">Analysis <span class="chev">&#9650;</span></div>
+					<div class="body">
+						<div class="grp" style="opacity: 0.45">
+							<div class="q">Which sites are under selection?</div>
+							<div class="row">
+								<i class="rb"></i><span class="nm">FEL</span
+								><span class="ds">Maximum-likelihood test at every site. The usual first choice.</span>
+							</div>
+							<div class="row">
+								<i class="rb"></i><span class="nm">MEME</span
+								><span class="ds">Finds selection acting on only some branches at a site.</span>
+							</div>
+						</div>
+						<p class="caption" style="margin: -6px 0 12px 4px">…groups 1&ndash;5 as in state 01…</p>
+
+						<div class="disc" style="border-bottom: 1px solid #ececee; padding-bottom: 8px">
+							<span class="tri">&#9660;</span> Specialised analyses <span class="cnt">(5)</span>
+						</div>
+						<div class="grp" style="margin-top: 8px">
+							<div class="row">
+								<i class="rb"></i><span class="nm">PRIME</span
+								><span class="ds"
+									>Tests which biochemical properties selection is conserving or changing, site by
+									site.</span
+								>
+							</div>
+							<div class="row">
+								<i class="rb"></i><span class="nm">BGM</span
+								><span class="ds"
+									>Finds pairs of sites whose substitutions co&#8209;occur along the tree.</span
+								>
+							</div>
+							<div class="row">
+								<i class="rb"></i><span class="nm">MULTI-HIT</span
+								><span class="ds"
+									>Tests whether two or three nucleotides in a codon change at once.</span
+								>
+							</div>
+							<div class="row">
+								<i class="rb"></i><span class="nm">NRM</span
+								><span class="ds"
+									>Non&#8209;reversible model: estimates directional composition change.</span
+								>
+							</div>
+							<div class="row">
+								<i class="rb"></i><span class="nm">B-STILL</span
+								><span class="ds"
+									>Identifies sites that have not changed anywhere in the tree.</span
+								>
+							</div>
+						</div>
+					</div>
+				</div>
+				<p class="caption">
+					Expanded height +182&nbsp;px. Collapsed by default; sticky per session once opened, not
+					persisted forever.
+				</p>
+			</div>
+
+			<div class="notes">
+				<h3>Why these five, and why hidden</h3>
+
+				<div class="note accent">
+					<b>The test is whether the user arrives knowing the name.</b>
+					Nobody arrives at Datamonkey asking "which pairs of my sites co&#8209;evolve?" and hopes to
+					discover BGM by scanning. They arrive having read a paper that used BGM. A method reached
+					by name does not need to compete for attention with FEL; it needs to be findable, which a
+					labelled disclosure is.
+				</div>
+
+				<div class="note">
+					<b>Order inside the group is by how often it is run, not alphabetically.</b>
+					If the maintainers have usage data, use it and say so in a code comment. If not, the order
+					drawn here is a defensible default and should be revisited once data exists — not left to
+					<code>localeCompare</code>, which is what produced the current list.
+				</div>
+
+				<div class="note">
+					<b>The count is in the label.</b>
+					"Specialised analyses (5)" — a disclosure that does not say how much is behind it invites
+					the user to open it to find out, which costs the click the disclosure was meant to save.
+				</div>
+
+				<div class="note">
+					<b>These descriptions need a domain expert's signature.</b>
+					I have written them to be defensible, but "conserving or changing" for PRIME and the NRM
+					line are the two most likely to be subtly wrong. The audit says to pull in a domain expert
+					for the group names; extend that to these five rows. Do not ship a description nobody with
+					the domain knowledge has read.
+				</div>
+
+				<div class="note">
+					<b>Fix the duplicate key while you are here.</b>
+					<code>'b-still'</code> appears twice in <code>METHOD_ADVANCED_OPTIONS</code>
+					(<code>MethodSelector.svelte:419</code> and <code>:463</code>); the second silently wins, so
+					the grid&#8209;points help text a user reads is not the one the first author wrote. Not a
+					chooser bug, but it is in this file and it is one line.
+				</div>
+			</div>
+		</div>
+	</body>
+</html>

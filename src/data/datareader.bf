@@ -9,6 +9,17 @@ function notify(type, msg) {
 	return 0;
 }
 
+/* Make a user-supplied sequence name safe to drop into the JSON record.
+   to_json below concatenates strings with no escaping, and PRE-rename names are arbitrary user
+   text: a single double quote in a header would produce invalid JSON and the whole upload would
+   fail with "File analysis produced invalid results". Post-rename names cannot hit this because
+   normalizeSequenceID (ReadDelimitedFiles.bf:218) maps everything outside [a-zA-Z0-9_] to '_'. */
+function jsonSafeName (rawName) {
+	_safeName = rawName ^ {{"[\"\\\\]",""}};
+	_safeName = _safeName ^ {{"[\n\t]"," "}};
+	return _safeName;
+}
+
 function except(msg) {
 	fprintf (jsonOutput,CLEAR_FILE);
 	fprintf (jsonOutput, "{" );
@@ -356,9 +367,21 @@ if (genCodeID >= 0 && filteredData.sites*3 < ds.sites)
 	}
 }
 
+/* filteredData is the CODON filter here when genCodeID >= 0 (created above with unit 3), so
+   filteredData.sites counts codons, not nucleotides. Naming the unit stops the message from
+   claiming a 12,000-nucleotide ceiling that is really 12,000 codons. */
+sizeUnit = "sites";
+if (genCodeID >= 0)
+{
+	sizeUnit = "codons";
+}
+
 if (filteredData.species > maxUploadSize || filteredData.sites > maxDMSites)
 {
-  except("Your data set is too large ("+filteredData.species+" species and "+filteredData.sites+" sites). We currently reject files with more than " + maxSLACSize + " sequences or " + maxDMSites + " sites. " +  
+  /* The rejection gate is maxUploadSize; quoting maxSLACSize here told a user rejected at
+     25,001 sequences that the limit was 10,000. maxSLACSize is the tree-inference ceiling and
+     is reported separately at the "must include prebuilt trees" branch below. */
+  except("Your data set is too large ("+filteredData.species+" sequences and "+filteredData.sites+" "+sizeUnit+"). We currently reject files with more than " + maxUploadSize + " sequences or " + maxDMSites + " " + sizeUnit + ". " +
                   "We'll increase the numbers when we acquire better dedicated hardware. Alternatively, you can download hyphy at: http://www.hyphy.org/downloads/ and perform selection analyses locally.");
 	return 1;
 }
@@ -380,6 +403,18 @@ renames		     = 0;
 padWarning       = 0;
 removedSequences = {};
 
+/* Plain, JSON-safe lists of WHICH sequences were changed, for the UI.
+   Deliberately separate from DuplicateSequenceWarning / renameSequenceWarning above: those are
+   '*'-appended blobs carrying HTML (<DT class='DT1'>, &rarr;) built for the legacy web UI.
+   Capped because results.json is cached in IndexedDB and replayed on every file selection - a
+   5,000-sequence rename must not be carried around forever. */
+nameListCap             = 50;
+duplicateNames          = {};
+duplicateNamesTruncated = 0;
+renamedNames            = {};
+renamedNamesTruncated   = 0;
+paddedSequences         = 0;
+
 for (k=0; k<filteredData.species;k=k+1)
 {
 	newSeqName = normalizeSequenceID (sequenceNames[k],"seqNamesList");
@@ -387,8 +422,16 @@ for (k=0; k<filteredData.species;k=k+1)
 	{
 		renameSequenceWarning * ("<DT class = 'DT1'>" + sequenceNames[k] + "&rarr;" + newSeqName);
 		renames	= renames+1;
+		if (Abs(renamedNames) < nameListCap)
+		{
+			renamedNames[Abs(renamedNames)] = jsonSafeName(sequenceNames[k]) + " -> " + newSeqName;
+		}
+		else
+		{
+			renamedNamesTruncated = renamedNamesTruncated + 1;
+		}
 		SetParameter (ds,k,newSeqName);
-	}	
+	}
 	seqNamesMap[sequenceNames[k]&&1] = newSeqName;
 	GetDataInfo (thisSeqData, filteredData, k);
 	
@@ -399,6 +442,14 @@ for (k=0; k<filteredData.species;k=k+1)
 		seqMap[k] = z-1;
 		dupSeqCount = dupSeqCount + 1;
 		DuplicateSequenceWarning * ("<DT class = 'DT2'>" + sequenceNames[k] + " = " + sequenceNames[z-1]);
+		if (Abs(duplicateNames) < nameListCap)
+		{
+			duplicateNames[Abs(duplicateNames)] = jsonSafeName(sequenceNames[k]) + " = " + jsonSafeName(sequenceNames[z-1]);
+		}
+		else
+		{
+			duplicateNamesTruncated = duplicateNamesTruncated + 1;
+		}
 		removedSequences[sequenceNames[k]&&1] = 1;
 	}
 	else
@@ -408,6 +459,7 @@ for (k=0; k<filteredData.species;k=k+1)
 		if ((thisSeqData$"\\?+$")[0]>=0)
 		{
 			padWarning = 1;
+			paddedSequences = paddedSequences + 1;
 		}
 	}
 }
@@ -590,6 +642,9 @@ file_info_record = {};
 file_info_record ["partitions"] = _pCount;
 file_info_record ["gencodeid"] = genCodeID;
 file_info_record ["sites"] = filteredData.sites;
+/* dType has been computed since the data type check above; it was simply never emitted, which
+   left the Data tab's already-guarded "Data Type" row permanently dark. */
+file_info_record ["type"] = dType;
 
 DataSetFilter filteredData = CreateFilter (ds,1);
 
@@ -616,11 +671,31 @@ file_info_record["goodtree"] = goodTree;
 file_info_record["nj"] = treeString;
 file_info_record["rawsites"] = filteredData.sites;
 
-// Validation details - expose what datareader detected for UI display
+// Validation details - expose what datareader detected for UI display.
+//
+// Every key below is load-bearing for records ALREADY cached in IndexedDB, which descriptorSync
+// replays without a migration step - so nothing here may be renamed or dropped, only added to.
+// `ambiguous_sites` is misnamed: it has always been the boolean padWarning, never a count of
+// ambiguous characters. `padded_sequences` is the honest version; the old key stays for cached
+// records.
 file_info_record["duplicate_sequences"] = dupSeqCount;
 file_info_record["sequences_renamed"] = renames;
 file_info_record["ambiguous_sites"] = padWarning;
+file_info_record["padded_sequences"] = paddedSequences;
 file_info_record["stop_codons_stripped"] = terminalCodonsStripped;
+
+// WHICH sequences, not just how many. Emitted only when non-empty so results.json does not grow
+// two empty objects for every clean upload.
+if (Abs(duplicateNames))
+{
+	file_info_record["duplicate_names"] = duplicateNames;
+	file_info_record["duplicate_names_truncated"] = duplicateNamesTruncated;
+}
+if (Abs(renamedNames))
+{
+	file_info_record["renamed_names"] = renamedNames;
+	file_info_record["renamed_names_truncated"] = renamedNamesTruncated;
+}
 
 sequence_records = {};
 GetString(seqNames, filteredData, -1);

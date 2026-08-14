@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>01 — Nothing selected</title>
+		<link rel="stylesheet" href="_wf.css" />
+	</head>
+	<body>
+		<div class="sheet">
+			<div class="hdr">
+				<h1>State 01 · the decision is live</h1>
+				<p>Nothing selected</p>
+				<div class="sub">
+					The <code>&lt;select&gt;</code> is replaced by one radio group (<code>name="method"</code>)
+					split across six <code>&lt;fieldset&gt;</code>s whose <code>&lt;legend&gt;</code> is the
+					biological question. Fifteen methods; ten visible.
+				</div>
+			</div>
+
+			<div>
+				<div class="screen">
+					<div class="panel-hd">Analysis <span class="chev">&#9650;</span></div>
+					<div class="body">
+						<div class="grp">
+							<div class="q">Which sites are under selection?</div>
+							<div class="row">
+								<i class="rb"></i><span class="nm">FEL</span
+								><span class="ds">Maximum-likelihood test at every site. The usual first choice.</span>
+							</div>
+							<div class="row">
+								<i class="rb"></i><span class="nm">MEME</span
+								><span class="ds"
+									>Finds selection acting on only some branches at a site — sites FEL can miss.</span
+								>
+							</div>
+							<div class="subwrap">
+								<div class="row">
+									<i class="rb"></i><span class="nm">AxoMEME<span class="badge">Beta</span></span
+									><span class="ds"
+										>Predicts what MEME would report, in seconds. Downloads 17&nbsp;MB on first run;
+										use it to rank sites, then confirm with MEME.</span
+									>
+								</div>
+							</div>
+							<div class="row">
+								<i class="rb"></i><span class="nm">FUBAR</span
+								><span class="ds"
+									>Bayesian. Faster on large alignments; reports posterior probabilities, not
+									p&#8209;values.</span
+								>
+							</div>
+							<div class="row">
+								<i class="rb"></i><span class="nm">SLAC</span
+								><span class="ds">Counting&#8209;based approximation. Fastest, least sensitive.</span>
+							</div>
+						</div>
+
+						<div class="grp">
+							<div class="q">Which branches are under selection?</div>
+							<div class="row">
+								<i class="rb"></i><span class="nm">aBSREL</span
+								><span class="ds">Tests every branch for episodic selection.</span>
+							</div>
+						</div>
+
+						<div class="grp">
+							<div class="q">Is this gene under selection at all?</div>
+							<div class="row">
+								<i class="rb"></i><span class="nm">BUSTED</span
+								><span class="ds">One gene&#8209;wide answer. No per&#8209;site or per&#8209;branch detail.</span>
+							</div>
+						</div>
+
+						<div class="grp">
+							<div class="q">Did selection differ between groups of branches?</div>
+							<div class="row">
+								<i class="rb"></i><span class="nm">Contrast-FEL</span
+								><span class="ds">Compares selection at each site between groups you define.</span>
+							</div>
+							<div class="row">
+								<i class="rb"></i><span class="nm">RELAX</span
+								><span class="ds"
+									>Tests whether selection is relaxed or intensified in one group versus another.</span
+								>
+							</div>
+						</div>
+
+						<div class="grp">
+							<div class="q">Before you test selection</div>
+							<div class="row">
+								<i class="rb"></i><span class="nm">GARD</span
+								><span class="ds"
+									>Finds recombination breakpoints. Unmodelled recombination inflates false positives
+									in every test above.</span
+								>
+							</div>
+						</div>
+
+						<div class="disc">
+							<span class="tri">&#9654;</span> Specialised analyses <span class="cnt">(5)</span>
+						</div>
+					</div>
+				</div>
+				<p class="caption">
+					Screen height 563&nbsp;px. Ten rows &times; 30&nbsp;px, five legends &times; 29&nbsp;px, four
+					group gaps &times; 14&nbsp;px, disclosure 34&nbsp;px, body padding 28&nbsp;px.
+				</p>
+			</div>
+
+			<div class="notes">
+				<h3>Why this shape</h3>
+
+				<div class="note accent">
+					<b>A dropdown is the wrong control for this decision.</b>
+					A <code>&lt;select&gt;</code> is a retrieval control: it is right when you know the value
+					you want (genetic code, p&#8209;value). Choosing a method is a <em>comparison</em> among
+					four or five candidates. Comparison needs them all on screen at once. Every other control
+					in this panel stays a <code>&lt;select&gt;</code>; only this one changes, because only this
+					one is a comparison.
+				</div>
+
+				<div class="note accent">
+					<b>The headings are the guidance.</b>
+					No tooltips, no help panel, no per&#8209;method "learn more". The question a user arrives
+					with is printed above the methods that answer it, and — see state 02 — it survives
+					selection. This replaces the hint at <code>:1716</code> rather than adding to it.
+				</div>
+
+				<div class="note">
+					<b>Group order is frequency of the question, not the alphabet.</b>
+					"Which sites" first because it is the question most Datamonkey users arrive with, and
+					because it is what the dead <code>priority</code> array at <code>:1013</code> was trying to
+					express. Within a group, order is FEL, MEME, FUBAR, SLAC — the intended priority, now
+					actually rendered.
+				</div>
+
+				<div class="note accent">
+					<b>AxoMEME is indented under MEME because it is not a peer of it.</b>
+					It predicts MEME's output; it is not another way to ask the question. The indent is
+					39&nbsp;px so its description column still lands on the parent description column — a
+					second alignment axis, not a broken one. Its cost (17&nbsp;MB) is on the row, because the
+					block that used to state it — <code>:1383&ndash;1392</code>, gated on
+					<code>browserOnly</code> — is dead: nothing in <code>methodConfig</code> sets that flag any
+					more, so the download is currently never announced.
+				</div>
+
+				<div class="note">
+					<b>GARD gets its own legend because it is not a selection test.</b>
+					It is a screen you run <em>first</em>. Listing it as the tenth of sixteen peers
+					misrepresents the workflow. One line states the consequence of skipping it, which is the
+					single most useful sentence on this screen for a user who does not already know it.
+				</div>
+
+				<div class="note">
+					<b>Five methods are collapsed, one is deleted.</b>
+					BGM, PRIME, MULTI&#8209;HIT, NRM and B&#8209;STILL answer questions you do not arrive with
+					by accident; a user who wants PRIME knows the word "PRIME". FADE is removed from the list
+					entirely — leave the <code>methodConfig</code> entry, drop the permanently disabled row.
+				</div>
+
+				<div class="note">
+					<b>No method is preselected.</b>
+					<code>+page.svelte:60</code> sets <code>selectedMethod = 'FEL'</code> and it never reaches
+					this component. Leave it that way. Silently choosing a statistical test for a user is not a
+					convenience; it is a claim about their data that the software cannot make.
+				</div>
+
+				<div class="note">
+					<b>Cost: +478&nbsp;px, in a region that is empty.</b>
+					563&nbsp;px against today's 85&nbsp;px (select + hint). Everything below is gated on
+					<code>{#if selectedMethod}</code>, so before a choice this panel holds nothing else. The
+					space is spent where the decision is, once, and state 02 gives it back.
+				</div>
+
+				<div class="note">
+					<b>Keyboard and screen readers.</b>
+					One <code>name</code> across nested <code>&lt;fieldset&gt;</code>s: arrows traverse all
+					fifteen (only one can be chosen), legends are announced on entry. Do not build a listbox.
+				</div>
+			</div>
+		</div>
+	</body>
+</html>

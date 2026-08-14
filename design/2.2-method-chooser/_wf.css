@@ -1,0 +1,112 @@
+/* Wireframe stylesheet — greyscale + one accent (#4338ca), system stack.
+   Deliberately unfinished so the argument is about structure, not colour.
+   Inlined into every NN-*.html so each file stands alone. */
+* { box-sizing: border-box; }
+body {
+	margin: 0;
+	font: 14px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+	background: #f4f4f5;
+	color: #18181b;
+	-webkit-font-smoothing: antialiased;
+}
+.sheet {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 320px;
+	gap: 32px;
+	max-width: 1180px;
+	margin: 0 auto;
+	padding: 30px 24px 56px;
+	align-items: start;
+}
+.hdr { grid-column: 1 / -1; border-bottom: 1px solid #d4d4d8; padding-bottom: 12px; }
+.hdr h1 { font-size: 11px; margin: 0 0 5px; letter-spacing: 0.09em; text-transform: uppercase; color: #71717a; font-weight: 700; }
+.hdr p { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
+.hdr .sub { margin-top: 5px; font-size: 12.5px; color: #52525b; font-weight: 400; max-width: 74ch; }
+
+.screen { background: #fff; border: 1px solid #d4d4d8; }
+.screen + .screen { margin-top: 26px; }
+.panel-hd { background: #fafafa; border-bottom: 1px solid #e4e4e7; padding: 9px 16px; font-weight: 600; font-size: 12.5px; display: flex; justify-content: space-between; align-items: center; }
+.panel-hd span.chev { color: #a1a1aa; font-size: 11px; }
+.body { padding: 14px 16px; }
+
+/* --- question groups --- */
+.grp { margin: 0 0 14px; }
+.grp:last-child { margin-bottom: 0; }
+.q { font-size: 12.5px; font-weight: 600; color: #18181b; margin: 0 0 5px; padding-bottom: 4px; border-bottom: 1px solid #ececee; }
+.q .qn { color: #a1a1aa; font-weight: 400; }
+
+.row { display: grid; grid-template-columns: 18px 104px minmax(0, 1fr); align-items: baseline; column-gap: 10px; padding: 5px 4px; border-radius: 4px; }
+.rb { width: 13px; height: 13px; border: 1.5px solid #a1a1aa; border-radius: 50%; justify-self: center; position: relative; top: 3px; background: #fff; }
+.row.sel { background: #eef2ff; }
+.row.sel .rb { border-color: #4338ca; box-shadow: inset 0 0 0 2.5px #fff, inset 0 0 0 7px #4338ca; }
+.row.off .rb { border-style: dashed; border-color: #d4d4d8; }
+.row.off .nm, .row.off .ds { color: #a1a1aa; }
+.nm { font-weight: 600; font-size: 13.5px; }
+.ds { font-size: 12.5px; color: #52525b; }
+.ds em { font-style: normal; color: #18181b; }
+
+/* AxoMEME sub-row: indented 39px so its DESCRIPTION column still lands on the
+   parent description column (18+10+104+10 = 142 → 39 + 18+10+65+10 = 142). */
+.subwrap { margin-left: 28px; border-left: 1px solid #e4e4e7; padding-left: 10px; }
+.subwrap .row { grid-template-columns: 18px 65px minmax(0, 1fr); }
+.subwrap .nm { font-size: 12.5px; }
+.subwrap .ds { font-size: 12px; }
+
+.badge { display: inline-block; font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 700; padding: 1px 5px; border: 1px solid #a1a1aa; border-radius: 3px; color: #52525b; margin-left: 6px; position: relative; top: -1px; }
+
+.disc { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: #3f3f46; padding: 8px 4px 2px; border-top: 1px solid #ececee; margin-top: 4px; }
+.disc .tri { color: #71717a; font-size: 10px; }
+.disc .cnt { font-weight: 400; color: #a1a1aa; }
+
+/* --- selected summary --- */
+.summary { border: 1px solid #d4d4d8; border-radius: 5px; padding: 11px 13px; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; align-items: start; }
+.summary .q2 { font-size: 11.5px; color: #71717a; margin-bottom: 3px; }
+.summary .nm2 { font-size: 14px; font-weight: 600; }
+.summary .nm2 .full { font-weight: 400; color: #52525b; font-size: 13px; }
+.summary .ds2 { font-size: 12.5px; color: #52525b; margin-top: 2px; }
+.summary .acts { text-align: right; font-size: 12px; white-space: nowrap; }
+.summary .acts a { color: #4338ca; text-decoration: none; border-bottom: 1px solid #c7d2fe; display: block; }
+.summary .acts a + a { margin-top: 5px; }
+
+/* --- config stubs --- */
+.stub { height: 32px; border: 1px dashed #d4d4d8; border-radius: 4px; background: #fafafa; display: flex; align-items: center; padding: 0 11px; font-size: 11.5px; color: #a1a1aa; margin-top: 8px; letter-spacing: 0.02em; }
+.runbtn { margin-top: 12px; height: 38px; border: 1.5px solid #18181b; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; }
+.runbtn.dead { border-color: #d4d4d8; color: #a1a1aa; border-style: dashed; }
+
+/* --- warnings / blocks --- */
+.warn { border: 1px solid #d4d4d8; border-left: 3px solid #18181b; background: #fafafa; padding: 11px 13px; font-size: 12.5px; }
+.warn b { display: block; margin-bottom: 3px; font-size: 13px; }
+.warn .fix { margin-top: 8px; display: inline-block; border: 1px solid #18181b; border-radius: 4px; padding: 3px 9px; font-size: 12px; font-weight: 600; }
+.warn.quiet { border-left-color: #a1a1aa; }
+
+/* --- current-state mock --- */
+.selbox { border: 1px solid #cbd5e0; border-radius: 6px; padding: 8px 12px; font-size: 14px; color: #2d3748; display: flex; justify-content: space-between; }
+.optlist { border: 1px solid #cbd5e0; border-top: none; font-size: 13.5px; }
+.optlist div { padding: 4px 12px; border-bottom: 1px solid #f4f4f5; }
+.optlist div:last-child { border-bottom: none; }
+.optlist div.dim { color: #a0aec0; font-style: italic; }
+.optlist div.mark { background: #fef9c3; }
+.hint { display: flex; gap: 8px; margin-top: 12px; padding: 10px 14px; background: #f7fafc; border-radius: 6px; font-size: 12.5px; color: #4a5568; }
+
+/* --- annotations --- */
+.notes { font-size: 12.5px; line-height: 1.55; color: #3f3f46; position: sticky; top: 30px; }
+.notes h3 { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #71717a; margin: 0 0 11px; font-weight: 700; }
+.note { border-left: 2px solid #d4d4d8; padding: 0 0 0 12px; margin: 0 0 15px; }
+.note b { display: block; font-weight: 600; color: #18181b; margin-bottom: 2px; }
+.note.accent { border-left-color: #4338ca; }
+.note code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; background: #ececee; padding: 0 3px; border-radius: 2px; }
+
+.rejected { position: relative; }
+.rejected > * { opacity: 0.55; }
+.rejected::after { content: 'OVERRULED'; position: absolute; top: 9px; right: 12px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.09em; border: 1.5px solid #18181b; padding: 2px 6px; color: #18181b; background: #fff; opacity: 1; }
+.caption { font-size: 11.5px; color: #71717a; margin: 7px 2px 0; }
+.dim-tag { font-size: 10.5px; color: #a1a1aa; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* --- narrow screen --- */
+.sheet.narrow { grid-template-columns: 375px 320px; }
+.sheet.narrow .screen { width: 375px; }
+.sheet.narrow .row { grid-template-columns: 18px minmax(0, 1fr); row-gap: 1px; }
+.sheet.narrow .row .ds { grid-column: 2; }
+.sheet.narrow .subwrap .row { grid-template-columns: 18px minmax(0, 1fr); }
+.sheet.narrow .summary { grid-template-columns: minmax(0, 1fr); row-gap: 9px; }
+.sheet.narrow .summary .acts { text-align: left; }
