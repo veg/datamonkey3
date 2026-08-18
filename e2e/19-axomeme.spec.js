@@ -170,7 +170,16 @@ test.describe('AxoMEME', () => {
 		// exact: log(1+score) also matches a loose "Score".
 		await expect(page.getByRole('columnheader', { name: 'Score', exact: true })).toBeVisible();
 		await expect(page.getByRole('columnheader', { name: 'LRT' })).toHaveCount(0);
-		await expect(page.getByRole('columnheader', { name: /dN/ })).toBeVisible();
+
+		// NO RATE COLUMNS. This used to assert dN+ was visible, because the retired 2.0 export
+		// returned alpha / beta_pos / p_neg alongside the LRT. v1-viral returns `lrt` alone, so
+		// there is nothing to fill dS or dN+ — and hyphy-scope >= 1.11.0 hides them rather than
+		// rendering `undefined`.
+		//
+		// Asserting their ABSENCE is the point: a regression here would be a column of empty or
+		// fabricated cells, which reads as a measured rate of zero rather than as "not measured".
+		await expect(page.getByRole('columnheader', { name: /dN/ })).toHaveCount(0);
+		await expect(page.getByRole('columnheader', { name: 'dS', exact: true })).toHaveCount(0);
 	});
 
 	test('is marked Beta wherever a user meets it', async ({ page }) => {
