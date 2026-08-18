@@ -22,7 +22,7 @@
  * continued to run. Verification is skipped only when Web Crypto is unavailable (non-secure context),
  * which is reported rather than hidden.
  *
- * BATCHING. dist_matrix, mds_coords and padding_mask are per-alignment, not per-site — the reference
+ * BATCHING. dist_matrix and mds_coords are per-alignment, not per-site — the reference
  * computes them once and `expand`s them across sites. So every codon site of an alignment goes
  * through the graph in ONE run, with those three tensors repeated along the batch axis. The reference
  * driver instead loops one forward pass per site (predict_regression_nexus.py:1345), which for a
@@ -32,7 +32,7 @@
 import { INPUT_NAMES, VERIFIED_MODEL_SHA256 } from './modelContract.js';
 
 /** Where the artifact lives. Served from static/, never imported, never bundled. */
-export const MODEL_URL = '/models/axomeme/axomeme_2.0_viral_finetuned.onnx';
+export const MODEL_URL = '/models/axomeme/axomeme_v1_viral_finetuned.onnx';
 
 /** Memoised session promise. Null until the first scoring call. */
 let sessionPromise = null;
@@ -164,15 +164,11 @@ export async function runSites(session, bundle, ort) {
 		msa_codons: new ort.Tensor('int64', bundle.msa_codons.data, bundle.msa_codons.dims),
 		msa_aas: new ort.Tensor('int64', bundle.msa_aas.data, bundle.msa_aas.dims),
 		dist_matrix: new ort.Tensor('float32', bundle.dist_matrix.data, bundle.dist_matrix.dims),
-		mds_coords: new ort.Tensor('float32', bundle.mds_coords.data, bundle.mds_coords.dims),
-		padding_mask: new ort.Tensor('bool', bundle.padding_mask.data, bundle.padding_mask.dims)
+		mds_coords: new ort.Tensor('float32', bundle.mds_coords.data, bundle.mds_coords.dims)
 	};
 	const out = await session.run(feeds);
-	return {
-		lrt: out.lrt.data,
-		alpha: out.alpha.data,
-		beta_neg: out.beta_neg.data,
-		beta_pos: out.beta_pos.data,
-		p_neg: out.p_neg.data
-	};
+	// ONE OUTPUT, not five. The v1-viral graph returns `lrt` alone; 2.0 also returned alpha,
+	// beta_neg, beta_pos and p_neg, which is where the dS / dN+ / p columns came from. Those heads
+	// are not in this export, so those columns are gone — see postprocess.js.
+	return { lrt: out.lrt.data };
 }

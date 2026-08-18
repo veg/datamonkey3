@@ -22,7 +22,7 @@ import { VERIFIED_MODEL_SHA256 } from '../lib/services/axomeme/modelContract.js'
 const SOME_BYTES = new Uint8Array([1, 2, 3, 4]).buffer;
 
 function fakeOrt(
-	inputNames = ['msa_codons', 'msa_aas', 'dist_matrix', 'mds_coords', 'padding_mask']
+	inputNames = ['msa_codons', 'msa_aas', 'dist_matrix', 'mds_coords', 'mds_coords']
 ) {
 	const created = [];
 	return {
@@ -93,7 +93,7 @@ describe('loadSession', () => {
 		const err = await loadSession({ ort, fetchImpl: okFetch(), verifyHash: false }).catch((e) => e);
 		expect(err.message).toMatch(/missing expected inputs/);
 		expect(err.message).toMatch(/mds_coords/);
-		expect(err.message).toMatch(/padding_mask/);
+		expect(err.message).toMatch(/mds_coords/);
 	});
 
 	it('reports a failed fetch with its status', async () => {
@@ -158,8 +158,7 @@ describe('runSites', () => {
 			msa_codons: { data: new BigInt64Array(B * N), dims: [B, N, 1] },
 			msa_aas: { data: new BigInt64Array(B * N), dims: [B, N, 1] },
 			dist_matrix: { data: new Float32Array(B * N * N), dims: [B, N, N] },
-			mds_coords: { data: new Float32Array(B * N * 4), dims: [B, N, 4] },
-			padding_mask: { data: new Uint8Array(B * N), dims: [B, N] }
+			mds_coords: { data: new Float32Array(B * N * 4), dims: [B, N, 4] }
 		};
 		const out = await runSites(session, bundle, ort);
 		const feeds = session.run.mock.calls[0][0];
@@ -169,8 +168,15 @@ describe('runSites', () => {
 		expect(feeds.msa_aas.type).toBe('int64');
 		expect(feeds.dist_matrix.type).toBe('float32');
 		expect(feeds.mds_coords.type).toBe('float32');
-		expect(feeds.padding_mask.type).toBe('bool');
-		expect(Object.keys(out).sort()).toEqual(['alpha', 'beta_neg', 'beta_pos', 'lrt', 'p_neg']);
+		// Four tensors, and no fifth: v1-viral has no padding_mask input, and feeding a tensor the
+		// graph does not declare is an error at session.run rather than something it ignores.
+		expect(Object.keys(feeds).sort()).toEqual([
+			'dist_matrix',
+			'mds_coords',
+			'msa_aas',
+			'msa_codons'
+		]);
+		expect(Object.keys(out).sort()).toEqual(['lrt']);
 		expect(out.lrt).toHaveLength(B);
 	});
 
@@ -187,8 +193,7 @@ describe('runSites', () => {
 				msa_codons: { data: new BigInt64Array(B * N), dims: [B, N, 1] },
 				msa_aas: { data: new BigInt64Array(B * N), dims: [B, N, 1] },
 				dist_matrix: { data: new Float32Array(B * N * N), dims: [B, N, N] },
-				mds_coords: { data: new Float32Array(B * N * 4), dims: [B, N, 4] },
-				padding_mask: { data: new Uint8Array(B * N), dims: [B, N] }
+				mds_coords: { data: new Float32Array(B * N * 4), dims: [B, N, 4] }
 			},
 			ort
 		);
