@@ -123,7 +123,7 @@ export class AxomemeAnalysisRunner extends BaseAnalysisRunner {
 			// times over, on the main thread, to re-check the same N x N block b times. Validate in full
 			// once; after that the invariant tensors cannot have changed.
 			let fullyValidated = false;
-			const accumulated = { lrt: [], alpha: [], beta_neg: [], beta_pos: [], p_neg: [] };
+			const accumulated = { lrt: [] };
 			for (let start = 0; start < prepared.totalCodons; start += batch) {
 				const bundle = prepared.batch(start, batch);
 				// The contract check is cheap next to inference and catches the whole class of errors
@@ -190,7 +190,7 @@ export class AxomemeAnalysisRunner extends BaseAnalysisRunner {
 
 			const result = {
 				method: 'AxoMEME',
-				modelVersion: '2.0-viral-finetuned',
+				modelVersion: 'v1-viral',
 				modelSha256: sha256 ?? VERIFIED_MODEL_SHA256,
 				// Load-bearing for the UI: these are PREDICTIONS of what MEME would report, not MEME.
 				isSurrogate: true,

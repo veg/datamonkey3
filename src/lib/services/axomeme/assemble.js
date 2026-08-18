@@ -245,10 +245,11 @@ export function prepareAlignment(input) {
 		}
 	}
 
-	// Every selected slot is a real species, so nothing is padded. The tensor is still required by the
-	// graph, and is what would carry padding if a caller ever fed padded slots.
-	const paddingMask = new Uint8Array(n);
-
+	// NO PADDING MASK. The v1-viral graph does not take one: it has four inputs, not five.
+	//
+	// This costs nothing to remove because DM3 never actually padded. `n` is the number of SELECTED
+	// species, so every slot was already a real species and the mask was all zeros — it existed only
+	// to satisfy the 2.0 graph's signature.
 	return {
 		speciesCount: n,
 		totalCodons,
@@ -266,12 +267,11 @@ export function prepareAlignment(input) {
 		mostNegativeDistance,
 		dist,
 		mds,
-		paddingMask,
 		codonTokens,
 		aaTokens,
 
 		/**
-		 * Materialise the five tensors for sites [start, start + count).
+		 * Materialise the four tensors for sites [start, start + count).
 		 *
 		 * @param {number} start
 		 * @param {number} [count]
@@ -282,11 +282,9 @@ export function prepareAlignment(input) {
 			const perSiteTokens = n * windowSize;
 			const distData = new Float32Array(b * n * n);
 			const mdsData = new Float32Array(b * n * MDS_COMPONENTS);
-			const maskData = new Uint8Array(b * n);
 			for (let k = 0; k < b; k++) {
 				distData.set(dist, k * n * n);
 				mdsData.set(mds, k * n * MDS_COMPONENTS);
-				maskData.set(paddingMask, k * n);
 			}
 			return {
 				msa_codons: {
@@ -298,8 +296,7 @@ export function prepareAlignment(input) {
 					dims: [b, n, windowSize]
 				},
 				dist_matrix: { data: distData, dims: [b, n, n] },
-				mds_coords: { data: mdsData, dims: [b, n, MDS_COMPONENTS] },
-				padding_mask: { data: maskData, dims: [b, n] }
+				mds_coords: { data: mdsData, dims: [b, n, MDS_COMPONENTS] }
 			};
 		}
 	};
