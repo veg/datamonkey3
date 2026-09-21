@@ -23,6 +23,15 @@ async function initDB() {
 
 		request.onsuccess = (event) => {
 			const db = event.target.result;
+
+			// Cross-tab coordination: if another tab initiates a DB_VERSION upgrade while this
+			// connection is open, that tab's open() would block indefinitely (surfaced by the
+			// onblocked handler below). Closing our connection on onversionchange releases the
+			// lock so the upgrading tab can proceed instead of hanging.
+			db.onversionchange = () => {
+				db.close();
+			};
+
 			resolve(db);
 		};
 
