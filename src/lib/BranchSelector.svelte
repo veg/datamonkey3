@@ -7,6 +7,7 @@
 	import * as phylotree from 'phylotree';
 	import * as d3 from 'd3';
 	import { assignBranchToSet, branchNameOf, listBranches } from './utils/branchSetTagging.js';
+	import { toastStore } from '../stores/toast';
 
 	const dispatch = createEventDispatcher();
 
@@ -73,11 +74,7 @@
 
 	// Map selectionMode prop to internal mode (for Storybook compatibility)
 	$: effectiveMode =
-		mode !== 'single-set'
-			? mode
-			: selectionMode === 'multi-set'
-				? 'multi-set'
-				: 'single-set';
+		mode !== 'single-set' ? mode : selectionMode === 'multi-set' ? 'multi-set' : 'single-set';
 
 	// Reactive: Update selection sets when mode changes
 	$: selectionSets =
@@ -202,7 +199,7 @@
 
 	function deleteCurrentSet() {
 		if (selectionSets.length <= 1) {
-			alert('Cannot delete the only remaining set');
+			toastStore.error('Cannot delete the only remaining set');
 			return;
 		}
 		// Remove branches tagged with this set
@@ -426,9 +423,7 @@
 		}
 
 		// Set cursor style to indicate clickability
-		d3.select(container)
-			.selectAll('.branch, path.branch, .node circle')
-			.style('cursor', 'pointer');
+		d3.select(container).selectAll('.branch, path.branch, .node circle').style('cursor', 'pointer');
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -597,9 +592,7 @@
 		if (selectedCount > 0) {
 			callback(taggedNewick);
 		} else {
-			alert(
-				'No branch selections were made. Please select at least one branch.'
-			);
+			toastStore.error('No branch selections were made. Please select at least one branch.');
 		}
 	}
 
@@ -782,7 +775,9 @@
 
 			{#if filteredBranchRows.length === 0}
 				<p class="no-data-message">
-					{branchRows.length === 0 ? 'No branches to assign yet.' : 'No branches match that filter.'}
+					{branchRows.length === 0
+						? 'No branches to assign yet.'
+						: 'No branches match that filter.'}
 				</p>
 			{:else}
 				<ul class="branch-rows">
@@ -817,7 +812,9 @@
 	{/if}
 
 	{#if internalSelectedBranches.length > 0}
-		<p class="selection-count">{internalSelectedBranches.length} branch{internalSelectedBranches.length !== 1 ? 'es' : ''} selected</p>
+		<p class="selection-count">
+			{internalSelectedBranches.length} branch{internalSelectedBranches.length !== 1 ? 'es' : ''} selected
+		</p>
 	{/if}
 </div>
 

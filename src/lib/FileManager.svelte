@@ -8,6 +8,7 @@
 	} from '../stores/fileInfo';
 	import { treeStore } from '../stores/tree';
 	import { analysisStore } from '../stores/analyses';
+	import { toastStore } from '../stores/toast';
 	import FileCard from './FileCard.svelte';
 	import { Search, Trash2, Loader2, File } from '$lib/icons';
 	import { trackEvent } from './utils/analytics.js';
@@ -142,6 +143,8 @@
 			});
 		} catch (error) {
 			console.error('Error selecting file:', error);
+			const record = $persistentFileStore.files.find((f) => f.id === fileId);
+			toastStore.error(`Couldn't open ${record?.filename ?? 'the selected file'}.`);
 		}
 	}
 
@@ -155,6 +158,9 @@
 
 	// Handle file deletion
 	async function deleteFile(fileId) {
+		// Captured before the delete: on the failure path the store record may already be gone,
+		// and the toast still needs a name to report.
+		const filename = $persistentFileStore.files.find((f) => f.id === fileId)?.filename;
 		try {
 			// Determine whether we are deleting the currently selected file, before
 			// the store clears currentFileId as part of the deletion.
@@ -183,6 +189,7 @@
 			filePreviews = filePreviews; // Trigger reactivity
 		} catch (error) {
 			console.error('Error deleting file:', error);
+			toastStore.error(`Couldn't delete ${filename ?? 'the file'}.`);
 		}
 	}
 

@@ -295,6 +295,23 @@ export class BaseAnalysisRunner {
 				throw new Error(result.errors.join('\n'));
 			}
 		}
+
+		// GARD needs enough sites relative to the number of sequences to fit its model — the server
+		// otherwise rejects the job with a generic "unable to read results file" (issue #220). Catch
+		// it here, before the round-trip, with a message that names the actual requirement and the
+		// alignment's own numbers. datareader has already populated fileMetricsStore by the time any
+		// analysis can start, so this costs no parsing.
+		if (method.toLowerCase() === 'gard') {
+			const info = get(fileMetricsStore)?.FILE_INFO;
+			const sequences = Number(info?.sequences);
+			const sites = Number(info?.sites);
+			if (sequences > 0 && sites > 0 && sites < 4 * sequences) {
+				throw new Error(
+					`GARD requires at least ${4 * sequences} sites for ${sequences} sequences, ` +
+						`but this alignment has ${sites}. Use a longer alignment or fewer sequences.`
+				);
+			}
+		}
 	}
 
 	/**
