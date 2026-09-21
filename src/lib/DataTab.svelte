@@ -38,7 +38,8 @@
 	$: isReadyForAnalysis = hasFileMetrics && hasTree;
 
 	// Check if error is tree-related (show as warning instead of error)
-	$: isTreeError = validationError?.code?.startsWith('TREE') ||
+	$: isTreeError =
+		validationError?.code?.startsWith('TREE') ||
 		validationError?.message?.toLowerCase().includes('tree') ||
 		validationError?.details?.toLowerCase().includes('tree');
 	$: errorLevel = isTreeError ? 'warning' : 'error';
@@ -72,7 +73,9 @@
 		</div>
 
 		<!-- File limits info -->
-		<div class="mt-premium-md flex items-start gap-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-700">
+		<div
+			class="mt-premium-md flex items-start gap-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-700"
+		>
 			<Info class="mt-0.5 h-4 w-4 flex-shrink-0" />
 			<div>
 				<span class="font-medium">Upload limits:</span>
@@ -119,7 +122,9 @@
 				<h2 class="mb-premium-md text-premium-header font-semibold text-text-rich">
 					Alignment Viewer
 				</h2>
-				<div class="rounded-premium border border-border-platinum bg-white shadow-premium overflow-hidden">
+				<div
+					class="overflow-hidden rounded-premium border border-border-platinum bg-white shadow-premium"
+				>
 					<AlignmentViewer
 						alignmentFile={$alignmentFileStore}
 						{fileMetricsJSON}
@@ -141,7 +146,9 @@
 			<h2 class="mb-premium-md text-premium-header font-semibold text-text-rich">
 				Phylogenetic Tree Status
 			</h2>
-			<div class="rounded-premium border border-border-platinum bg-white p-premium-lg shadow-premium">
+			<div
+				class="rounded-premium border border-border-platinum bg-white p-premium-lg shadow-premium"
+			>
 				{#if $treeStore?.usertree}
 					<!-- User tree found -->
 					<div class="flex items-center gap-3">
@@ -150,7 +157,9 @@
 						</div>
 						<div>
 							<p class="font-semibold text-green-800">Tree detected in file</p>
-							<p class="text-sm text-green-600">Using the phylogenetic tree from your uploaded file</p>
+							<p class="text-sm text-green-600">
+								Using the phylogenetic tree from your uploaded file
+							</p>
 						</div>
 					</div>
 				{:else if $treeStore?.nj}
@@ -161,7 +170,9 @@
 						</div>
 						<div>
 							<p class="font-semibold text-blue-800">Using inferred neighbor-joining tree</p>
-							<p class="text-sm text-blue-600">No tree was found in your file. A tree has been inferred from the sequence data.</p>
+							<p class="text-sm text-blue-600">
+								No tree was found in your file. A tree has been inferred from the sequence data.
+							</p>
 						</div>
 					</div>
 				{:else}
@@ -172,7 +183,9 @@
 						</div>
 						<div>
 							<p class="font-semibold text-yellow-800">No phylogenetic tree available</p>
-							<p class="text-sm text-yellow-600">Please upload a tree file in the Analyze tab to proceed.</p>
+							<p class="text-sm text-yellow-600">
+								Please upload a tree file in the Analyze tab's Tree Source section to proceed.
+							</p>
 						</div>
 					</div>
 				{/if}
@@ -186,11 +199,11 @@
 				class="absolute -inset-32 opacity-30"
 				style="background: url('/img/mascot-pattern.png'); background-size: 180px; background-repeat: repeat; transform: rotate(-12deg);"
 			></div>
-			<div class="absolute inset-0 bg-gradient-to-br from-white/90 via-white/80 to-brand-whisper/90"></div>
+			<div
+				class="absolute inset-0 bg-gradient-to-br from-white/90 via-white/80 to-brand-whisper/90"
+			></div>
 			<div class="relative z-10 py-12">
-				<p class="text-lg font-medium text-text-rich">
-					Upload or select a file to get started
-				</p>
+				<p class="text-lg font-medium text-text-rich">Upload or select a file to get started</p>
 			</div>
 		</div>
 	{/if}
