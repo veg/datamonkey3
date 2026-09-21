@@ -11,6 +11,33 @@ import { sanitizeSequenceNames } from '../utils/fastaValidation.js';
 import { geneticCodeId } from '../config/geneticCodes.js';
 
 /**
+ * Resolve a `branchesToTest` UI value to the string the backend's `branches` param accepts.
+ *
+ * 'Interactive' is a UI concept and maps to HyPhy's 'FG' tag. Two legacy values also reach here from
+ * configs saved by older releases (the current selector no longer offers either — see
+ * methodAdvancedOptions.js and issue #192):
+ *   - 'Unlabeled' → 'Unlabeled branches', HyPhy's exact enum. Passing 'Unlabeled' verbatim makes
+ *     HyPhy reject the run after the full model fit.
+ *   - 'Custom' was a UI-only mode whose companion text field was never wired to either runner, so it
+ *     reached HyPhy verbatim and was rejected. There is no branch set to send, so we throw here — in
+ *     prepareAnalysisParameters, before the submission — rather than let the job fail server-side.
+ *
+ * @param {string} value raw config.branchesToTest value
+ * @returns {string} the value to send as the `branches` param
+ */
+function resolveBranchesParam(value) {
+	if (value === 'Interactive') return 'FG';
+	if (value === 'Unlabeled') return 'Unlabeled branches';
+	if (value === 'Custom') {
+		throw new Error(
+			'The "Custom" branch option is no longer supported. Select branches interactively on the ' +
+				'tree, or choose All / Internal / Leaves / Unlabeled branches.'
+		);
+	}
+	return value || 'All';
+}
+
+/**
  * Strip embedded trees from alignment data
  * Both NEXUS and FASTA files can contain embedded trees that take precedence over separate tree files
  */
@@ -208,8 +235,25 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 		this.socket.on('script error', async (error) => {
 			console.error('❌ Backend analysis error:', error);
 
-			// Detect tree-related errors and provide clearer message
-			const errorMsg = error.message || error || '';
+			// Prefer the most specific error the backend gives us. A bare `error.message` is often the
+			// generic wrapper ("unable to read results file") while the real HyPhy failure — an
+			// ASSERTION or a datareader message — arrives in a more detailed field. Take the first
+			// non-empty of the specific fields, then fall back to message/string. Issue #220.
+			const pickError = (...candidates) => {
+				for (const c of candidates) {
+					if (typeof c === 'string' && c.trim()) return c.trim();
+				}
+				return '';
+			};
+			const errorMsg =
+				pickError(
+					error?.details,
+					error?.stderr,
+					error?.output,
+					error?.hyphyError,
+					error?.message,
+					typeof error === 'string' ? error : ''
+				) || '';
 			let userFacingError = `Analysis failed: ${errorMsg}`;
 
 			if (
@@ -680,7 +724,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 					resample: config.resample || 0,
 					'confidence-interval': config.confidenceIntervals ? true : false,
 					pvalue: config.pValueThreshold || 0.1,
-					branches: config.branchesToTest === 'Interactive' ? 'FG' : config.branchesToTest || 'All',
+					branches: resolveBranchesParam(config.branchesToTest),
 					samples: 100
 				};
 
@@ -688,7 +732,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 				return {
 					...baseParams,
 					pvalue: config.pvalue || config.pValueThreshold || 0.1,
-					branches: config.branchesToTest === 'Interactive' ? 'FG' : config.branchesToTest || 'All',
+					branches: resolveBranchesParam(config.branchesToTest),
 					samples: config.samples || 100,
 					code: config.code || 'Universal'
 				};
@@ -729,7 +773,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 				return {
 					...baseParams,
 					// Map aBSREL-specific parameters to backend format
-					branches: config.branchesToTest === 'Interactive' ? 'FG' : config.branchesToTest || 'All',
+					branches: resolveBranchesParam(config.branchesToTest),
 					multiple_hits: config.multipleHits || 'None',
 					srv: config.srv || 'Yes',
 					blb: config.blb || 1.0
@@ -755,7 +799,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 				return {
 					...baseParams,
 					// Map BUSTED-specific parameters to backend format
-					branches: config.branchesToTest === 'Interactive' ? 'FG' : config.branchesToTest || 'All',
+					branches: resolveBranchesParam(config.branchesToTest),
 					srv: config.srv || 'Yes',
 					'error-sink':
 						errorSinkValue === true
@@ -886,7 +930,7 @@ class BackendAnalysisRunner extends BaseAnalysisRunner {
 				return {
 					...baseParams,
 					// Map PRIME-specific parameters to backend format
-					branches: config.branchesToTest === 'Interactive' ? 'FG' : config.branchesToTest || 'All',
+					branches: resolveBranchesParam(config.branchesToTest),
 					'property-set': config.propertySet || '5PROP',
 					pvalue: config.pValueThreshold || 0.1,
 					'impute-states': config.imputeStates || 'No'

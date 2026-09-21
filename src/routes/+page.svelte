@@ -13,6 +13,7 @@
 	} from '../stores/fileInfo';
 	import { uniqueFilename, resetFileInput } from '../lib/utils/fileIdentity.js';
 	import { applyAlignmentEdits } from '../lib/utils/alignmentEdits.js';
+	import { validateCodonAlignment, isJSParseableFormat } from '../lib/utils/fastaValidation.js';
 	import {
 		analysisStore,
 		currentAnalysis,
@@ -657,6 +658,18 @@
 					// Also load the alignment file for the current file if available
 					if (mostRecent.fileId) {
 						try {
+							// Land the returning user back on the file their most recent analysis used.
+							// Without this $currentFile stays null, which leaves the Data tab's Method
+							// Selector and FileIndicator hidden and makes the app look like it lost the
+							// user's data. See #196.
+							persistentFileStore.setCurrentFile(mostRecent.fileId);
+
+							// Keep the Results history unfiltered on a return visit. Setting the current
+							// file above would otherwise flip ResultsTab's filterByCurrentFile on, silently
+							// narrowing the history to just this one file's analyses; showing everything
+							// preserves the full run history the user expects to see. See #196.
+							showAllHistory = true;
+
 							const alignmentFile = await persistentFileStore.getFile(mostRecent.fileId);
 							if (alignmentFile) {
 								alignmentFileStore.set(alignmentFile);
@@ -669,8 +682,10 @@
 										a.status === 'completed'
 								);
 								if (datareaderAnalysis?.result) {
-									const metrics = JSON.parse(datareaderAnalysis.result);
-									fileMetricsStore.set(metrics);
+									// Assign the local fileMetricsJSON (passed to DataTab) as well as the
+									// store, so the Data tab shows the file's metrics on return. See #196.
+									fileMetricsJSON = JSON.parse(datareaderAnalysis.result);
+									fileMetricsStore.set(fileMetricsJSON);
 								}
 							}
 						} catch (err) {
@@ -919,8 +934,27 @@
 				'Mounting files for analysis...'
 			);
 			currentStage = 'mount';
+			const fileText = await file.text();
+
+			// Pre-flight codon check, BEFORE HyPhy runs. datareader.bf reads with the Universal
+			// codon table (genCodeID = 0) by default, so a length that is not a multiple of 3 or an
+			// in-frame stop codon is rejected here at upload — but with a raw HyPhy message the user
+			// cannot act on. validateCodonAlignment produces the clear, actionable report (site count
+			// not divisible by 3; in-frame stop codons in alignment columns) and throws it now, so the
+			// existing catch block classifies it ('not-codon-aligned' / 'stop-codons') and the file is
+			// never sent to HyPhy unnecessarily. Only for formats our JS parser recognizes (FASTA +
+			// NEXUS); PHYLIP/MEGA/CLUSTAL bypass this and defer to HyPhy, matching validateInput.
+			// Issues #140 and #206.
+			if (isJSParseableFormat(fileText)) {
+				const codonCheck = validateCodonAlignment(fileText, 0);
+				if (!codonCheck.valid) {
+					currentStage = 'preflight';
+					throw new Error(codonCheck.errors.join('\n'));
+				}
+			}
+
 			let inputFiles = await cliObj.mount([
-				{ name: 'user.nex', data: await file.text() },
+				{ name: 'user.nex', data: fileText },
 				{ name: 'datareader.bf', data: dataReader },
 				{ name: 'HyPhyGlobals.ibf', data: HyPhyGlobals },
 				{ name: 'chooseGeneticCode.def', data: chooseGeneticCode },
@@ -1572,7 +1606,9 @@
 						onChange={changeTab}
 					/>
 				{/if}
-			</div>		</div>	{/if}
+			</div>
+		</div>
+	{/if}
 </div>
 
 <!-- Rendered at the page root so it overlays whichever tab is open. -->
