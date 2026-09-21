@@ -573,9 +573,17 @@ export function validateCodonAlignment(alignmentData, geneticCodeId = 0) {
 	// HyPhy validates the total number of alignment sites, not ungapped sequence length.
 	const alignmentSites = sequences[0].sequence.length;
 	if (alignmentSites % 3 !== 0) {
+		// Name the number rather than leave the user to divide it. "1247 columns — 415 codons plus 2
+		// extra bases" tells them exactly how far off frame the alignment is, which "not divisible by
+		// 3" does not. The phrase "divisible by 3" is kept so the classifier and tests still match.
+		const codons = Math.floor(alignmentSites / 3);
+		const remainder = alignmentSites % 3;
 		errors.push(
-			`Alignment site count (${alignmentSites}) is not divisible by 3. ` +
-				`Codon-based analyses require the alignment length to be a multiple of 3.`
+			`Your alignment is ${alignmentSites} columns — ${codons} codons plus ${remainder} ` +
+				`extra base${remainder > 1 ? 's' : ''}, so its length is not divisible by 3. ` +
+				`Codon-based analyses require the alignment length to be a multiple of 3. ` +
+				`A codon-aware aligner keeps sequences in frame: MACSE, TranslatorX, or PRANK in codon ` +
+				`mode, or translate to protein, align, and back-translate.`
 		);
 	}
 

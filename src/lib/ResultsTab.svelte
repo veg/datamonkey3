@@ -1,6 +1,7 @@
 <script>
 	import { analysisStore } from '../stores/analyses';
 	import { currentFile } from '../stores/fileInfo';
+	import { toastStore } from '../stores/toast';
 	import AnalysisResultViewer from './AnalysisResultViewer.svelte';
 	import AnalysisHistory from './AnalysisHistory.svelte';
 	import BatchExport from './BatchExport.svelte';
@@ -30,7 +31,7 @@
 				await analysisStore.clearAllAnalyses();
 			} catch (error) {
 				console.error('Error clearing all analyses:', error);
-				alert('Failed to clear analyses: ' + error.message);
+				toastStore.error('Failed to clear analyses: ' + error.message);
 			}
 		}
 	}
@@ -41,7 +42,9 @@
 	<div
 		class="mb-premium-xl rounded-premium border border-border-platinum bg-white p-premium-lg shadow-premium"
 	>
-		<h2 class="mb-premium-md text-premium-header font-semibold text-text-rich">Export Analysis Results</h2>
+		<h2 class="mb-premium-md text-premium-header font-semibold text-text-rich">
+			Export Analysis Results
+		</h2>
 
 		{#if showBatchExport}
 			<BatchExport />
@@ -65,7 +68,8 @@
 					<button
 						on:click={handleClearAll}
 						class="inline-flex items-center rounded bg-red-100 px-2.5 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-200"
-						title="Delete all analyses" data-testid="clear-all-btn"
+						title="Delete all analyses"
+						data-testid="clear-all-btn"
 					>
 						<Trash2 class="mr-1 h-3 w-3" />
 						Clear All
@@ -110,9 +114,7 @@
 							class="h-44 w-auto opacity-50 transition-opacity hover:opacity-70"
 						/>
 					</div>
-					<h3 class="mb-2 text-lg font-semibold text-text-rich">
-						No Analyses Yet
-					</h3>
+					<h3 class="mb-2 text-lg font-semibold text-text-rich">No Analyses Yet</h3>
 					<p class="mb-5 max-w-xs text-sm text-text-slate">
 						Run an analysis to see your results here
 					</p>

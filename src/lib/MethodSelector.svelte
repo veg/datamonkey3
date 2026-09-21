@@ -18,12 +18,16 @@
 	import { executionAdvice } from './utils/executionAdvice.js';
 	// callModes.js is a leaf (no imports) precisely so this line costs the main chunk nothing but the
 	// constants — see the note at the top of that file.
-	import { describeCallMode, CALL_DEFAULTS } from './services/axomeme/callModes.js';	// Shared with the Data tab, which needs to turn datareader's gencodeid back into a name.
+	import { describeCallMode, CALL_DEFAULTS } from './services/axomeme/callModes.js'; // Shared with the Data tab, which needs to turn datareader's gencodeid back into a name.
 	import { GENETIC_CODES } from './config/geneticCodes.js';
 
 	export let methodConfig;
 	export let runMethod = null;
 	export let onConfigureMethod = null;
+	// The newick of the tree the user picked in AnalyzeTab's Tree Source section. When supplied it
+	// wins over the store-order guess below, so interactive branch tagging happens on the tree the
+	// user actually chose (uploaded / NJ / upload-new) rather than always the NJ tree.
+	export let treeNewick = '';
 
 	const dispatch = createEventDispatcher();
 
@@ -269,8 +273,21 @@
 	// Tree data from store (auto-subscription; Svelte cleans it up on destroy)
 	$: trees = $treeStore;
 
-	// Get tree data for interactive selection
-	$: selectedTreeData = trees.nj || trees.usertree || trees.inferredNewick || '';
+	// Get tree data for interactive selection. Respect the user's Tree Source choice (passed down as
+	// treeNewick from AnalyzeTab) first; only fall back to the store-order guess when no explicit
+	// selection reached us, so tagging always happens on the tree the user is actually looking at.
+	$: selectedTreeData = treeNewick || trees.nj || trees.usertree || trees.inferredNewick || '';
+
+	// A human label for the tree currently on screen for tagging, so the user can confirm they are
+	// tagging the tree they selected in the Tree Source section rather than some default.
+	$: selectedTreeLabel =
+		selectedTreeData && selectedTreeData === trees['upload-new']
+			? 'uploaded tree'
+			: selectedTreeData && selectedTreeData === trees.usertree
+				? 'tree from your file'
+				: selectedTreeData && selectedTreeData === trees.nj
+					? 'inferred neighbor-joining tree'
+					: 'selected tree';
 
 	// Get available methods sorted by recommendation
 	$: availableMethods = Object.entries(methodConfig)
@@ -475,8 +492,7 @@
 	// matter what the user tagged. contrastFelBranchesValid below already uses the indexed form.
 	$: relaxOptions = selectedMethod ? methodOptions?.[selectedMethod] : null;
 	$: relaxHasTestBranches =
-		selectedMethod?.toLowerCase() === 'relax' &&
-		relaxOptions?.interactiveTree?.includes('{TEST}');
+		selectedMethod?.toLowerCase() === 'relax' && relaxOptions?.interactiveTree?.includes('{TEST}');
 	$: relaxHasReferenceBranches =
 		selectedMethod?.toLowerCase() === 'relax' &&
 		(relaxOptions?.interactiveTree?.includes('{REFERENCE}') ||
@@ -978,9 +994,15 @@
 				</div>
 
 				{#if selectedTreeData}
+					<p class="tagging-tree-label" data-testid="tagging-tree-label">
+						Tagging branches on the <strong>{selectedTreeLabel}</strong>.
+					</p>
 					<div class="tree-selector-wrapper">
-						{#key selectedMethod}
-							<!-- No `width`: BranchSelector measures its own pan box and draws at least
+						{#key `${selectedMethod}|${selectedTreeData}`}
+							<!-- Keyed on method AND the selected tree's newick: switching the Tree Source
+							     in AnalyzeTab remounts BranchSelector so tags from the previous tree don't
+							     linger on a different topology.
+							     No `width`: BranchSelector measures its own pan box and draws at least
 							     minWidth, scrolling inside the box. The hard-coded 1000px used to push the
 							     PAGE 693px wider than a 393px phone. Do NOT widen this {#key} to include a
 							     width — every resize would remount and discard the current selection. -->
@@ -1640,6 +1662,12 @@
 		color: #4a5568;
 		margin: 0;
 		line-height: 1.5;
+	}
+
+	.tagging-tree-label {
+		margin: 0 0 12px;
+		font-size: 13px;
+		color: #4a5568;
 	}
 
 	.tree-selector-wrapper {

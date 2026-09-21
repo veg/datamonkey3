@@ -35,17 +35,12 @@ export const METHOD_ADVANCED_OPTIONS = {
 			type: 'select',
 			label: 'Branches to Test',
 			default: 'All',
-			options: ['All', 'Internal', 'Leaves', 'Unlabeled', 'Custom', 'Interactive'],
+			// 'Unlabeled branches' is HyPhy's exact enum value; 'Unlabeled' is rejected at startup.
+			// 'Custom' was a UI-only mode whose text field was never read by either runner, so it
+			// reached HyPhy verbatim and was rejected — use the interactive tree to pick arbitrary
+			// branches instead. See issue #192.
+			options: ['All', 'Internal', 'Leaves', 'Unlabeled branches', 'Interactive'],
 			description: 'Which branches to test for positive selection'
-		},
-		customBranches: {
-			type: 'text',
-			label: 'Custom branches (comma-separated or regex)',
-			default: '',
-			placeholder: 'e.g. Node1,Node2 or /^human/i',
-			dependsOn: 'branchesToTest',
-			enabledWhen: ['Custom'],
-			description: 'Comma-separated branch names or regex pattern'
 		},
 		interactiveTree: {
 			type: 'interactive-tree',
@@ -150,17 +145,9 @@ export const METHOD_ADVANCED_OPTIONS = {
 			type: 'select',
 			label: 'Branches to Test',
 			default: 'All',
-			options: ['All', 'Internal', 'Leaves', 'Unlabeled', 'Custom', 'Interactive'],
+			// See FEL: 'Unlabeled branches' is HyPhy's exact enum; 'Custom' was unwired. Issue #192.
+			options: ['All', 'Internal', 'Leaves', 'Unlabeled branches', 'Interactive'],
 			description: 'Which branches to test for positive selection'
-		},
-		customBranches: {
-			type: 'text',
-			label: 'Custom branches (comma-separated or regex)',
-			default: '',
-			placeholder: 'e.g. Node1,Node2 or /^human/i',
-			dependsOn: 'branchesToTest',
-			enabledWhen: ['Custom'],
-			description: 'Comma-separated branch names or regex pattern'
 		},
 		interactiveTree: {
 			type: 'interactive-tree',
@@ -313,17 +300,9 @@ export const METHOD_ADVANCED_OPTIONS = {
 			type: 'select',
 			label: 'Branches to Test',
 			default: 'All',
-			options: ['All', 'Internal', 'Leaves', 'Unlabeled', 'Custom', 'Interactive'],
+			// See FEL: 'Unlabeled branches' is HyPhy's exact enum; 'Custom' was unwired. Issue #192.
+			options: ['All', 'Internal', 'Leaves', 'Unlabeled branches', 'Interactive'],
 			description: 'Which branches to test (default: All)'
-		},
-		customBranches: {
-			type: 'text',
-			label: 'Custom branches (comma-separated or regex)',
-			default: '',
-			placeholder: 'e.g. Node1,Node2 or /^human/i',
-			dependsOn: 'branchesToTest',
-			enabledWhen: ['Custom'],
-			description: 'Comma-separated branch names or regex pattern'
 		},
 		interactiveTree: {
 			type: 'interactive-tree',
@@ -365,18 +344,10 @@ export const METHOD_ADVANCED_OPTIONS = {
 			type: 'select',
 			label: 'Foreground Branches',
 			default: 'All',
-			options: ['All', 'Internal', 'Leaves', 'Unlabeled', 'Custom', 'Interactive'],
+			// See FEL: 'Unlabeled branches' is HyPhy's exact enum; 'Custom' was unwired. Issue #192.
+			options: ['All', 'Internal', 'Leaves', 'Unlabeled branches', 'Interactive'],
 			description:
 				'Select foreground branches to test for positive selection. All other branches will be treated as background.'
-		},
-		customBranches: {
-			type: 'text',
-			label: 'Custom foreground branches (comma-separated or regex)',
-			default: '',
-			placeholder: 'e.g. Node1,Node2 or /^human/i',
-			dependsOn: 'branchesToTest',
-			enabledWhen: ['Custom'],
-			description: 'Comma-separated branch names or regex pattern for foreground branches'
 		},
 		interactiveTree: {
 			type: 'interactive-tree',
@@ -665,7 +636,8 @@ export const METHOD_ADVANCED_OPTIONS = {
 			type: 'select',
 			label: 'Branches to Test',
 			default: 'All',
-			options: ['All', 'Internal', 'Leaves', 'Unlabeled', 'Interactive'],
+			// 'Unlabeled branches' is HyPhy's exact enum value; 'Unlabeled' is rejected. Issue #192.
+			options: ['All', 'Internal', 'Leaves', 'Unlabeled branches', 'Interactive'],
 			description: 'Which branches to test for property-dependent selection'
 		},
 		interactiveTree: {

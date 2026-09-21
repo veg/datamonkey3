@@ -4,6 +4,8 @@
 	import { Upload, X, ChevronDown, ChevronUp } from '$lib/icons';
 	import PhyloTree from './phylotree.svelte';
 	import { trackEvent } from './utils/analytics.js';
+	import { parseNewick, leafIndex, normalizeTaxonName } from './services/axomeme/newick.js';
+	import { parseAlignment } from './utils/fastaValidation.js';
 
 	const dispatch = createEventDispatcher();
 
@@ -14,6 +16,13 @@
 	export let disabled = false;
 	export let uploadedTreeNewick = ''; // Newick string for uploaded tree
 	export let inferredTreeNewick = ''; // Newick string for NJ tree
+	// Canonical alignment (FASTA) as read by datareader. Its headers are what a tree's tip labels
+	// must match; without it there is nothing to validate against. Issue #210.
+	export let canonicalFasta = '';
+
+	// Result of comparing the currently-active tree's tip labels to the alignment headers.
+	// { state: 'ok'|'partial'|'none', matched, total, missing: string[] } or null when we can't check.
+	let validationResult = null;
 
 	// File upload state
 	let fileInput;
@@ -39,6 +48,89 @@
 		}
 		return 'Select tree source';
 	};
+
+	/**
+	 * Compare a tree's tip labels to the alignment headers and describe the overlap.
+	 *
+	 * This is the check that used to happen only at run time — a mismatch as ordinary as `seq1` vs
+	 * `seq1_2009` passed silently at upload and only surfaced as a HyPhy error (or, for AxoMEME, a
+	 * post-hoc "no sequence matched a tree label" caveat) minutes later. Names are normalised the same
+	 * way the reference pipeline does (leafIndex / normalizeTaxonName), so the verdict here matches
+	 * what the analysis will actually see. Issue #210.
+	 *
+	 * @param {string} newick tree to check
+	 * @returns {{state: 'ok'|'partial'|'none', matched: number, total: number, missing: string[]}|null}
+	 */
+	function validateTreeAgainstAlignment(newick) {
+		if (!newick || !newick.trim() || !canonicalFasta || !canonicalFasta.trim()) {
+			return null;
+		}
+
+		let alignmentNames;
+		let treeTips;
+		try {
+			const parsed = parseAlignment(canonicalFasta);
+			alignmentNames = new Set(
+				(parsed?.sequences ?? []).map((s) => normalizeTaxonName(s.header)).filter(Boolean)
+			);
+			const tree = parseNewick(newick);
+			const { index } = leafIndex(tree);
+			treeTips = [...index.keys()];
+		} catch (e) {
+			// A tree or alignment we can't parse is not a mismatch we can describe; stay quiet and let
+			// the run-time path report the structural problem.
+			console.warn('Tree/alignment validation skipped (parse failed):', e);
+			return null;
+		}
+
+		if (alignmentNames.size === 0 || treeTips.length === 0) return null;
+
+		// Alignment sequences NOT found among the tree's tips. These are the sequences the analysis
+		// would silently drop, so they are what the user needs named.
+		const missing = [...alignmentNames].filter((n) => !treeTips.includes(n));
+		const total = alignmentNames.size;
+		const matched = total - missing.length;
+
+		let state = 'ok';
+		if (matched === 0) state = 'none';
+		else if (missing.length > 0) state = 'partial';
+
+		return { state, matched, total, missing };
+	}
+
+	// Recompute whenever the active tree or the alignment changes. `treeSource` is included so
+	// switching between the uploaded and inferred trees re-validates the newly selected one.
+	$: validationResult = validateTreeAgainstAlignment(
+		activeTreeNewick(treeSource, uploadedTreeNewick, inferredTreeNewick, newUploadedNewick)
+	);
+
+	// The tree that is actually selected right now, so validation follows the radio choice.
+	function activeTreeNewick(source, uploaded, inferred, newUpload) {
+		if (source === 'uploaded') return uploaded;
+		if (source === 'inferred') return inferred;
+		if (source === 'upload-new') return newUpload;
+		return '';
+	}
+
+	// Chip text for the current validation verdict, or '' when there is nothing to show.
+	function validationChipText(result) {
+		if (!result) return '';
+		if (result.state === 'ok') {
+			return `${result.matched} of ${result.total} sequences matched`;
+		}
+		if (result.state === 'none') {
+			return 'No sequence names matched the tree labels';
+		}
+		// partial
+		const shown = result.missing.slice(0, 5).join(', ');
+		const extra = result.missing.length > 5 ? `, and ${result.missing.length - 5} more` : '';
+		return (
+			`${result.matched} of ${result.total} matched — ` +
+			`${result.missing.length} not in tree: ${shown}${extra}`
+		);
+	}
+
+	$: validationChip = validationChipText(validationResult);
 
 	// Event handlers
 	function handleTreeSourceChange() {
@@ -119,6 +211,17 @@
 					{statusText}
 				</span>
 			</div>
+			{#if validationChip}
+				<div
+					class="validation-chip"
+					class:ok={validationResult?.state === 'ok'}
+					class:partial={validationResult?.state === 'partial'}
+					class:none={validationResult?.state === 'none'}
+					title={validationResult?.state === 'partial' ? validationResult.missing.join(', ') : ''}
+				>
+					{validationChip}
+				</div>
+			{/if}
 		</div>
 	</div>
 
@@ -142,11 +245,7 @@
 
 				{#if uploadedTreeNewick}
 					<div class="tree-preview-section">
-						<button
-							type="button"
-							class="preview-toggle"
-							on:click={toggleUploadedPreview}
-						>
+						<button type="button" class="preview-toggle" on:click={toggleUploadedPreview}>
 							{#if showUploadedPreview}
 								<ChevronUp class="toggle-icon" />
 								<span>Hide tree</span>
@@ -193,11 +292,7 @@
 
 			{#if inferredTreeNewick && hasInferredTree}
 				<div class="tree-preview-section">
-					<button
-						type="button"
-						class="preview-toggle"
-						on:click={toggleInferredPreview}
-					>
+					<button type="button" class="preview-toggle" on:click={toggleInferredPreview}>
 						{#if showInferredPreview}
 							<ChevronUp class="toggle-icon" />
 							<span>Hide tree</span>
@@ -226,18 +321,18 @@
 		</div>
 
 		<div class="option-block">
-			<label class="option-row disabled">
+			<label class="option-row" class:disabled>
 				<input
 					type="radio"
 					bind:group={treeSource}
 					value="upload-new"
 					on:change={handleTreeSourceChange}
-					disabled={true}
+					{disabled}
 					class="option-radio"
 				/>
 				<span class="option-content">
 					<span class="option-text">Upload a different tree</span>
-					<span class="option-hint">(Not implemented yet)</span>
+					<span class="option-hint">(Newick format)</span>
 				</span>
 			</label>
 		</div>
@@ -283,11 +378,7 @@
 			<!-- Preview for newly uploaded tree -->
 			{#if newUploadedNewick}
 				<div class="tree-preview-section">
-					<button
-						type="button"
-						class="preview-toggle"
-						on:click={toggleNewUploadPreview}
-					>
+					<button type="button" class="preview-toggle" on:click={toggleNewUploadPreview}>
 						{#if showNewUploadPreview}
 							<ChevronUp class="toggle-icon" />
 							<span>Hide tree</span>
@@ -357,6 +448,36 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
+	}
+
+	/* Tree-vs-alignment label match chip. Three states, matching the AxoMEME caveat palette. */
+	.validation-chip {
+		display: inline-flex;
+		align-items: center;
+		padding: 4px 8px;
+		border-radius: 6px;
+		font-size: 12px;
+		font-weight: 500;
+		max-width: 100%;
+		white-space: normal;
+	}
+
+	.validation-chip.ok {
+		background: #ecfdf5;
+		color: #047857;
+		border: 1px solid #a7f3d0;
+	}
+
+	.validation-chip.partial {
+		background: #fffbeb;
+		color: #b45309;
+		border: 1px solid #fde68a;
+	}
+
+	.validation-chip.none {
+		background: #fef2f2;
+		color: #b91c1c;
+		border: 1px solid #fecaca;
 	}
 
 	.tree-source-options {

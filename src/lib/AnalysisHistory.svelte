@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { analysisStore } from '../stores/analyses';
 	import { persistentFileStore, currentFile } from '../stores/fileInfo';
+	import { toastStore } from '../stores/toast';
 	import { browser } from '$app/environment';
 	import AnalysisCard from './AnalysisCard.svelte';
 	import { Loader2, BadgeCheck } from 'lucide-svelte';
@@ -118,7 +119,7 @@
 				});
 			} catch (error) {
 				console.error('Error cancelling analysis:', error);
-				alert('Failed to cancel analysis: ' + error.message);
+				toastStore.error('Failed to cancel analysis: ' + error.message);
 			}
 		}
 	}
@@ -139,7 +140,7 @@
 				});
 			} catch (error) {
 				console.error('Error deleting analysis:', error);
-				alert('Failed to delete analysis: ' + error.message);
+				toastStore.error('Failed to delete analysis: ' + error.message);
 			}
 		}
 	}
@@ -164,6 +165,20 @@
 		);
 	}
 
+	// Surface any store-level error as a toast rather than replacing the whole list.
+	//
+	// A background failure (a failed load/delete/cancel that set $analysisStore.error) used to swap
+	// the entire analysis list for a full-screen mascot error panel, so a transient error hid every
+	// analysis the user still had. A toast reports the same message without taking the list away.
+	// `lastReportedError` guards against re-firing the same toast on every reactive re-run. #211.
+	let lastReportedError = null;
+	$: if ($analysisStore.error && $analysisStore.error !== lastReportedError) {
+		lastReportedError = $analysisStore.error;
+		toastStore.error(`Error: ${$analysisStore.error}`);
+	} else if (!$analysisStore.error) {
+		lastReportedError = null;
+	}
+
 	// Load analyses on mount
 	onMount(async () => {
 		if (browser) {
@@ -182,19 +197,10 @@
 			<Loader2 class="mr-2 h-4 w-4 animate-spin" />
 			<span>Loading analyses...</span>
 		</div>
-	{:else if $analysisStore.error}
-		<div class="rounded-xl border border-status-error-border bg-gradient-to-b from-red-50 to-white p-6 text-center text-status-error-text">
-			<div class="mx-auto mb-4 h-24 w-24 overflow-hidden rounded-xl">
-				<img
-					src="/img/mascot-error.png"
-					alt="Datamonkey mascot encountered an error"
-					class="h-full w-auto opacity-60"
-				/>
-			</div>
-			<p class="font-medium">Error: {$analysisStore.error}</p>
-		</div>
 	{:else if sortedAnalyses.length === 0}
-		<div class="rounded-xl border border-border-subtle bg-gradient-to-b from-brand-whisper to-white p-6 text-center text-text-slate shadow-sm">
+		<div
+			class="rounded-xl border border-border-subtle bg-gradient-to-b from-brand-whisper to-white p-6 text-center text-text-slate shadow-sm"
+		>
 			<div class="flex flex-col items-center">
 				<div class="mb-4 overflow-hidden rounded-xl">
 					<img
@@ -215,7 +221,9 @@
 				<!-- Group by file when not filtering -->
 				{#each Object.entries(analysesGroupedByFile) as [fileId, analyses]}
 					<div class="mb-4">
-						<h3 class="mb-2 bg-surface-sunken p-2 text-sm font-semibold text-text-rich">{getFileName(fileId)}</h3>
+						<h3 class="mb-2 bg-surface-sunken p-2 text-sm font-semibold text-text-rich">
+							{getFileName(fileId)}
+						</h3>
 						<div class="analysis-cards">
 							{#each analyses as analysis (analysis.id)}
 								<AnalysisCard

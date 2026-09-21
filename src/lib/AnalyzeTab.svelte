@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { currentFile, fileMetricsStore, persistentFileStore } from '../stores/fileInfo';
 	import { analysisStore, activeAnalysisProgress } from '../stores/analyses';
-	import { treeStore } from '../stores/tree';
+	import { treeStore, addTree } from '../stores/tree';
 	import { toastStore } from '../stores/toast';
 	import {
 		backendConnectivity,
@@ -376,10 +376,13 @@
 			const content = await file.text();
 			uploadedTreeFile = { content, file };
 			selectedTreeSource = 'upload-new';
+			// Persist to treeStore so MethodSelector (which only reads from the store)
+			// can tag the tree the user actually uploaded, not the NJ tree.
+			addTree('upload-new', content.trim(), $treeStore);
 			console.log('Tree file content loaded:', content.substring(0, 100) + '...');
 		} catch (error) {
 			console.error('Failed to read tree file:', error);
-			alert('Failed to read tree file. Please ensure it is a valid Newick format file.');
+			toastStore.error('Failed to read tree file. Please ensure it is a valid Newick format file.');
 		}
 	}
 
@@ -410,11 +413,27 @@
 			case 'inferred':
 				return $treeStore?.nj || '';
 			case 'upload-new':
-				return uploadedTreeFile?.content || '';
+				return uploadedTreeFile?.content || $treeStore?.['upload-new'] || '';
 			default:
 				return '';
 		}
 	}
+
+	// Reactive mirror of getSelectedTreeData() so the currently-selected tree can be
+	// handed to MethodSelector as a prop. This is the tree the user picked in the Tree
+	// Source section, so interactive branch tagging happens on the right tree.
+	$: selectedTreeNewick = (() => {
+		switch (selectedTreeSource) {
+			case 'uploaded':
+				return $treeStore?.usertree || '';
+			case 'inferred':
+				return $treeStore?.nj || '';
+			case 'upload-new':
+				return uploadedTreeFile?.content || $treeStore?.['upload-new'] || '';
+			default:
+				return '';
+		}
+	})();
 
 	// Toggle analysis section
 	function toggleAnalysisSection() {
@@ -443,6 +462,7 @@
 					disabled={false}
 					uploadedTreeNewick={$treeStore?.usertree || ''}
 					inferredTreeNewick={$treeStore?.nj || ''}
+					canonicalFasta={$fileMetricsStore?.canonicalFasta || ''}
 					on:treeSourceChange={handleTreeSourceChange}
 					on:fileUploaded={handleFileUploaded}
 				/>
@@ -492,6 +512,7 @@
 					<!-- Method Selector (includes timing estimate) -->
 					<MethodSelector
 						{methodConfig}
+						treeNewick={selectedTreeNewick}
 						runMethod={enhancedRunMethod}
 						on:methodChange={handleMethodChange}
 					/>
