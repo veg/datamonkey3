@@ -26,6 +26,31 @@ const CUSTOM_ANALYSIS_BATCH_FILES = {
 };
 
 /**
+ * Resolve a `branchesToTest` UI value to the string HyPhy's `--branches` argument accepts.
+ *
+ * Two legacy values reach here from configs saved by older releases (the current selector no longer
+ * offers either — see methodAdvancedOptions.js and issue #192):
+ *   - 'Unlabeled' → 'Unlabeled branches', HyPhy's exact enum. Passing 'Unlabeled' verbatim makes
+ *     HyPhy reject the run *after* the full model fit with "'Unlabeled' is not a valid choice".
+ *   - 'Custom' was a UI-only mode whose companion text field was never wired to either runner, so it
+ *     reached HyPhy verbatim and was rejected the same way. There is no branch set to send for it, so
+ *     we throw at configuration time (before the fit) rather than let the run burn minutes and fail.
+ *
+ * @param {string} value raw branchesToTest value
+ * @returns {string} the value to hand to --branches
+ */
+function resolveBranchesValue(value) {
+	if (value === 'Unlabeled') return 'Unlabeled branches';
+	if (value === 'Custom') {
+		throw new Error(
+			'The "Custom" branch option is no longer supported. Select branches interactively on the ' +
+				'tree, or choose All / Internal / Leaves / Unlabeled branches.'
+		);
+	}
+	return String(value || 'All');
+}
+
+/**
  * Strip embedded trees from alignment data
  * Both NEXUS and FASTA files can contain embedded trees that take precedence over separate tree files
  */
@@ -294,8 +319,10 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 						}
 					} else {
 						// Always pass --branches explicitly (including 'All') to avoid
-						// stale state issues with Emscripten's callMain between invocations
-						args.push('--branches', String(value || 'All'));
+						// stale state issues with Emscripten's callMain between invocations.
+						// resolveBranchesValue maps legacy 'Unlabeled' → 'Unlabeled branches' and
+						// rejects the unwired 'Custom' mode before the run. Issue #192.
+						args.push('--branches', resolveBranchesValue(value));
 					}
 				} else if (key === 'propertySet') {
 					// PRIME property set parameter
@@ -589,8 +616,12 @@ class WasmAnalysisRunner extends BaseAnalysisRunner {
 						}
 					} else {
 						// Always pass --branches explicitly (including 'All') to avoid
-						// stale state issues with Emscripten's callMain between invocations
-						args.push('--branches', String(value || 'All'));
+						// stale state issues with Emscripten's callMain between invocations.
+						// resolveBranchesValue maps legacy 'Unlabeled' → 'Unlabeled branches' and
+						// rejects the unwired 'Custom' mode here, at configuration time — this runs in
+						// runAnalysis before executeWasmAnalysis, so the error surfaces before the model
+						// fit rather than after it. Issue #192.
+						args.push('--branches', resolveBranchesValue(value));
 					}
 				} else if (key === 'propertySet') {
 					// PRIME property set parameter
