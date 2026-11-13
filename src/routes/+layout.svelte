@@ -6,6 +6,8 @@
 	import { X, Menu, FlaskConical } from 'lucide-svelte';
 	import { env } from '$env/dynamic/public';
 	import { afterNavigate } from '$app/navigation';
+	import { WALRUS_URL } from '../lib/config/externalLinks.js';
+	import { trackEvent } from '../lib/utils/analytics.js';
 
 	// Get version from Vite define
 	const version = __APP_VERSION__;
@@ -115,6 +117,18 @@
 					<ul class="flex items-center space-x-premium-lg">
 						<li>
 							<a
+								class="flex items-center gap-1.5 rounded-premium-sm px-3 py-2 text-premium-brand font-medium text-text-rich transition-colors duration-premium hover:bg-brand-whisper hover:text-brand-royal"
+								href={WALRUS_URL}
+								target="_blank"
+								rel="noopener noreferrer"
+								onclick={() => trackEvent('walrus-link-clicked', { placement: 'nav' })}
+							>
+								WALRUS
+								<span class="rounded bg-accent-copper px-1.5 py-0.5 text-xs font-semibold text-white">NEW</span>
+							</a>
+						</li>
+						<li>
+							<a
 								class="rounded-premium-sm px-3 py-2 text-premium-brand font-medium text-text-rich transition-colors duration-premium hover:bg-brand-whisper hover:text-brand-royal"
 								href="http://help.datamonkey.org"
 								target="_blank"
@@ -151,6 +165,16 @@
 		{#if mobileMenuOpen}
 			<div class="border-t border-border-platinum sm:hidden" id="mobile-menu">
 				<div class="space-y-1 px-4 pb-4 pt-2">
+					<a
+						class="flex items-center gap-1.5 rounded-premium-sm px-3 py-3 text-base font-medium text-text-rich transition-colors duration-premium hover:bg-brand-whisper hover:text-brand-royal"
+						href={WALRUS_URL}
+						target="_blank"
+						rel="noopener noreferrer"
+						onclick={() => trackEvent('walrus-link-clicked', { placement: 'mobile-nav' })}
+					>
+						WALRUS
+						<span class="rounded bg-accent-copper px-1.5 py-0.5 text-xs font-semibold text-white">NEW</span>
+					</a>
 					<a
 						class="block rounded-premium-sm px-3 py-3 text-base font-medium text-text-rich transition-colors duration-premium hover:bg-brand-whisper hover:text-brand-royal"
 						href="http://help.datamonkey.org"
@@ -201,6 +225,15 @@
 						rel="noopener noreferrer"
 					>
 						HyPhy
+					</a>
+					<a
+						class="min-h-[44px] flex items-center rounded-premium-sm px-2 py-2 text-base text-text-slate transition-colors duration-premium hover:bg-brand-whisper hover:text-brand-royal sm:text-premium-body"
+						href={WALRUS_URL}
+						target="_blank"
+						rel="noopener noreferrer"
+						onclick={() => trackEvent('walrus-link-clicked', { placement: 'footer' })}
+					>
+						WALRUS
 					</a>
 				</div>
 			</div>
