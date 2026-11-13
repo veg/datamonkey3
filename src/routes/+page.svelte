@@ -26,6 +26,7 @@
 	import { syncDescriptorStoresForFile as syncDescriptorStores } from '../lib/utils/descriptorSync.js';
 	import { resolveSelectedAnalysis } from '../lib/utils/analysisSelection.js';
 	import { trackEvent } from '../lib/utils/analytics.js';
+	import WalrusCard from '../lib/WalrusCard.svelte';
 	import { toastStore } from '../stores/toast';
 	import Aioli from '@biowasm/aioli';
 	import TreeSelector from '../lib/TreeSelector.svelte';
@@ -1522,6 +1523,8 @@
 			>
 				Sequence Analysis Platform
 			</h1>
+
+			<WalrusCard />
 
 			<!-- PRIME Feature Card -->
 			{#if !primeCardDismissed}
